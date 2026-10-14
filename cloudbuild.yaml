@@ -1,0 +1,79 @@
+# Fresh deploy from one config (A11):
+#   gcloud builds submit --config cloudbuild.yaml --substitutions=_GITHUB_REPO=owner/invoicekit
+#
+# build -> push -> migrate (Cloud Run Job) -> deploy API (Cloud Run)
+#       -> deploy worker (Cloud Run Job)
+substitutions:
+  _REGION: us-central1
+  _SERVICE: karkhana
+  _AR_REPO: karkhana
+  _SQL_INSTANCE: karkhana-db
+  _GITHUB_REPO: ""
+  # Cached Gemini outputs are opt-in: `make deploy-demo` sets this to true.
+  _DEMO_FALLBACK: "false"
+  _GEMINI_MODEL: gemini-3-flash-preview
+  _SEED_USERS: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamicSubstitutions: true
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}",
+           "--build-arg", "COMMIT_SHA=${BUILD_ID}", "."]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}"]
+
+  - id: migrate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        IMAGE=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}
+        gcloud run jobs deploy karkhana-migrate --region=${_REGION} --image=$$IMAGE \
+          --service-account=karkhana-migrate@${PROJECT_ID}.iam.gserviceaccount.com \
+          --command=python --args=-m,app.scripts.migrate,--seed \
+          --set-env-vars=^@^CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}@DB_USER=karkhana_owner@APP_DB_ROLE=karkhana-run@${PROJECT_ID}.iam@GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@SEED_USERS=${_SEED_USERS} \
+          --set-secrets=DB_PASSWORD=db-owner-password:latest \
+          --max-retries=0 --task-timeout=600
+        gcloud run jobs execute karkhana-migrate --region=${_REGION} --wait
+
+  - id: deploy-api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        IMAGE=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}
+        NUM=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
+        URL=https://${_SERVICE}-$$NUM.${_REGION}.run.app
+        FB_KEY=$(gcloud secrets versions access latest --secret=firebase-web-api-key 2>/dev/null || echo "")
+        gcloud run deploy ${_SERVICE} --region=${_REGION} --image=$$IMAGE \
+          --service-account=karkhana-run@${PROJECT_ID}.iam.gserviceaccount.com \
+          --allow-unauthenticated --memory=1Gi --cpu=1 --min-instances=1 --max-instances=5 \
+          --no-cpu-throttling --concurrency=40 --timeout=300 \
+          --set-env-vars=^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@REGION=${_REGION}@CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}@DB_IAM_USER=karkhana-run@${PROJECT_ID}.iam@AUTH_MODE=firebase@FIREBASE_PROJECT_ID=${PROJECT_ID}@FIREBASE_AUTH_DOMAIN=${PROJECT_ID}.firebaseapp.com@FIREBASE_WEB_API_KEY=$$FB_KEY@RUNNER_BACKEND=cloudrun_job@WORKER_JOB_NAME=karkhana-worker@PUBLIC_BASE_URL=$$URL@GITHUB_REPO=${_GITHUB_REPO}@DEMO_FALLBACK=${_DEMO_FALLBACK}@GEMINI_MODEL=${_GEMINI_MODEL}@GEMINI_CODER_MODEL=${_GEMINI_MODEL}@ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts \
+          --set-secrets=RUN_HMAC_SECRET=run-hmac-secret:latest,GITHUB_TOKEN=github-token:latest
+        echo "Deployed $$URL"
+
+  # The worker runs untrusted repository code: no GitHub token, no secrets.
+  - id: deploy-worker
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        IMAGE=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}
+        gcloud run jobs deploy karkhana-worker --region=${_REGION} --image=$$IMAGE \
+          --service-account=karkhana-worker@${PROJECT_ID}.iam.gserviceaccount.com \
+          --command=python --args=-m,app.worker.main \
+          --memory=2Gi --cpu=2 --max-retries=0 --task-timeout=1200 \
+          --set-env-vars=^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@GITHUB_REPO=${_GITHUB_REPO}@DEMO_FALLBACK=${_DEMO_FALLBACK}@GEMINI_MODEL=${_GEMINI_MODEL}@GEMINI_CODER_MODEL=${_GEMINI_MODEL}@ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}

@@ -1,0 +1,43 @@
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Node / web build ---
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+
+# --- Browser e2e test output ---
+tests/e2e/node_modules/
+tests/e2e/shots/
+tests/e2e/report.json
+
+# --- Secrets and local config (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+
+# --- Logs and local diagnostics ---
+*.log
+import-times.txt
+
+# --- Git bundles used to move the repo between machines ---
+*.bundle
+
+# --- Editors and OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,80 @@
+# Deterministic CI: no Gemini, Firebase or GitHub writes, so an outage of an
+# external service never turns CI red. Live checks run in tests/e2e against a
+# deployed environment, separately.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: postgres
+      TEST_OWNER_DSN: postgresql://karkhana_owner:karkhana_owner@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: "Database roles (same split as Cloud SQL: owner vs app)"
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE karkhana_owner LOGIN CREATEDB PASSWORD 'karkhana_owner';
+          CREATE ROLE karkhana_app LOGIN PASSWORD 'karkhana_app';
+          SQL
+          psql -h localhost -U postgres -d template1 -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+      - run: uv sync --frozen --group dev
+      - name: Lint
+        run: |
+          uv run ruff check app
+          uv run ruff format --check app tests
+      - name: "Tests (unit + integration on Postgres 16 + pgvector), no skips allowed"
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs | tee pytest.log
+          if grep -q "SKIPPED" pytest.log; then echo "Database tests were skipped"; exit 1; fi
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npm run build
+      - name: Dependency audit (fail on high or critical)
+        run: npm audit --audit-level=high
+
+  container:
+    runs-on: ubuntu-latest
+    needs: [python, web]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the same image Cloud Build deploys
+        run: docker build -t karkhana:ci .
+      - name: Smoke-test the image entrypoints
+        run: |
+          docker run --rm karkhana:ci python -c "import app.fast_api_app, app.worker.main, app.scripts.migrate; print('imports ok')"
+          docker run --rm karkhana:ci python -c "import app.worker.main as w, inspect; assert 'github_token' not in inspect.getsource(w).lower()"

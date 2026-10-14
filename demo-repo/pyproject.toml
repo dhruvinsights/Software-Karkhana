@@ -1,0 +1,13 @@
+[project]
+name = "invoicekit"
+version = "0.3.0"
+description = "Tiny invoicing library used as the Software Karkhana demo repository."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

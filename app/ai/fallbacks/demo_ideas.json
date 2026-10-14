@@ -1,0 +1,12 @@
+[
+  {
+    "key": "discounts",
+    "name": "Invoice discount codes",
+    "idea_text": "Our sales team keeps applying discounts by editing invoice totals by hand in a spreadsheet, and finance finds rounding mistakes every month. We want invoicekit to support discount codes. A discount code gives a percentage off the invoice subtotal before tax, and each code has an expiry date after which it must be refused. Finance needs the discounted total to be rounded exactly like every other amount, to the cent, so reports reconcile. Sales managers should be able to see which code was applied to each invoice for audit. Later we may want fixed-amount codes and codes limited to one customer, but the first release is percentage codes only."
+  },
+  {
+    "key": "refunds",
+    "name": "Multi-currency partial refunds",
+    "idea_text": "Customers who pay in euros, pounds or yen ask for partial refunds, and today support staff calculate them on a calculator. We want invoicekit to create a refund against an existing invoice. A refund can be partial and must never exceed the amount that was paid. Refund amounts must respect each currency's minor unit, so yen refunds have no decimals. Support needs a reason recorded for every refund, and finance wants a monthly list of refunds per currency."
+  }
+]

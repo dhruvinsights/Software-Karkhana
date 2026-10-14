@@ -1,0 +1,44 @@
+{
+  "score": 6,
+  "score_rationale": "Real support pain and clear rules, but reporting needs and refund volume are unclear.",
+  "summary": "Create partial refunds against existing invoices in EUR, GBP and JPY, capped at the amount paid, rounded to each currency's minor unit, with a reason and a monthly report.",
+  "gaps": [
+    {"question": "Is the cap the amount paid or the invoice total, if partial payments exist?", "why_it_matters": "Determines the refund limit."},
+    {"question": "Do refunds reverse tax proportionally?", "why_it_matters": "Finance reporting and compliance depend on it."}
+  ],
+  "epics": [
+    {
+      "title": "Partial refunds against invoices",
+      "description": "Create a refund linked to an invoice, capped at the paid amount.",
+      "source_quote": "A refund can be partial and must never exceed the amount that was paid",
+      "stories": [
+        {"title": "Create a partial refund for an invoice", "acceptance_criteria": ["Refund references the invoice", "Refund above the paid amount is refused"]}
+      ]
+    },
+    {
+      "title": "Currency-correct refund amounts",
+      "description": "Round refunds to each currency's minor unit.",
+      "source_quote": "Refund amounts must respect each currency's minor unit, so yen refunds have no decimals",
+      "stories": [
+        {"title": "Round refunds per currency", "acceptance_criteria": ["JPY refunds have no decimals", "Rounding uses Money.quantize()"]}
+      ]
+    },
+    {
+      "title": "Refund reasons and reporting",
+      "description": "Record a reason per refund and list refunds per currency per month.",
+      "source_quote": "finance wants a monthly list of refunds per currency",
+      "stories": [
+        {"title": "Require a refund reason", "acceptance_criteria": ["Refund without a reason is refused"]},
+        {"title": "Monthly refunds report per currency", "acceptance_criteria": ["Report groups refunds by currency and month"]}
+      ]
+    }
+  ],
+  "director_report": {
+    "summary": "Removes manual calculator work for support and gives finance a monthly view.",
+    "recommendation": "approve",
+    "key_risks": ["Tax treatment of refunds is undefined"],
+    "decision_requested": "Approve refunds with cap, per-currency rounding and reasons."
+  },
+  "memory_citations": [],
+  "memory_note": "no relevant memory"
+}

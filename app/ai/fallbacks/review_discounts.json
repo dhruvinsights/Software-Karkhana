@@ -1,0 +1,8 @@
+{
+  "comments": [
+    {"path": "invoicekit/discounts.py", "line": null, "severity": "high", "body": "Validate that percent is a Decimal between 0 and 100 when the code is created, not when it is applied, so invalid codes cannot exist."},
+    {"path": "invoicekit/invoice.py", "line": null, "severity": "medium", "body": "discount() should quantize before it is subtracted, otherwise total() can differ from subtotal - discount + tax by one cent."},
+    {"path": "tests/test_discounts.py", "line": null, "severity": "medium", "body": "Add a test for a code used exactly on its expiry date to pin down whether the date is inclusive."},
+    {"path": "invoicekit/discounts.py", "line": null, "severity": "low", "body": "Normalise code identifiers to upper case so 'save10' and 'SAVE10' are the same code."}
+  ]
+}

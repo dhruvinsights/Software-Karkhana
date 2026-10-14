@@ -1,0 +1,163 @@
+diff --git a/invoicekit/discounts.py b/invoicekit/discounts.py
+new file mode 100644
+index 0000000..d3835ae
+--- /dev/null
++++ b/invoicekit/discounts.py
+@@ -0,0 +1,37 @@
++"""Percentage discount codes with expiry."""
++
++from __future__ import annotations
++
++import datetime as dt
++from dataclasses import dataclass
++from decimal import Decimal
++
++
++class DiscountExpired(ValueError):
++    """Raised when a discount code is used after its expiry date."""
++
++
++@dataclass(frozen=True)
++class DiscountCode:
++    """A percentage discount applied to the subtotal before tax.
++
++    Attributes:
++        code: Identifier shown on the invoice for audit.
++        percent: Percentage off, between 0 and 100.
++        expires_on: Last day the code may be used (inclusive).
++    """
++
++    code: str
++    percent: Decimal
++    expires_on: dt.date
++
++    def __post_init__(self) -> None:
++        if not isinstance(self.percent, Decimal):
++            raise TypeError("percent must be a Decimal")
++        if not Decimal(0) <= self.percent <= Decimal(100):
++            raise ValueError("percent must be between 0 and 100")
++
++    def check_valid(self, today: dt.date) -> None:
++        """Raises DiscountExpired if the code cannot be used on ``today``."""
++        if today > self.expires_on:
++            raise DiscountExpired(f"{self.code} expired on {self.expires_on.isoformat()}")
+diff --git a/invoicekit/invoice.py b/invoicekit/invoice.py
+index 92b0bd3..bca9e94 100644
+--- a/invoicekit/invoice.py
++++ b/invoicekit/invoice.py
+@@ -2,9 +2,11 @@
+ 
+ from __future__ import annotations
+ 
++import datetime as dt
+ from dataclasses import dataclass, field
+ from decimal import Decimal
+ 
++from invoicekit.discounts import DiscountCode
+ from invoicekit.money import Money
+ 
+ 
+@@ -38,6 +40,7 @@ class Invoice:
+     currency: str
+     tax_rate: Decimal = Decimal("0")
+     items: list[LineItem] = field(default_factory=list)
++    discount_code: DiscountCode | None = None
+ 
+     def add(self, item: LineItem) -> None:
+         """Adds a line item in the invoice currency."""
+@@ -52,10 +55,31 @@ class Invoice:
+             total = total + item.total()
+         return total.quantize()
+ 
++    def apply_discount(self, code: DiscountCode, today: dt.date) -> None:
++        """Applies a percentage discount code, refusing expired codes.
++
++        Args:
++            code: The discount code. Replaces any code applied earlier.
++            today: The date the code is being used.
++        """
++        code.check_valid(today)
++        self.discount_code = code
++
++    def discount(self) -> Money:
++        """Discount amount on the subtotal, rounded to the minor unit."""
++        if self.discount_code is None:
++            return Money(Decimal(0), self.currency).quantize()
++        rate = self.discount_code.percent / Decimal(100)
++        return self.subtotal().times(rate).quantize()
++
++    def taxable(self) -> Money:
++        """Subtotal after discount; tax is charged on this amount."""
++        return (self.subtotal() - self.discount()).quantize()
++
+     def tax(self) -> Money:
+-        """Tax on the subtotal."""
+-        return self.subtotal().times(self.tax_rate).quantize()
++        """Tax on the discounted subtotal."""
++        return self.taxable().times(self.tax_rate).quantize()
+ 
+     def total(self) -> Money:
+-        """Subtotal plus tax."""
+-        return (self.subtotal() + self.tax()).quantize()
++        """Discounted subtotal plus tax."""
++        return (self.taxable() + self.tax()).quantize()
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+new file mode 100644
+index 0000000..9276074
+--- /dev/null
++++ b/tests/test_discounts.py
+@@ -0,0 +1,54 @@
++import datetime as dt
++from decimal import Decimal
++
++import pytest
++
++from invoicekit import Invoice, LineItem, Money
++from invoicekit.discounts import DiscountCode, DiscountExpired
++
++TODAY = dt.date(2026, 10, 15)
++
++
++def make_invoice() -> Invoice:
++    inv = Invoice(currency="USD", tax_rate=Decimal("0.10"))
++    inv.add(LineItem("Seat licence", Money.of("19.99", "USD"), 3))
++    inv.add(LineItem("Onboarding", Money.of("100", "USD")))
++    return inv
++
++
++def code(percent: str = "10", expires: dt.date = TODAY) -> DiscountCode:
++    return DiscountCode("SAVE", Decimal(percent), expires)
++
++
++def test_discount_is_percentage_of_subtotal():
++    inv = make_invoice()
++    inv.apply_discount(code("10"), TODAY)
++    assert inv.discount().amount == Decimal("16.00")
++
++
++def test_tax_is_charged_on_discounted_subtotal():
++    inv = make_invoice()
++    inv.apply_discount(code("10"), TODAY)
++    assert inv.tax().amount == Decimal("14.40")
++    assert inv.total().amount == Decimal("158.37")
++
++
++def test_expired_code_is_refused():
++    inv = make_invoice()
++    with pytest.raises(DiscountExpired):
++        inv.apply_discount(code(expires=TODAY - dt.timedelta(days=1)), TODAY)
++
++
++def test_code_valid_on_expiry_date():
++    inv = make_invoice()
++    inv.apply_discount(code(expires=TODAY), TODAY)
++    assert inv.discount_code is not None
++
++
++def test_percent_out_of_range_is_rejected():
++    with pytest.raises(ValueError):
++        code("150")
++
++
++def test_no_code_means_no_discount():
++    assert make_invoice().discount().amount == Decimal("0.00")

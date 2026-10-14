@@ -1,0 +1,53 @@
+{
+  "score": 7,
+  "score_rationale": "Clear pain (monthly rounding errors, manual edits) and a narrow first release. Value depends on how many invoices carry discounts, which the idea does not say.",
+  "summary": "Add percentage discount codes with expiry to invoicekit, applied to the subtotal before tax, rounded like all other money, and recorded per invoice for audit.",
+  "gaps": [
+    {"question": "Can more than one code apply to the same invoice?", "why_it_matters": "Stacking changes the calculation order and the audit record."},
+    {"question": "Is the expiry date inclusive, and in which time zone?", "why_it_matters": "Codes used on the last day will be accepted or refused inconsistently otherwise."},
+    {"question": "Who creates and revokes codes?", "why_it_matters": "Without an owner, codes leak and cannot be withdrawn."}
+  ],
+  "epics": [
+    {
+      "title": "Percentage discount codes",
+      "description": "Model a discount code with a percentage and apply it to the invoice subtotal before tax.",
+      "source_quote": "A discount code gives a percentage off the invoice subtotal before tax",
+      "stories": [
+        {"title": "Apply a percentage discount code to an invoice", "acceptance_criteria": ["Discount is a percentage of the subtotal, applied before tax", "Tax is calculated on the discounted subtotal", "Percent must be between 0 and 100"]},
+        {"title": "Show the discount as its own line in totals", "acceptance_criteria": ["Invoice exposes discount() as Money", "total() equals subtotal minus discount plus tax"]}
+      ]
+    },
+    {
+      "title": "Code expiry",
+      "description": "Refuse codes after their expiry date.",
+      "source_quote": "each code has an expiry date after which it must be refused",
+      "stories": [
+        {"title": "Refuse expired discount codes", "acceptance_criteria": ["Applying a code after its expiry date raises an error", "A code is valid on its expiry date"]}
+      ]
+    },
+    {
+      "title": "Exact rounding",
+      "description": "Round discounted amounts with the same Decimal rules as all other money.",
+      "source_quote": "the discounted total to be rounded exactly like every other amount, to the cent",
+      "stories": [
+        {"title": "Round discounts half-up to the currency minor unit", "acceptance_criteria": ["Discount uses Money.quantize()", "No float arithmetic anywhere in the discount path"]}
+      ]
+    },
+    {
+      "title": "Audit of applied codes",
+      "description": "Record which code was applied to each invoice.",
+      "source_quote": "see which code was applied to each invoice for audit",
+      "stories": [
+        {"title": "Record the applied code on the invoice", "acceptance_criteria": ["Invoice keeps the applied code identifier", "Applying a second code replaces the first and is visible"]}
+      ]
+    }
+  ],
+  "director_report": {
+    "summary": "Small, well-bounded change that removes manual edits and the monthly rounding errors finance reports. First release is percentage codes only.",
+    "recommendation": "approve",
+    "key_risks": ["Stacking rules are undefined", "Expiry time zone is undefined"],
+    "decision_requested": "Approve the first release of percentage codes with expiry and audit."
+  },
+  "memory_citations": [],
+  "memory_note": "no relevant memory"
+}
