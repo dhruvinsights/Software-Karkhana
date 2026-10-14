@@ -1,0 +1,22 @@
+# Keep the build context to what the Dockerfile copies. In particular, never
+# send a host node_modules or .venv (Windows binaries would break the image).
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+.git
+.github
+.pytest_cache
+.ruff_cache
+web/dist
+*.tsbuildinfo
+tests
+docs
+demo-repo
+infra
+*.bundle
+.env
+.env.*
+*.pem
+*.key
+service-account*.json

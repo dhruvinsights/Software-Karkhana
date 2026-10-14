@@ -1,8 +1,16 @@
-# Fresh deploy from one config (A11):
-#   gcloud builds submit --config cloudbuild.yaml --substitutions=_GITHUB_REPO=owner/invoicekit
+# Deploy from one config (A11). Run it through make, which passes the build
+# service account, the source bucket and the substitutions correctly:
+#   make deploy GITHUB_REPO=owner/invoicekit SEED_USERS="a@x.com:pm,b@x.com:director"
 #
-# build -> push -> migrate (Cloud Run Job) -> deploy API (Cloud Run)
-#       -> deploy worker (Cloud Run Job)
+# preflight -> build -> push -> migrate (Cloud Run Job) -> deploy worker (Job)
+#           -> deploy API (Cloud Run)
+#
+# Order matters: the schema migrates before any new code runs, and the worker
+# is updated before the API, so a new API never launches an old worker.
+#
+# Env vars are passed with gcloud's alternate delimiter ^|^ because values
+# contain '@' (IAM user names, emails) and ',' (SEED_USERS). Each such argument
+# is double-quoted so bash does not read '|' as a pipe.
 substitutions:
   _REGION: us-central1
   _SERVICE: karkhana
@@ -13,12 +21,29 @@ substitutions:
   _DEMO_FALLBACK: "false"
   _GEMINI_MODEL: gemini-3-flash-preview
   _SEED_USERS: ""
+  # Connection budget: db-g1-small allows ~50 connections, and each API
+  # instance pools up to 10 (app/db.py). 3 x 10 + migrate stays well under.
+  _MAX_INSTANCES: "3"
 
 options:
   logging: CLOUD_LOGGING_ONLY
   dynamicSubstitutions: true
 
+# The default is 10 minutes; build + migrate + two deploys can exceed it.
+timeout: 1800s
+
 steps:
+  - id: preflight
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [[ -z "${_GITHUB_REPO}" ]]; then
+          echo "_GITHUB_REPO is empty. Deploy with: make deploy GITHUB_REPO=owner/invoicekit"; exit 1
+        fi
+        echo "preflight ok: project ${PROJECT_ID} (${PROJECT_NUMBER}), repo ${_GITHUB_REPO}"
+
   - id: build
     name: gcr.io/cloud-builders/docker
     args: ["build", "-t", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}",
@@ -38,28 +63,11 @@ steps:
         gcloud run jobs deploy karkhana-migrate --region=${_REGION} --image=$$IMAGE \
           --service-account=karkhana-migrate@${PROJECT_ID}.iam.gserviceaccount.com \
           --command=python --args=-m,app.scripts.migrate,--seed \
-          --set-env-vars=^@^CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}@DB_USER=karkhana_owner@APP_DB_ROLE=karkhana-run@${PROJECT_ID}.iam@GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@SEED_USERS=${_SEED_USERS} \
+          "--set-env-vars=^|^CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}|DB_USER=karkhana_owner|APP_DB_ROLE=karkhana-run@${PROJECT_ID}.iam|GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|SEED_USERS=${_SEED_USERS}" \
           --set-secrets=DB_PASSWORD=db-owner-password:latest \
+          --labels=app=karkhana,role=migrate,build=${BUILD_ID} \
           --max-retries=0 --task-timeout=600
         gcloud run jobs execute karkhana-migrate --region=${_REGION} --wait
-
-  - id: deploy-api
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: bash
-    args:
-      - -ceu
-      - |
-        IMAGE=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}
-        NUM=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')
-        URL=https://${_SERVICE}-$$NUM.${_REGION}.run.app
-        FB_KEY=$(gcloud secrets versions access latest --secret=firebase-web-api-key 2>/dev/null || echo "")
-        gcloud run deploy ${_SERVICE} --region=${_REGION} --image=$$IMAGE \
-          --service-account=karkhana-run@${PROJECT_ID}.iam.gserviceaccount.com \
-          --allow-unauthenticated --memory=1Gi --cpu=1 --min-instances=1 --max-instances=5 \
-          --no-cpu-throttling --concurrency=40 --timeout=300 \
-          --set-env-vars=^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@REGION=${_REGION}@CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}@DB_IAM_USER=karkhana-run@${PROJECT_ID}.iam@AUTH_MODE=firebase@FIREBASE_PROJECT_ID=${PROJECT_ID}@FIREBASE_AUTH_DOMAIN=${PROJECT_ID}.firebaseapp.com@FIREBASE_WEB_API_KEY=$$FB_KEY@RUNNER_BACKEND=cloudrun_job@WORKER_JOB_NAME=karkhana-worker@PUBLIC_BASE_URL=$$URL@GITHUB_REPO=${_GITHUB_REPO}@DEMO_FALLBACK=${_DEMO_FALLBACK}@GEMINI_MODEL=${_GEMINI_MODEL}@GEMINI_CODER_MODEL=${_GEMINI_MODEL}@ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts \
-          --set-secrets=RUN_HMAC_SECRET=run-hmac-secret:latest,GITHUB_TOKEN=github-token:latest
-        echo "Deployed $$URL"
 
   # The worker runs untrusted repository code: no GitHub token, no secrets.
   - id: deploy-worker
@@ -73,7 +81,27 @@ steps:
           --service-account=karkhana-worker@${PROJECT_ID}.iam.gserviceaccount.com \
           --command=python --args=-m,app.worker.main \
           --memory=2Gi --cpu=2 --max-retries=0 --task-timeout=1200 \
-          --set-env-vars=^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@GITHUB_REPO=${_GITHUB_REPO}@DEMO_FALLBACK=${_DEMO_FALLBACK}@GEMINI_MODEL=${_GEMINI_MODEL}@GEMINI_CODER_MODEL=${_GEMINI_MODEL}@ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts
+          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|GITHUB_REPO=${_GITHUB_REPO}|DEMO_FALLBACK=${_DEMO_FALLBACK}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts" \
+          --labels=app=karkhana,role=worker,build=${BUILD_ID}
+
+  - id: deploy-api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        IMAGE=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}
+        URL=https://${_SERVICE}-${PROJECT_NUMBER}.${_REGION}.run.app
+        FB_KEY=$(gcloud secrets versions access latest --secret=firebase-web-api-key 2>/dev/null || echo "")
+        [[ -n "$$FB_KEY" ]] || echo "WARNING: firebase-web-api-key has no value yet; Google sign-in will not work. See docs/GO_LIVE.md step 3."
+        gcloud run deploy ${_SERVICE} --region=${_REGION} --image=$$IMAGE \
+          --service-account=karkhana-run@${PROJECT_ID}.iam.gserviceaccount.com \
+          --allow-unauthenticated --memory=1Gi --cpu=1 --min-instances=1 --max-instances=${_MAX_INSTANCES} \
+          --no-cpu-throttling --cpu-boost --concurrency=40 --timeout=300 \
+          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|REGION=${_REGION}|CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}|DB_IAM_USER=karkhana-run@${PROJECT_ID}.iam|AUTH_MODE=firebase|FIREBASE_PROJECT_ID=${PROJECT_ID}|FIREBASE_AUTH_DOMAIN=${PROJECT_ID}.firebaseapp.com|FIREBASE_WEB_API_KEY=$$FB_KEY|RUNNER_BACKEND=cloudrun_job|WORKER_JOB_NAME=karkhana-worker|PUBLIC_BASE_URL=$$URL|GITHUB_REPO=${_GITHUB_REPO}|DEMO_FALLBACK=${_DEMO_FALLBACK}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts" \
+          --set-secrets=RUN_HMAC_SECRET=run-hmac-secret:latest,GITHUB_TOKEN=github-token:latest \
+          --labels=app=karkhana,role=api,build=${BUILD_ID}
+        echo "Deployed $$URL"
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/karkhana:${BUILD_ID}

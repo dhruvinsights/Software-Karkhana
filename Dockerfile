@@ -4,7 +4,7 @@
 # --- Stage 1: build the React app ---------------------------------------
 FROM node:22-slim AS web
 WORKDIR /web
-COPY web/package.json web/package-lock.json* ./
+COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
@@ -17,19 +17,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 RUN pip install --no-cache-dir uv==0.8.13
 
 WORKDIR /code
-COPY pyproject.toml uv.lock* README.md ./
-RUN uv sync --no-dev --no-install-project --frozen || uv sync --no-dev --no-install-project
+# Precompile bytecode at build time: the code is read-only at runtime, and
+# compiled modules shave cold-start time.
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+# Dependencies first (cached layer), then the project. --frozen: the image is
+# built from exactly uv.lock, never re-resolved.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --no-dev --no-install-project --frozen
 COPY app ./app
 COPY db ./db
 COPY --from=web /web/dist ./web/dist
-RUN uv sync --no-dev --frozen || uv sync --no-dev
+RUN uv sync --no-dev --frozen
 
-# Run as an unprivileged user.
-RUN useradd --create-home --uid 10001 karkhana && chown -R karkhana /code
+# Run as an unprivileged user. /code stays root-owned, so the process cannot
+# modify its own code; all runtime writes go to temp directories.
+RUN useradd --create-home --uid 10001 karkhana
 USER karkhana
 ENV PATH="/code/.venv/bin:$PATH" PYTHONUNBUFFERED=1 STATIC_DIR=/code/web/dist
 
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=${COMMIT_SHA}
 EXPOSE 8080
-CMD ["uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers"]
+# exec form + $PORT from Cloud Run (defaults to 8080).
+CMD ["sh", "-c", "exec uvicorn app.fast_api_app:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips='*'"]

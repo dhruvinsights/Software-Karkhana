@@ -1,0 +1,9 @@
+# What `make deploy` uploads to Cloud Build. Everything .gitignore excludes
+# (secrets, .venv, node_modules, web/dist) is excluded here too.
+.gcloudignore
+.git
+.github
+#!include:.gitignore
+tests/
+docs/
+demo-repo/
