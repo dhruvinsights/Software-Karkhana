@@ -5,13 +5,11 @@ import { SpecularButton } from '../reactbits/SpecularButton';
 interface MarketingNavbarProps {
   onGetStarted: () => void;
   onSignIn: () => void;
-  onExploreDemo: () => void;
 }
 
 export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
   onGetStarted,
   onSignIn,
-  onExploreDemo,
 }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -83,14 +81,8 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
           {/* Right Action CTAs */}
           <div className="hidden md:flex items-center gap-4">
             <button
-              onClick={onExploreDemo}
-              className="text-sm text-[#a7acb8] hover:text-white transition-colors"
-            >
-              Live Demo
-            </button>
-            <button
               onClick={onSignIn}
-              className="text-sm text-[#a7acb8] hover:text-white transition-colors"
+              className="text-sm text-[#a7acb8] hover:text-white transition-colors font-medium cursor-pointer"
             >
               Sign In
             </button>
@@ -143,10 +135,10 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
             </button>
             <div className="pt-2 border-t border-white/10 flex flex-col gap-2">
               <button
-                onClick={onExploreDemo}
+                onClick={onSignIn}
                 className="w-full text-left py-1 text-[#a7acb8]"
               >
-                Live Demo
+                Sign In
               </button>
               <button
                 onClick={onGetStarted}

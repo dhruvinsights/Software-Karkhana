@@ -51,7 +51,6 @@ export default function App() {
         <MarketingLandingPage
           onGetStarted={() => factoryStore.startOnboarding()}
           onSignIn={() => setAuthModalOpen(true)}
-          onExploreDemo={() => factoryStore.signInDemo()}
         />
         <AuthModal
           isOpen={authModalOpen}
