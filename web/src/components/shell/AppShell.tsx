@@ -32,6 +32,7 @@ import { AICompanion } from './AICompanion';
 import { CommandPalette } from './CommandPalette';
 import { CreateProductModal } from '../workspace/CreateProductModal';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
+import { LiquidEther } from '../reactbits/LiquidEther';
 
 interface AppShellProps {
   state: FactoryState;
@@ -379,7 +380,13 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
         {/* Viewport Workspace Content and Companion */}
         <div className="flex-1 flex overflow-hidden relative z-1">
-          <main className="flex-1 overflow-y-auto p-8 lg:p-10 min-w-0 bg-[#07070B] text-[#F6F5FA]">
+          {/* Subtle Liquid Ether Background Layer */}
+          <LiquidEther
+            opacity={0.25}
+            speed={0.4}
+            className="z-0"
+          />
+          <main className="flex-1 overflow-y-auto p-8 lg:p-10 min-w-0 bg-[#07070B]/85 backdrop-blur-sm text-[#F6F5FA] relative z-1">
             {children}
           </main>
           <AICompanion state={state} />

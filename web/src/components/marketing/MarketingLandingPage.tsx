@@ -30,6 +30,10 @@ import { ContactSheet } from '../reactbits/ContactSheet';
 import { ShaderCard } from '../reactbits/ShaderCard';
 import { FrameBorder } from '../reactbits/FrameBorder';
 import { ShinyText } from '../reactbits/ShinyText';
+import { LaserFlow } from '../reactbits/LaserFlow';
+import { SpecularButton } from '../reactbits/SpecularButton';
+import { GlassSurface } from '../reactbits/GlassSurface';
+import { AnimatedList } from '../reactbits/AnimatedList';
 
 interface MarketingLandingPageProps {
   onGetStarted: () => void;
@@ -110,25 +114,173 @@ export const MarketingLandingPage: React.FC<MarketingLandingPageProps> = ({
               Connect PRDs, architectures, worker swarms, chaos QA verification, and multi-sig canary rollouts in an immutable cryptographic delivery engine.
             </p>
 
-            {/* CTA Buttons */}
+            {/* CTA Buttons with Specular Light Effect */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-              <button
+              <SpecularButton
+                size="lg"
+                radius={18}
+                tint="#075bff"
+                tintOpacity={0.2}
+                lineColor="#ffffff"
+                baseColor="#075bff"
+                intensity={1.2}
+                glow={1.2}
+                followMouse
+                proximity={250}
                 onClick={onGetStarted}
-                className="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl text-sm transition-all shadow-[0_0_30px_rgba(7,91,255,0.4)] flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto shadow-[0_0_30px_rgba(7,91,255,0.5)]"
               >
                 <span>Launch Software Factory</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
+                <ArrowRight className="w-4 h-4 ml-1 inline-block" />
+              </SpecularButton>
+
+              <SpecularButton
+                size="lg"
+                radius={18}
+                tint="#ffffff"
+                tintOpacity={0.05}
+                lineColor="#60a5fa"
+                baseColor="#1e293b"
+                intensity={0.9}
+                glow={0.8}
+                followMouse
+                proximity={250}
                 onClick={onExploreDemo}
-                className="w-full sm:w-auto px-8 py-3.5 bg-[#101422] hover:bg-[#141a2e] border border-white/10 hover:border-blue-500/30 text-slate-200 font-semibold rounded-2xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto"
               >
-                <Terminal className="w-4 h-4 text-blue-400" />
+                <Terminal className="w-4 h-4 mr-1 text-blue-400 inline-block" />
                 <span>Explore Live Workspace</span>
-              </button>
+              </SpecularButton>
             </div>
           </div>
         </HorizonBloom>
+
+        {/* Laser Flow Descending into Floating Dashboard Tracker */}
+        <div className="relative max-w-[1100px] mx-auto px-6 -mt-8 pt-6 z-20">
+          {/* Laser Beam Canvas Shooting Down from Top Center */}
+          <div className="absolute inset-x-0 -top-40 h-[360px] pointer-events-none z-0">
+            <LaserFlow
+              className="w-full h-full"
+              beamColor="#a5c4ff"
+              glowColor="#3b82f6"
+              secondaryGlow="#8b5cf6"
+              particleCount={160}
+              intensity={1.2}
+              flareSize={1.1}
+            />
+          </div>
+
+          {/* Floating MacOS Dashboard Tracker Preview */}
+          <GlassSurface
+            rounded="2xl"
+            blur={24}
+            opacity={0.08}
+            borderOpacity={0.16}
+            glow
+            glowColor="rgba(59, 130, 246, 0.35)"
+            className="relative z-10 shadow-2xl bg-[#08090f]/90 border border-white/15 overflow-hidden"
+          >
+            {/* macOS Top Bar */}
+            <div className="flex items-center justify-between px-4 py-3 bg-[#0d1019]/90 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-[#ff5f56]" />
+                <span className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
+                <span className="w-3 h-3 rounded-full bg-[#27c93f]" />
+              </div>
+              <span className="text-xs font-medium text-slate-400 font-mono">Software Karkhana · Autonomous Tracker</span>
+              <div className="w-12" />
+            </div>
+
+            {/* Split Tracker Layout: Sidebar + Animated Issue List */}
+            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[300px]">
+              {/* Left Sidebar */}
+              <div className="md:col-span-3 p-4 border-r border-white/10 bg-[#06080d]/80 space-y-2 text-xs font-medium text-slate-400">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-slate-300 hover:bg-white/5 cursor-pointer">
+                  <Layers className="w-4 h-4 text-slate-400" />
+                  <span>Inbox</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/15 border border-blue-500/30 text-white font-semibold cursor-pointer">
+                  <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                  <span>My issues</span>
+                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/30 text-blue-300 font-mono">5</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-slate-300 hover:bg-white/5 cursor-pointer">
+                  <Boxes className="w-4 h-4 text-slate-400" />
+                  <span>Projects</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-slate-300 hover:bg-white/5 cursor-pointer">
+                  <Activity className="w-4 h-4 text-slate-400" />
+                  <span>Ledger Views</span>
+                </div>
+              </div>
+
+              {/* Right Content: Animated Issues List */}
+              <div className="md:col-span-9 p-5 bg-[#090b12]/60 space-y-4">
+                <div className="flex items-center justify-between text-xs pb-2 border-b border-white/10">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-white">Active Swarm Tasks</span>
+                    <span className="text-slate-500 font-mono">(5 Assigned)</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-slate-400 text-xs">
+                    <span className="cursor-pointer hover:text-white">Search</span>
+                    <span className="cursor-pointer hover:text-white">Filter</span>
+                  </div>
+                </div>
+
+                <AnimatedList
+                  stagger={70}
+                  className="space-y-2"
+                  itemClassName="p-3 rounded-xl bg-[#0d101a]/70 border border-white/5 flex items-center justify-between text-xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                    <span className="text-slate-200 font-medium">Polish the autonomous onboarding flow</span>
+                  </div>
+                  <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+                    <span>APP-142</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-300">MK</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="w-2 h-2 rounded-full bg-purple-400" />
+                    <span className="text-slate-200 font-medium">Sync cryptographic ledger drafts across nodes</span>
+                  </div>
+                  <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+                    <span>APP-139</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-300">JL</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="text-slate-200 font-medium">Audit design tokens & CSS contracts</span>
+                  </div>
+                  <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+                    <span>APP-131</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-300">AR</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-slate-200 font-medium">Ship keyboard shortcuts & Command Palette</span>
+                  </div>
+                  <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+                    <span>APP-127</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-300">DS</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                    <span className="text-slate-200 font-medium">Cosign SBOM attestation & CVE scan gate</span>
+                  </div>
+                  <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+                    <span>APP-118</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-300">SEC</span>
+                  </div>
+                </AnimatedList>
+              </div>
+            </div>
+          </GlassSurface>
+        </div>
       </section>
 
       {/* =================================================================== */}

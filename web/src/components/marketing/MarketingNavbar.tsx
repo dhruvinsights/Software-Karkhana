@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layers, ArrowRight, Menu, X } from 'lucide-react';
+import { SpecularButton } from '../reactbits/SpecularButton';
 
 interface MarketingNavbarProps {
   onGetStarted: () => void;
@@ -93,12 +94,21 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
             >
               Sign In
             </button>
-            <button
+            <SpecularButton
+              size="sm"
+              radius={14}
+              tint="#075bff"
+              tintOpacity={0.25}
+              lineColor="#ffffff"
+              baseColor="#075bff"
+              intensity={1.1}
+              glow={1.1}
+              followMouse
+              proximity={200}
               onClick={onGetStarted}
-              className="px-5 py-2 rounded-full bg-[#075bff] hover:bg-[#176bff] text-white text-xs font-medium transition-all shadow-md shadow-[#075bff]/25 active:scale-95"
             >
               Create Workspace
-            </button>
+            </SpecularButton>
           </div>
 
           {/* Mobile Menu Button */}
