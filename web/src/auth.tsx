@@ -12,10 +12,13 @@ export interface PublicConfig {
   firebase: { apiKey: string; authDomain: string; projectId: string };
   githubRepo: string | null;
   runner: string;
-  demoFallback: boolean;
+  llmProvider: string;
+  embedProvider: string;
+  reviewEngine: string;
 }
 
-export interface Me { id: string; email: string; display_name: string; role: 'pm' | 'director' | 'developer' | 'lead' }
+export type Role = 'pm' | 'director' | 'developer' | 'lead';
+export interface Me { id: string; email: string; display_name: string; role: Role; onboarded_at: string | null }
 
 interface AuthState {
   config: PublicConfig | null;
@@ -27,6 +30,7 @@ interface AuthState {
   signInEmail: (email: string, password: string) => Promise<void>;
   signInDev: (email: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshMe: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -79,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (fbAuth) await signInWithEmailAndPassword(fbAuth, email, password);
     },
     signInDev: async (email) => { safeSet(DEV_KEY, email); await loadMe({ 'X-Dev-User': email }); },
+    refreshMe: async () => { await loadMe(await token()); },
     logout: async () => {
       if (config?.authMode === 'dev') safeSet(DEV_KEY, '');
       else if (fbAuth) await signOut(fbAuth);

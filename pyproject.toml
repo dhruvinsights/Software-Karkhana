@@ -9,6 +9,7 @@ dependencies = [
     # Agents and models (Agent Starter Pack baseline).
     "google-adk>=1.31.0,<2.0.0",
     "google-genai>=1.73.0,<2.0.0",
+    "pyyaml>=6.0,<7.0",
     "opentelemetry-instrumentation-google-genai>=0.1.0,<1.0.0",
     # Google Cloud.
     "google-cloud-logging>=3.12.0,<4.0.0",
@@ -61,7 +62,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D", "S"]
+"tests/**" = ["D", "S", "F811"]
 "app/scripts/**" = ["D103", "T201"]
 
 [tool.ruff.lint.isort]

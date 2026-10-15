@@ -25,7 +25,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ledger, memory, process
-from app.ai import evaluator, genai
+from app.ai import evaluator
+from app.ai.errors import ModelError
 from app.auth import CurrentUser, require_role
 from app.db import get_session, sessionmaker
 from app.integrations import chat
@@ -43,6 +44,8 @@ from app.process import Event, Role
 from app.routers.common import advance_or_http, get_or_404
 from app.schemas import (
     ApprovalOut,
+    BatchApprovalOut,
+    BatchDecision,
     CitationOut,
     Decision,
     EpicOut,
@@ -138,7 +141,7 @@ async def run_evaluation(project_id: uuid.UUID) -> None:
                 project_name=project.name,
                 memory=memory.as_memory_items(hits),
             )
-        except genai.ModelError as exc:
+        except ModelError as exc:
             await ledger.append(
                 session,
                 actor=ledger.Actor.ai("evaluator"),
@@ -165,7 +168,6 @@ async def run_evaluation(project_id: uuid.UUID) -> None:
             version=version,
             payload=out.model_dump(mode="json"),
             model=result.model,
-            served_from_cache=result.served_from_cache,
             memory_used=[
                 {"learning_id": str(lr.id), "similarity": round(sim, 3)}
                 for lr, _, sim in hits
@@ -229,7 +231,6 @@ async def run_evaluation(project_id: uuid.UUID) -> None:
                 "source_quotes_verified": True,
                 "memory_citations": len(out.memory_citations),
                 "model": result.model,
-                "served_from_cache": result.served_from_cache,
             },
         )
         await session.commit()
@@ -288,7 +289,6 @@ async def get_project(project_id: uuid.UUID, session: Session, _: CurrentUser) -
             id=ev.id,
             version=ev.version,
             model=ev.model,
-            served_from_cache=ev.served_from_cache,
             created_at=ev.created_at,
             result=out,
             citations=await _citations(session, out),
@@ -376,3 +376,73 @@ async def decide(
             payload={"tasks": [t.key for t in tasks]},
         )
     return approval
+
+
+@router.post("/batch-approve", response_model=BatchApprovalOut)
+async def batch_decide(
+    body: BatchDecision,
+    session: Session,
+    user: Annotated[User, Depends(require_role(Role.DIRECTOR))],
+) -> BatchApprovalOut:
+    """Director batch multi-sig gate. Approves/rejects multiple pending project gates at once."""
+    approvals_out: list[ApprovalOut] = []
+    actor = ledger.Actor.human(user)
+    event = Event.APPROVE if body.decision == "approved" else Event.REJECT
+
+    for pid in body.project_ids:
+        project = await session.get(Project, pid)
+        if not project:
+            continue
+        try:
+            await advance_or_http(
+                session,
+                project,
+                event,
+                actor=actor,
+                role=Role.DIRECTOR,
+                payload={"reason": body.reason, "batch": True} if body.reason else {"batch": True},
+            )
+            approval = Approval(
+                project_id=project.id,
+                gate="evaluate",
+                decision=body.decision,
+                reason=body.reason or "Batch multi-signature approval",
+                decided_by=user.id,
+            )
+            session.add(approval)
+            await session.flush()
+            await ledger.append(
+                session,
+                actor=actor,
+                action=f"approval.{body.decision}",
+                subject_type="approval",
+                subject_id=approval.id,
+                project_id=project.id,
+                payload={"gate": "evaluate", "reason": body.reason, "batch": True},
+            )
+            if body.decision == "approved":
+                tasks = (
+                    await session.scalars(
+                        select(Task).where(
+                            Task.project_id == project.id, Task.status == "draft"
+                        )
+                    )
+                ).all()
+                for t in tasks:
+                    process.move_task(t, "ready")
+                await ledger.append(
+                    session,
+                    actor=ledger.SYSTEM,
+                    action="tasks.ready",
+                    subject_type="project",
+                    subject_id=project.id,
+                    project_id=project.id,
+                    payload={"tasks": [t.key for t in tasks]},
+                )
+            approvals_out.append(ApprovalOut.model_validate(approval))
+        except HTTPException:
+            # If a project is not in a valid stage for evaluate approval, skip it gracefully
+            continue
+
+    await session.commit()
+    return BatchApprovalOut(approved_count=len(approvals_out), approvals=approvals_out)

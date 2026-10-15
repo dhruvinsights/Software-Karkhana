@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Gemini on Vertex AI through the Google Gen AI SDK.
+"""Gemini through the Google Gen AI SDK.
 
-One cached client per process. Every call requests structured JSON with a
-Pydantic ``response_schema``, uses SDK-level retries with backoff, and has a
-hard timeout so a slow model call can never hang a request.
+Authenticates with ``GEMINI_API_KEY`` (Google AI Studio) when set, otherwise
+with Vertex AI and the service account. One cached client per process. Every
+call requests structured JSON with a Pydantic ``response_schema``, uses
+SDK-level retries with backoff, and has a hard timeout so a slow model call
+can never hang a request.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, ValidationError
 
+from app.ai.errors import ModelError
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -38,20 +41,25 @@ T = TypeVar("T", bound=BaseModel)
 RETRY = types.HttpRetryOptions(attempts=3, initial_delay=1.0, max_delay=8.0)
 
 
-class ModelError(Exception):
-    """The model call failed or returned something that does not validate."""
-
-
 @functools.cache
 def client(location: str | None = None) -> genai.Client:
-    """Returns a cached Vertex AI client for a location (ADC credentials)."""
+    """Returns a cached Gemini client (API key, else Vertex AI with ADC)."""
     s = get_settings()
+    http = types.HttpOptions(retry_options=RETRY)
+    if s.gemini_api_key:
+        return genai.Client(api_key=s.gemini_api_key, http_options=http)
     return genai.Client(
         vertexai=True,
         project=s.google_cloud_project,
         location=location or s.genai_location,
-        http_options=types.HttpOptions(retry_options=RETRY),
+        http_options=http,
     )
+
+
+def configured() -> bool:
+    """True when credentials exist: an API key, or a real Google Cloud project."""
+    s = get_settings()
+    return bool(s.gemini_api_key) or s.google_cloud_project != "local-dev"
 
 
 async def generate_structured(
@@ -64,17 +72,6 @@ async def generate_structured(
     timeout_s: float = 90.0,
 ) -> T:
     """Calls Gemini and returns a validated instance of ``schema``.
-
-    Args:
-        prompt: The user turn.
-        schema: Pydantic model used both as ``response_schema`` and validator.
-        system: System instruction.
-        model: Model id; defaults to ``GEMINI_MODEL``.
-        temperature: Sampling temperature.
-        timeout_s: Wall-clock limit for the whole call, retries included.
-
-    Returns:
-        The parsed and validated response.
 
     Raises:
         ModelError: On timeout, API error or invalid output.

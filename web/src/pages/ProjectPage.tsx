@@ -1,27 +1,38 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useGet, usePost, type Comment, type ProjectDetail, type PullRequest, type Run, type Task } from '../api';
 import { useAuth } from '../auth';
-import { Badge, ErrorBox, StageTracker } from '../components/common';
+import { Badge, ErrorBox, Loading, StageTracker, LedgerTable } from '../components/common';
+import { ContextPanel } from '../components/ContextPanel';
 
 const COLUMNS: [string, string][] = [['backlog', 'Backlog'], ['ready', 'Ready'], ['in_progress', 'In progress'], ['review', 'Review'], ['done', 'Done']];
 
 export default function ProjectPage() {
   const { id } = useParams();
   const { data, error } = useGet<ProjectDetail>(['project', id], `/api/projects/${id}`, 3000);
-  const [open, setOpen] = useState<Task | null>(null);
+  const [params, setParams] = useSearchParams();
+  const [tab, setTab] = useState<'overview' | 'context' | 'ledger'>('overview');
   if (error) return <ErrorBox error={error} />;
-  if (!data) return <p className="muted">Loading<span className="spin" /></p>;
+  if (!data) return <Loading />;
   const { project, evaluation, tasks, approvals } = data;
+  const open = tasks.find((t) => t.id === params.get('task')) ?? null;
+  const setOpen = (t: Task | null) => setParams(t ? { task: t.id } : {}, { replace: true });
 
   return (
     <div className="stack">
       <div className="vh">
         <span className="eyebrow">{project.stage} / {project.stage_status}</span>
         <h2>{project.name}</h2>
+        <div className="row">
+          <button className={`btn sm ${tab === 'overview' ? 'pri' : ''}`} onClick={() => setTab('overview')}>Project</button>
+          <button className={`btn sm ${tab === 'context' ? 'pri' : ''}`} onClick={() => setTab('context')}>Shared context</button>
+          <button className={`btn sm ${tab === 'ledger' ? 'pri' : ''}`} onClick={() => setTab('ledger')}>Project ledger</button>
+          <Link className="btn sm" to="/home">Back</Link>
+        </div>
       </div>
+      {tab === 'ledger' ? <LedgerTable projectId={project.id} /> : tab === 'context' ? <ContextPanel projectId={project.id} /> : <>
       <StageTracker stage={project.stage} />
-      {project.stage_status === 'submitted' && !evaluation && <div className="card"><p>Gemini is evaluating this idea<span className="spin" /></p><p className="muted sm">Output is checked against the schema and every epic quote is matched to your text before it appears.</p></div>}
+      {project.stage_status === 'submitted' && !evaluation && <div className="card"><p>The model is evaluating this idea<span className="spin" /></p><p className="muted sm">Output is checked against the schema and every epic quote is matched to your text before it appears.</p></div>}
 
       <div className="g2">
         <div className="card"><span className="lbl">Idea (the only source epics may quote)</span><p style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{project.idea_text}</p></div>
@@ -38,6 +49,7 @@ export default function ProjectPage() {
       ))}
 
       {tasks.length > 0 && <Board tasks={tasks} onOpen={setOpen} />}
+      </>}
       {open && <TaskDrawer task={open} projectId={project.id} onClose={() => setOpen(null)} />}
     </div>
   );
@@ -49,7 +61,7 @@ function Scorecard({ detail }: { detail: ProjectDetail }) {
     <div className="card stack" style={{ gap: 10 }}>
       <div className="row between">
         <span className="lbl">Evaluation v{ev.version}</span>
-        <span className="row">{ev.served_from_cache ? <Badge kind="cached" /> : <Badge kind="ai" />}<Badge kind="code" /></span>
+        <span className="row"><Badge kind="ai" /><Badge kind="code" /></span>
       </div>
       <div className="row"><span className="score">{ev.result.score}</span><span className="muted">/ 10 potential</span></div>
       <p>{ev.result.score_rationale}</p>
@@ -115,7 +127,7 @@ function DirectorGate({ detail }: { detail: ProjectDetail }) {
   if (detail.project.stage_status !== 'evaluated') return null;
   if (me?.role !== 'director') return <div className="card muted">Waiting for a director decision. Only a director can pass this gate; the API refuses anyone else.</div>;
   return (
-    <div className="card stack" style={{ borderWidth: 2, borderColor: 'var(--fg)' }}>
+    <div className="card stack" style={{ borderColor: 'var(--accent-hi)' }}>
       <h3>Approval gate</h3>
       <textarea className="in" style={{ minHeight: 70 }} placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
       <div className="row">
@@ -173,7 +185,7 @@ function TaskDrawer({ task, projectId, onClose }: { task: Task; projectId: strin
       <div className="scrim" onClick={onClose} />
       <aside className="drawer" aria-label="Task">
         <div className="row between"><span className="mono muted">{current.key} · {current.status}</span><button className="btn sm" onClick={onClose}>Close</button></div>
-        <h3 style={{ fontSize: 22 }}>{current.title}</h3>
+        <h3 style={{ fontSize: 24 }}>{current.title}</h3>
         <div><span className="lbl">Acceptance criteria</span><ul className="t">{current.acceptance_criteria.map((c, i) => <li key={i}>{c}</li>)}</ul></div>
 
         {isDev && current.status === 'ready' && (
@@ -186,7 +198,7 @@ function TaskDrawer({ task, projectId, onClose }: { task: Task; projectId: strin
             <div className="row between"><h4>Agent run</h4><span className="row" style={{ gap: 6 }}>
               <span className="pill outline" title="Did the worker finish?">Worker: {latest.status}{running && latest.phase ? ` · ${latest.phase}` : ''}</span>
               {latest.validation_status !== 'not_run' && (
-                <span className={`pill ${latest.validation_status === 'passed' ? 'outline ok' : 'solid bad'}`} title="Did the tests pass?">
+                <span className={`pill ${latest.validation_status === 'passed' ? 'ok' : 'bad'}`} title="Did the tests pass?">
                   Validation: {latest.validation_status}
                 </span>
               )}
@@ -194,10 +206,10 @@ function TaskDrawer({ task, projectId, onClose }: { task: Task; projectId: strin
             {latest.validation_status === 'failed' && (
               <div className="err">Tests failed. The worker finished, but this implementation is not accepted: the PR is a draft and merge is blocked.</div>
             )}
-            {running && <p className="muted sm">Coder agent (Google ADK) is working on <span className="mono">{latest.backend}</span><span className="spin" /></p>}
+            {running && <p className="muted sm">Coder agent is working on <span className="mono">{latest.backend}</span><span className="spin" /></p>}
             {latest.test_exit_code !== null && (
               <div className="row">
-                <span className={`pill ${latest.test_exit_code === 0 ? 'outline ok' : 'solid bad'}`}>tests exit {latest.test_exit_code}</span>
+                <span className={`pill ${latest.test_exit_code === 0 ? 'ok' : 'bad'}`}>tests exit {latest.test_exit_code}</span>
                 <Badge kind="code" /><span className="mono sm muted">{latest.test_command}</span>
               </div>
             )}
@@ -222,9 +234,11 @@ function PrPanel({ pr, taskId, canAct, onMerge, merging }: { pr: PullRequest; ta
         <h4>Pull request #{pr.number}</h4>
         {real ? <a className="btn sm" href={pr.url} target="_blank" rel="noreferrer">Open on GitHub</a> : <span className="pill dash">local branch (no GitHub configured)</span>}
       </div>
-      <div className="row"><span className="pill outline">{pr.status}</span><span className={`pill ${pr.tests_passed ? 'outline ok' : 'solid bad'}`}>tests {pr.tests_passed ? 'passed' : 'failed'}</span><span className="mono sm muted">{pr.branch}</span></div>
-      <div className="row between"><span className="lbl">AI review comments</span><Badge kind="ai" /></div>
-      {pr.comments.length === 0 && pr.status === 'open' && <RetryReview prId={pr.id} taskId={taskId} canAct={canAct} />}
+      <div className="row"><span className="pill outline">{pr.status}</span><span className={`pill ${pr.tests_passed ? 'ok' : 'bad'}`}>tests {pr.tests_passed ? 'passed' : 'failed'}</span><span className="mono sm muted">{pr.branch}</span></div>
+      <div className="row between"><span className="lbl">AI review{pr.review_engine ? ` · ${pr.review_engine}` : ''}{pr.review_model ? ` · ${pr.review_model}` : ''}</span><Badge kind="ai" /></div>
+      {pr.review_summary && <p className="muted sm">{pr.review_summary}</p>}
+      {pr.reviewed_at && pr.comments.length === 0 && <div className="chk"><span className="pill ok">clean</span>The reviewer found nothing to flag.</div>}
+      {!pr.reviewed_at && pr.status === 'open' && <RetryReview prId={pr.id} taskId={taskId} canAct={canAct} />}
       {pr.comments.map((c) => <TriageCard key={c.id} c={c} taskId={taskId} canAct={canAct && pr.status === 'open'} />)}
       {pr.status === 'open' && (
         <>
@@ -244,7 +258,7 @@ function TriageCard({ c, taskId, canAct }: { c: Comment; taskId: string; canAct:
   const triage = usePost<{ triage: string; reason?: string }>(() => `/api/comments/${c.id}/triage`, [['pr', taskId]], (b) => b);
   return (
     <div className={`cmt ${c.triage}`}>
-      <div className="row between"><span className="mono sm">{c.path}{c.line ? `:${c.line}` : ''}</span><span className={`pill ${c.severity === 'high' ? 'solid' : c.severity === 'medium' ? 'dash' : 'mut'}`}>{c.severity}</span></div>
+      <div className="row between"><span className="mono sm">{c.path}{c.line ? `:${c.line}` : ''}</span><span className={`pill ${c.severity === 'high' ? 'bad' : c.severity === 'medium' ? 'warn' : 'mut'}`}>{c.severity}</span></div>
       <span>{c.body}</span>
       {c.triage !== 'open' && <span className="muted sm">Triaged: <b>{c.triage}</b>{c.triage_reason ? ` (${c.triage_reason})` : ''}</span>}
       {canAct && (

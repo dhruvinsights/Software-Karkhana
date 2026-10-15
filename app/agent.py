@@ -26,10 +26,10 @@ from pathlib import Path
 
 from google.adk.apps import App
 
-from app.agents.coder import build_coder, configure_vertex_env
+from app.agents.coder import build_coder, configure_gemini_env
 from app.agents.tools import Workspace
 
-configure_vertex_env()
+configure_gemini_env()
 
 _workspace = Path(
     os.environ.get("KARKHANA_WORKSPACE", Path(__file__).parent.parent / "demo-repo")

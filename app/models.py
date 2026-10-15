@@ -46,6 +46,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True)
     display_name: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String)
+    onboarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = _now()
 
 
@@ -74,7 +75,6 @@ class Evaluation(Base):
     version: Mapped[int] = mapped_column(Integer)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
     model: Mapped[str] = mapped_column(String)
-    served_from_cache: Mapped[bool] = mapped_column(Boolean, default=False)
     memory_used: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     created_at: Mapped[dt.datetime] = _now()
 
@@ -163,6 +163,11 @@ class PullRequest(Base):
     tests_passed: Mapped[bool] = mapped_column(Boolean)
     merged_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     merged_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set once a review engine has produced a verdict, even with zero comments.
+    reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    review_engine: Mapped[str | None] = mapped_column(String)
+    review_model: Mapped[str | None] = mapped_column(String)
+    review_summary: Mapped[str | None] = mapped_column(Text)
 
 
 class ReviewComment(Base):
@@ -194,6 +199,22 @@ class Learning(Base):
     verified_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768))
+    embedding_model: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class ContextEntry(Base):
+    """A decision, note or handoff that people and agents both read. Insert-only."""
+
+    __tablename__ = "context_entries"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"))
+    kind: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String)
+    body: Mapped[str] = mapped_column(Text)
+    author_label: Mapped[str] = mapped_column(String)
+    author_kind: Mapped[str] = mapped_column(String)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"))
     created_at: Mapped[dt.datetime] = _now()
 
 

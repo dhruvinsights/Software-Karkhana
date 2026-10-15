@@ -24,9 +24,10 @@ from pathlib import Path
 import asyncpg
 import pytest
 
-from app.ai import fallbacks
-from app.schemas import ReviewOutput, RunSpec
+from app.review.types import ReviewResult
+from app.schemas import RunSpec
 from app.worker import main as worker
+from tests import fixtures as fallbacks
 
 APP_DSN = "postgresql://karkhana_app:karkhana_app@localhost:5432/karkhana_test"
 DEMO = Path(__file__).resolve().parents[2] / "demo-repo"
@@ -74,7 +75,7 @@ def bare_repo(tmp_path):
     shutil.copytree(DEMO, src)
     run = lambda *a, cwd=src: subprocess.run(
         a, cwd=cwd, check=True, capture_output=True
-    )  # noqa: E731
+    )
     run("git", "init", "-q", "-b", "main")
     run("git", "add", "-A")
     run("git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
@@ -111,12 +112,13 @@ async def test_worker_reports_real_exit_code(bare_repo, monkeypatch, break_tests
         return "All tests pass!"
 
     async def fake_reviewer(diff, **kw):
-        return ReviewOutput.model_validate(fallbacks.review().model_dump())
+        return ReviewResult("test", "test", list(fallbacks.review().comments))
 
     import app.agents.coder as coder
+    from app.review import engine as review_engine
 
     monkeypatch.setattr(coder, "run_coder", fake_coder)
-    monkeypatch.setattr(coder, "run_reviewer", fake_reviewer)
+    monkeypatch.setattr(review_engine, "review_diff", fake_reviewer)
     cp = FakeCP()
     s = spec(bare_repo)
     result = await worker.build(s, cp)

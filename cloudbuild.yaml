@@ -17,8 +17,6 @@ substitutions:
   _AR_REPO: karkhana
   _SQL_INSTANCE: karkhana-db
   _GITHUB_REPO: ""
-  # Cached Gemini outputs are opt-in: `make deploy-demo` sets this to true.
-  _DEMO_FALLBACK: "false"
   _GEMINI_MODEL: gemini-3-flash-preview
   _SEED_USERS: ""
   # Connection budget: db-g1-small allows ~50 connections, and each API
@@ -81,7 +79,7 @@ steps:
           --service-account=karkhana-worker@${PROJECT_ID}.iam.gserviceaccount.com \
           --command=python --args=-m,app.worker.main \
           --memory=2Gi --cpu=2 --max-retries=0 --task-timeout=1200 \
-          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|GITHUB_REPO=${_GITHUB_REPO}|DEMO_FALLBACK=${_DEMO_FALLBACK}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts" \
+          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|GITHUB_REPO=${_GITHUB_REPO}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts" \
           --labels=app=karkhana,role=worker,build=${BUILD_ID}
 
   - id: deploy-api
@@ -98,7 +96,7 @@ steps:
           --service-account=karkhana-run@${PROJECT_ID}.iam.gserviceaccount.com \
           --allow-unauthenticated --memory=1Gi --cpu=1 --min-instances=1 --max-instances=${_MAX_INSTANCES} \
           --no-cpu-throttling --cpu-boost --concurrency=40 --timeout=300 \
-          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|REGION=${_REGION}|CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}|DB_IAM_USER=karkhana-run@${PROJECT_ID}.iam|AUTH_MODE=firebase|FIREBASE_PROJECT_ID=${PROJECT_ID}|FIREBASE_AUTH_DOMAIN=${PROJECT_ID}.firebaseapp.com|FIREBASE_WEB_API_KEY=$$FB_KEY|RUNNER_BACKEND=cloudrun_job|WORKER_JOB_NAME=karkhana-worker|PUBLIC_BASE_URL=$$URL|GITHUB_REPO=${_GITHUB_REPO}|DEMO_FALLBACK=${_DEMO_FALLBACK}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts" \
+          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|REGION=${_REGION}|CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}|DB_IAM_USER=karkhana-run@${PROJECT_ID}.iam|AUTH_MODE=firebase|FIREBASE_PROJECT_ID=${PROJECT_ID}|FIREBASE_AUTH_DOMAIN=${PROJECT_ID}.firebaseapp.com|FIREBASE_WEB_API_KEY=$$FB_KEY|RUNNER_BACKEND=cloudrun_job|WORKER_JOB_NAME=karkhana-worker|PUBLIC_BASE_URL=$$URL|GITHUB_REPO=${_GITHUB_REPO}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts" \
           --set-secrets=RUN_HMAC_SECRET=run-hmac-secret:latest,GITHUB_TOKEN=github-token:latest \
           --labels=app=karkhana,role=api,build=${BUILD_ID}
         echo "Deployed $$URL"

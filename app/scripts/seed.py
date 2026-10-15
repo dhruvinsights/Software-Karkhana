@@ -84,7 +84,7 @@ async def seed(domain: str, firebase: bool, history: bool) -> None:
         if history and not await s.scalar(
             select(Learning).where(Learning.text == HISTORY_LEARNING)
         ):
-            from app.ai import genai
+            from app.ai import llm
 
             p = Project(
                 id=uuid.uuid4(),
@@ -102,7 +102,8 @@ async def seed(domain: str, firebase: bool, history: bool) -> None:
                 status="verified",
                 verified_by=users["lead"].id,
                 verified_at=dt.datetime.now(dt.UTC),
-                embedding=await genai.embed(HISTORY_LEARNING),
+                embedding=await llm.embed(HISTORY_LEARNING),
+                embedding_model=llm.embed_model_name(),
                 source={"note": "seeded from an archived project"},
             )
             s.add(lr)

@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS evaluations (
     version           int  NOT NULL,
     payload           jsonb NOT NULL,
     model             text NOT NULL,
-    served_from_cache boolean NOT NULL DEFAULT false,
     memory_used       jsonb NOT NULL DEFAULT '[]'::jsonb,
     created_at        timestamptz NOT NULL DEFAULT now(),
     UNIQUE (project_id, version)

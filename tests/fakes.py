@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import hashlib
 
-from app.ai import fallbacks
 from app.schemas import EvaluationOutput, LearningOutput, ReviewOutput
+from tests import fixtures as fallbacks
 
 IDEAS = {i["key"]: i for i in fallbacks.demo_ideas()}
 

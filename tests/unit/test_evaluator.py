@@ -14,10 +14,11 @@
 
 import pytest
 
-from app.ai import evaluator, fallbacks, genai
+from app.ai import evaluator
+from app.ai.errors import ModelError
 from app.ai.evaluator import MemoryItem, check_output, normalize
-from app.config import get_settings
 from app.schemas import EvaluationOutput
+from tests import fixtures as fallbacks
 from tests.fakes import IDEAS
 
 IDEA = IDEAS["discounts"]["idea_text"]
@@ -75,7 +76,6 @@ async def test_repair_pass_fixes_a_bad_quote():
     assert len(calls) == 2
     assert "REJECTED" in calls[1]["prompt"]
     assert result.output.memory_note == evaluator.NO_MEMORY
-    assert not result.served_from_cache
 
 
 async def test_two_bad_answers_raise():
@@ -84,7 +84,7 @@ async def test_two_bad_answers_raise():
         out.epics[0].source_quote = "still invented text here"
         return out
 
-    with pytest.raises(genai.ModelError):
+    with pytest.raises(ModelError):
         await evaluator.evaluate(
             idea_text=IDEA, project_name="x", memory=[], generate=gen
         )
@@ -121,41 +121,11 @@ async def test_valid_citation_is_kept():
     assert result.output.memory_citations[0].learning_id == "L1"
 
 
-async def test_fallback_serves_cache_only_when_enabled(monkeypatch):
+async def test_model_failure_propagates_no_cached_answer():
     async def boom(**kw):
-        raise genai.ModelError("quota")
+        raise ModelError("quota")
 
-    with pytest.raises(genai.ModelError):
+    with pytest.raises(ModelError):
         await evaluator.evaluate(
             idea_text=IDEA, project_name="x", memory=[], generate=boom
         )
-
-    monkeypatch.setenv("DEMO_FALLBACK", "true")
-    get_settings.cache_clear()
-    try:
-        result = await evaluator.evaluate(
-            idea_text=IDEA, project_name="x", memory=[], generate=boom
-        )
-        assert result.served_from_cache and result.model == "cached-fallback"
-    finally:
-        monkeypatch.setenv("DEMO_FALLBACK", "false")
-        get_settings.cache_clear()
-
-
-async def test_fallback_keeps_retrieved_memory(monkeypatch):
-    async def boom(**kw):
-        raise genai.ModelError("quota")
-
-    monkeypatch.setenv("DEMO_FALLBACK", "true")
-    get_settings.cache_clear()
-    try:
-        mem = [MemoryItem(id="L9", text="Use Decimal", project="Old")]
-        result = await evaluator.evaluate(
-            idea_text=IDEA, project_name="x", memory=mem, generate=boom
-        )
-        assert result.served_from_cache
-        assert [c.learning_id for c in result.output.memory_citations] == ["L9"]
-        assert "Cached" in result.output.memory_note
-    finally:
-        monkeypatch.setenv("DEMO_FALLBACK", "false")
-        get_settings.cache_clear()

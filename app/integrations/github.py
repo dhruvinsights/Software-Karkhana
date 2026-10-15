@@ -133,14 +133,16 @@ def client() -> GitHub | None:
     return None
 
 
-def review_markdown(comments: list[dict]) -> str:
+def review_markdown(
+    comments: list[dict], *, engine: str = "", summary: str = ""
+) -> str:
     """Formats AI comments for the PR, with the mandatory label."""
-    lines = [
-        f"### Karkhana AI review ({AI_LABEL})",
-        "",
-        "Each comment must be triaged in Karkhana before merge.",
-        "",
-    ]
+    by = f" by {engine}" if engine else ""
+    lines = [f"### Karkhana AI review{by} ({AI_LABEL})", ""]
+    if summary:
+        lines += [summary, ""]
+    if comments:
+        lines += ["Each comment must be triaged in Karkhana before merge.", ""]
     for i, c in enumerate(comments, start=1):
         loc = c["path"] + (f":{c['line']}" if c.get("line") else "")
         lines.append(f"{i}. **{c['severity']}** `{loc}`: {c['body']}")

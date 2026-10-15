@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Cached Gemini outputs for the demo (feature C5).
-
-Used only when ``DEMO_FALLBACK=true`` and a live call fails. Anything served
-from here is stored with ``served_from_cache=true`` and labelled "Cached" in
-the UI, so the audience is never misled about what ran live.
-"""
+"""Deterministic test data. Used by tests only; the app never imports this."""
 
 from __future__ import annotations
 
@@ -32,12 +27,12 @@ _DIR = Path(__file__).parent
 
 @functools.cache
 def demo_ideas() -> list[dict[str, str]]:
-    """Returns the seeded demo ideas."""
+    """Returns the sample ideas."""
     return json.loads((_DIR / "demo_ideas.json").read_text())
 
 
 def evaluation_for(idea_text: str) -> EvaluationOutput | None:
-    """Returns the cached evaluation for a known demo idea, else None."""
+    """Returns the canned evaluation for a known sample idea, else None."""
     from app.ai.evaluator import normalize
 
     for idea in demo_ideas():
@@ -48,12 +43,12 @@ def evaluation_for(idea_text: str) -> EvaluationOutput | None:
 
 
 def review() -> ReviewOutput:
-    """Returns a cached review for the demo discount story."""
+    """Returns a canned review for the sample discount story."""
     return ReviewOutput.model_validate_json(
         (_DIR / "review_discounts.json").read_text()
     )
 
 
 def demo_patch() -> str:
-    """Returns the pre-built patch for the demo discount story."""
+    """Returns the sample patch for the discount story."""
     return (_DIR / "demo_patch.diff").read_text()

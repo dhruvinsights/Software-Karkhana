@@ -31,8 +31,17 @@ from app.auth import require_role
 from app.config import get_settings
 from app.db import get_session
 from app.integrations import github
-from app.models import Project, PullRequest, ReviewComment, Run, Task, User
+from app.models import (
+    ContextEntry,
+    Project,
+    PullRequest,
+    ReviewComment,
+    Run,
+    Task,
+    User,
+)
 from app.process import Event, Role
+from app.routers import context
 from app.routers.common import (
     advance_if_legal,
     advance_or_http,
@@ -230,6 +239,7 @@ async def run_spec(
         repo=s.github_repo,
         repo_url=s.demo_repo_url,
         base_branch=s.github_base_branch,
+        context=context.as_notes(await context.recent(session, run.project_id)),
     )
 
 
@@ -289,8 +299,12 @@ async def run_complete(
     project = await get_or_404(session, Project, run.project_id)
     tests_passed = body.test_exit_code == 0
     review_md = (
-        github.review_markdown([c.model_dump() for c in body.review])
-        if body.review
+        github.review_markdown(
+            [c.model_dump() for c in body.review],
+            engine=body.review_engine or "",
+            summary=body.review_summary or "",
+        )
+        if body.reviewed
         else None
     )
     try:
@@ -310,7 +324,6 @@ async def run_complete(
                 if body.test_exit_code is not None
                 else -1,
                 output=body.test_output or "",
-                used_fallback=body.used_fallback,
             ),
             tests_passed=tests_passed,
             test_summary=f"pytest exit {body.test_exit_code} (Karkhana worker)",
@@ -355,10 +368,22 @@ async def run_complete(
             "test_command": body.test_command,
             "test_exit_code": body.test_exit_code,
             "validation": run.validation_status,
-            "used_fallback": body.used_fallback,
             "patch_sha256": hashlib.sha256(body.patch.encode()).hexdigest(),
         },
     )
+    if body.summary:
+        session.add(
+            ContextEntry(
+                id=uuid.uuid4(),
+                project_id=project.id,
+                kind="handoff",
+                title=f"{task.key}: {task.title}"[:140],
+                body=body.summary[:4000],
+                author_label=CODER.label,
+                author_kind="ai",
+                run_id=run.id,
+            )
+        )
     pr = PullRequest(
         id=uuid.uuid4(),
         task_id=task.id,
@@ -398,18 +423,31 @@ async def run_complete(
             )
         )
     await session.flush()
-    await ledger.append(
-        session,
-        actor=REVIEWER,
-        action="review.posted",
-        subject_type="pull_request",
-        subject_id=pr.id,
-        project_id=project.id,
-        payload={"comments": len(body.review), "label": "AI-generated, unverified"},
-    )
-    await advance_if_legal(
-        session, project, Event.REVIEW_POSTED, actor=REVIEWER, payload={"pr": pr.number}
-    )
+    if body.reviewed:
+        pr.reviewed_at = dt.datetime.now(dt.UTC)
+        pr.review_engine, pr.review_model = body.review_engine, body.review_model
+        pr.review_summary = body.review_summary
+        await ledger.append(
+            session,
+            actor=REVIEWER,
+            action="review.posted",
+            subject_type="pull_request",
+            subject_id=pr.id,
+            project_id=project.id,
+            payload={
+                "comments": len(body.review),
+                "engine": body.review_engine,
+                "model": body.review_model,
+                "label": "AI-generated, unverified",
+            },
+        )
+        await advance_if_legal(
+            session,
+            project,
+            Event.REVIEW_POSTED,
+            actor=REVIEWER,
+            payload={"pr": pr.number},
+        )
     return {"status": run.status, "validation": run.validation_status}
 
 

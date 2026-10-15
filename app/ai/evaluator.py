@@ -33,9 +33,9 @@ import unicodedata
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from app.ai import fallbacks, genai
-from app.config import get_settings
-from app.schemas import EvaluationOutput, MemoryCitation
+from app.ai import llm
+from app.ai.errors import ModelError
+from app.schemas import EvaluationOutput
 
 logger = logging.getLogger(__name__)
 
@@ -122,30 +122,6 @@ def enforce_memory_rules(
     return out
 
 
-def cached_with_memory(
-    cached: EvaluationOutput, memory: list[MemoryItem]
-) -> EvaluationOutput:
-    """Attaches retrieved verified learnings to a cached evaluation.
-
-    The cached answer was not written with this memory in view, so citations
-    say plainly that they come from similarity retrieval, not model judgement.
-    """
-    if not memory:
-        return enforce_memory_rules(cached, [])
-    return cached.model_copy(
-        update={
-            "memory_citations": [
-                MemoryCitation(
-                    learning_id=m.id,
-                    how_it_applies="Retrieved by similarity; the cached evaluation did not assess it.",
-                )
-                for m in memory
-            ],
-            "memory_note": "Cached evaluation. Verified learnings retrieved by similarity are listed for review.",
-        }
-    )
-
-
 def build_prompt(idea_text: str, project_name: str, memory: list[MemoryItem]) -> str:
     """Builds the user turn."""
     mem = (
@@ -169,7 +145,6 @@ class EvaluationResult:
 
     output: EvaluationOutput
     model: str
-    served_from_cache: bool
 
 
 async def evaluate(
@@ -179,54 +154,40 @@ async def evaluate(
     memory: list[MemoryItem],
     generate: Generator | None = None,
 ) -> EvaluationResult:
-    """Runs the evaluator with validation, one repair pass and demo fallback.
+    """Runs the evaluator with validation and one repair pass.
 
     Args:
         idea_text: The PM's idea, the only allowed source for epics.
         project_name: For context in the prompt.
         memory: Verified learnings retrieved for this idea.
-        generate: Injected model call for tests; defaults to Gemini.
+        generate: Injected model call for tests; defaults to the configured provider.
 
     Returns:
         A validated :class:`EvaluationResult`.
 
     Raises:
-        genai.ModelError: If the model fails and no fallback is allowed.
+        ModelError: If the model fails or its output stays invalid.
     """
-    settings = get_settings()
-    generate = generate or genai.generate_structured
+    generate = generate or llm.generate_structured
     prompt = build_prompt(idea_text, project_name, memory)
-    try:
-        out = await generate(prompt=prompt, schema=EvaluationOutput, system=SYSTEM)
+    out = await generate(prompt=prompt, schema=EvaluationOutput, system=SYSTEM)
+    problems = check_output(idea_text, out, memory)
+    if problems:
+        logger.info("Evaluator repair pass: %s", problems)
+        repair = (
+            prompt
+            + "\n\nYOUR PREVIOUS ANSWER WAS REJECTED FOR THESE REASONS:\n- "
+            + "\n- ".join(problems)
+            + "\n\nPrevious answer:\n"
+            + json.dumps(out.model_dump())
+            + "\n\nReturn a corrected answer in the same schema."
+        )
+        out = await generate(
+            prompt=repair, schema=EvaluationOutput, system=SYSTEM, temperature=0.1
+        )
         problems = check_output(idea_text, out, memory)
         if problems:
-            logger.info("Evaluator repair pass: %s", problems)
-            repair = (
-                prompt
-                + "\n\nYOUR PREVIOUS ANSWER WAS REJECTED FOR THESE REASONS:\n- "
-                + "\n- ".join(problems)
-                + "\n\nPrevious answer:\n"
-                + json.dumps(out.model_dump())
-                + "\n\nReturn a corrected answer in the same schema."
+            raise ModelError(
+                "Evaluation failed validation twice: " + "; ".join(problems)
             )
-            out = await generate(
-                prompt=repair, schema=EvaluationOutput, system=SYSTEM, temperature=0.1
-            )
-            problems = check_output(idea_text, out, memory)
-            if problems:
-                raise genai.ModelError(
-                    "Evaluation failed validation twice: " + "; ".join(problems)
-                )
-        return EvaluationResult(
-            enforce_memory_rules(out, memory), settings.gemini_model, False
-        )
-    except genai.ModelError:
-        if not settings.demo_fallback:
-            raise
-        cached = fallbacks.evaluation_for(idea_text)
-        if cached is None:
-            raise
-        logger.warning("Serving cached evaluation (DEMO_FALLBACK=true)")
-        return EvaluationResult(
-            cached_with_memory(cached, memory), "cached-fallback", True
-        )
+    return EvaluationResult(enforce_memory_rules(out, memory), llm.chat_model_name())

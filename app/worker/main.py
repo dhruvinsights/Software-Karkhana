@@ -19,7 +19,7 @@ Runs as a Cloud Run Job execution (or a local subprocess) with three env vars:
 
 Flow:
     spec -> clone (read-only) -> ADK Coder -> real test run -> diff
-    -> ADK Reviewer -> report the patch and results to the control plane.
+    -> review engine -> report the patch and results to the control plane.
 
 Trust boundary: pytest executes repository code the agent wrote, so this
 process is treated as running untrusted code. It therefore holds no GitHub
@@ -47,7 +47,7 @@ import httpx
 
 from app.agents.tools import TEST_ARGV, Workspace
 from app.config import get_settings
-from app.schemas import ReviewCommentDraft, RunResult, RunSpec
+from app.schemas import RunResult, RunSpec
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s worker %(levelname)s %(message)s"
@@ -120,9 +120,9 @@ async def build(spec: RunSpec, cp: ControlPlane) -> RunResult:
     lets the Coder edit files, runs the tests, and returns the diff. The
     control plane applies that diff and does every GitHub write.
     """
-    from app.agents.coder import run_coder, run_reviewer
+    from app.agents.coder import run_coder
+    from app.review import engine as review_engine
 
-    settings = get_settings()
     with tempfile.TemporaryDirectory(prefix="karkhana-run-") as tmp:
         repo = Path(tmp) / "repo"
         await cp.progress("cloning")
@@ -154,25 +154,16 @@ async def build(spec: RunSpec, cp: ControlPlane) -> RunResult:
         ws = Workspace(repo)
 
         await cp.progress("coding")
-        used_fallback = False
-        try:
-            summary = await run_coder(
-                ws,
-                title=spec.task_title,
-                description=spec.task_description,
-                criteria=spec.acceptance_criteria,
-            )
-            logger.info("Coder summary: %s", summary[:500])
-        except Exception as exc:
-            if not settings.demo_fallback:
-                raise
-            from app.ai import fallbacks
-
-            logger.warning("Coder failed (%s); applying cached demo patch", exc)
-            patch_file = Path(tmp) / "fallback.diff"
-            patch_file.write_text(fallbacks.demo_patch())
-            git(repo, "apply", str(patch_file))
-            used_fallback = True
+        summary = await run_coder(
+            ws,
+            title=spec.task_title,
+            description=spec.task_description,
+            criteria=spec.acceptance_criteria,
+            context=[
+                f"- [{c.kind}] {c.title} ({c.author}): {c.body}" for c in spec.context
+            ],
+        )
+        logger.info("Coder summary: %s", summary[:500])
 
         await cp.progress("validating")
         exit_code, output = ws.run_tests()  # The number we report comes from here.
@@ -188,31 +179,30 @@ async def build(spec: RunSpec, cp: ControlPlane) -> RunResult:
             )
 
         await cp.progress("reviewing")
-        try:
+        review_result = None
+        for attempt in (1, 2):
             try:
-                review = (await run_reviewer(diff, title=spec.task_title)).comments
-            except Exception as first:
-                logger.warning("Reviewer failed once (%s); retrying", first)
-                review = (await run_reviewer(diff, title=spec.task_title)).comments
-        except Exception as exc:
-            if not settings.demo_fallback:
-                logger.warning("Reviewer failed: %s", exc)
-                review = []
-            else:
-                from app.ai import fallbacks
-
-                logger.warning("Reviewer failed (%s); using cached review", exc)
-                review = fallbacks.review().comments
+                review_result = await review_engine.review_diff(
+                    diff, title=spec.task_title
+                )
+                break
+            except Exception as exc:
+                logger.warning("Reviewer failed (attempt %d): %s", attempt, exc)
+        # No review recorded blocks the merge until someone retries it.
 
         artifacts_uri = await upload_artifacts(spec, diff, output)
         return RunResult(
             ok=True,
             patch=diff,
-            used_fallback=used_fallback,
             test_command=TEST_COMMAND,
             test_exit_code=exit_code,
             test_output=output,
-            review=[ReviewCommentDraft.model_validate(c.model_dump()) for c in review],
+            review=review_result.comments if review_result else [],
+            review_engine=review_result.engine if review_result else None,
+            review_model=review_result.model if review_result else None,
+            review_summary=review_result.summary if review_result else None,
+            summary=summary[:4000] or None,
+            reviewed=review_result is not None,
             artifacts_uri=artifacts_uri,
         )
 

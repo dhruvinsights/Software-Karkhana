@@ -11,4 +11,4 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Gemini access, the evaluator and demo fallbacks."""
+"""Model providers (Gemini, Ollama) and the evaluator."""

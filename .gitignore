@@ -1,5 +1,6 @@
 # --- Python ---
 .venv/
+.venv-pr-agent/
 __pycache__/
 *.pyc
 *.egg-info/
@@ -41,3 +42,4 @@ import-times.txt
 .DS_Store
 Thumbs.db
 desktop.ini
+third_party/

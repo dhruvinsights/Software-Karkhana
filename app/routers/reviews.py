@@ -46,7 +46,7 @@ def merge_blockers(pr: PullRequest, comments: list[ReviewComment]) -> list[str]:
         blockers.append(f"PR is {pr.status}")
     if not pr.tests_passed:
         blockers.append("Tests failed in the worker run")
-    if not comments:
+    if pr.reviewed_at is None:
         blockers.append("No AI review recorded")
     open_count = sum(1 for c in comments if c.triage == "open")
     if open_count:
@@ -191,9 +191,7 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
     Without this, a reviewer outage would leave the PR permanently blocked by
     "No AI review recorded".
     """
-    from app.agents.coder import run_reviewer
-    from app.ai import fallbacks
-    from app.config import get_settings
+    from app.review import engine as review_engine
 
     # Row lock for the whole retry: a concurrent retry waits here, then sees
     # the comments this one wrote and gets 409. No duplicate reviews.
@@ -204,26 +202,19 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
         raise HTTPException(status.HTTP_404_NOT_FOUND, "PullRequest not found")
     if pr.status != "open":
         raise HTTPException(status.HTTP_409_CONFLICT, "PR is not open")
-    existing = await session.scalar(
-        select(func.count())
-        .select_from(ReviewComment)
-        .where(ReviewComment.pr_id == pr.id)
-    )
-    if existing:
+    if pr.reviewed_at is not None:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "This PR already has an AI review"
         )
     run = await get_or_404(session, Run, pr.run_id)
     task = await get_or_404(session, Task, pr.task_id)
     try:
-        comments = (await run_reviewer(run.patch or "", title=task.title)).comments
-        source = "live"
+        result = await review_engine.review_diff(run.patch or "", title=task.title)
     except Exception as exc:
-        if not get_settings().demo_fallback:
-            raise HTTPException(
-                status.HTTP_502_BAD_GATEWAY, f"Reviewer failed: {exc}"
-            ) from exc
-        comments, source = fallbacks.review().comments, "cached"
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, f"Reviewer failed: {exc}"
+        ) from exc
+    comments = result.comments
     project = await lock_project(session, task.project_id)
     for c in comments:
         session.add(
@@ -231,6 +222,9 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
                 pr_id=pr.id, path=c.path, line=c.line, severity=c.severity, body=c.body
             )
         )
+    pr.reviewed_at = dt.datetime.now(dt.UTC)
+    pr.review_engine, pr.review_model = result.engine, result.model
+    pr.review_summary = result.summary
     await session.flush()
     reviewer = ledger.Actor.ai("reviewer-agent")
     await ledger.append(
@@ -243,7 +237,8 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
         payload={
             "comments": len(comments),
             "retry_by": user.email,
-            "source": source,
+            "engine": result.engine,
+            "model": result.model,
             "label": "AI-generated, unverified",
         },
     )
@@ -254,7 +249,11 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
         try:
             await gh.post_review(
                 number=pr.number,
-                body=github.review_markdown([c.model_dump() for c in comments]),
+                body=github.review_markdown(
+                    [c.model_dump() for c in comments],
+                    engine=result.engine,
+                    summary=result.summary,
+                ),
             )
         finally:
             await gh.aclose()

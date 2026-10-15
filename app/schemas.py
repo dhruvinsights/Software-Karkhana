@@ -100,7 +100,7 @@ class ReviewCommentDraft(BaseModel):
 
 
 class ReviewOutput(BaseModel):
-    """The reviewer's answer: 3 to 5 comments."""
+    """The ADK reviewer's answer: 3 to 5 comments."""
 
     comments: list[ReviewCommentDraft] = Field(min_length=3, max_length=5)
 
@@ -129,6 +129,7 @@ class UserOut(ORM):
     email: str
     display_name: str
     role: str
+    onboarded_at: dt.datetime | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -167,7 +168,6 @@ class EvaluationOut(BaseModel):
     id: uuid.UUID
     version: int
     model: str
-    served_from_cache: bool
     created_at: dt.datetime
     result: EvaluationOutput
     citations: list[CitationOut]
@@ -178,6 +178,21 @@ class Decision(BaseModel):
 
     decision: Literal["approved", "rejected"]
     reason: str | None = Field(default=None, max_length=2000)
+
+
+class BatchDecision(BaseModel):
+    """Director's batch multi-sig decision on multiple projects."""
+
+    project_ids: list[uuid.UUID]
+    decision: Literal["approved", "rejected"] = "approved"
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class BatchApprovalOut(BaseModel):
+    """Result of batch gate decisions."""
+
+    approved_count: int
+    approvals: list[ApprovalOut]
 
 
 class ApprovalOut(ORM):
@@ -252,6 +267,10 @@ class PullRequestOut(ORM):
     branch: str
     status: str
     tests_passed: bool
+    reviewed_at: dt.datetime | None = None
+    review_engine: str | None = None
+    review_model: str | None = None
+    review_summary: str | None = None
     comments: list[CommentOut] = Field(default_factory=list)
     can_merge: bool = False
     merge_blockers: list[str] = Field(default_factory=list)
@@ -315,6 +334,37 @@ class StageOut(BaseModel):
 # --- Worker callbacks (HMAC-authenticated, no user) -----------------------
 
 
+class ContextIn(BaseModel):
+    """A person adds shared context to a project."""
+
+    kind: Literal["decision", "note", "handoff"] = "note"
+    title: str = Field(min_length=3, max_length=140)
+    body: str = Field(min_length=3, max_length=4000)
+
+
+class ContextOut(ORM):
+    """One shared-context entry."""
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    kind: str
+    title: str
+    body: str
+    author_label: str
+    author_kind: str
+    run_id: uuid.UUID | None = None
+    created_at: dt.datetime
+
+
+class ContextNote(BaseModel):
+    """Context handed to the agent with its task."""
+
+    kind: str
+    title: str
+    body: str
+    author: str
+
+
 class RunSpec(BaseModel):
     """What the worker needs to do one task."""
 
@@ -327,6 +377,7 @@ class RunSpec(BaseModel):
     repo: str | None
     repo_url: str | None
     base_branch: str
+    context: list[ContextNote] = Field(default_factory=list)
 
 
 class RunProgress(BaseModel):
@@ -345,9 +396,14 @@ class RunResult(BaseModel):
     ok: bool
     error: str | None = None
     patch: str | None = None
-    used_fallback: bool = False
     test_command: str | None = None
     test_exit_code: int | None = None
     test_output: str | None = None
     review: list[ReviewCommentDraft] = Field(default_factory=list)
+    # False when no engine produced a review; True with zero comments is a clean review.
+    reviewed: bool = False
+    review_engine: str | None = None
+    review_model: str | None = None
+    review_summary: str | None = None
+    summary: str | None = None  # What the Coder says it did; becomes a handoff.
     artifacts_uri: str | None = None

@@ -95,6 +95,10 @@ def get_backend() -> RunnerBackend:
         from app.runner.cloudrun_job import CloudRunJobBackend
 
         return CloudRunJobBackend()
+    if backend == "ax":
+        from app.runner.ax import AxBackend
+
+        return AxBackend()
     from app.runner.local import LocalBackend
 
     return LocalBackend()

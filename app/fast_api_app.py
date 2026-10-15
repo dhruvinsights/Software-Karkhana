@@ -35,7 +35,7 @@ from sqlalchemy import text
 from app import db
 from app.app_utils.telemetry import setup_telemetry
 from app.config import get_settings
-from app.routers import platform, projects, reviews, runs
+from app.routers import context, platform, projects, reviews, runs, workspace
 
 
 def _setup_logging() -> None:
@@ -78,7 +78,14 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-    for r in (projects.router, runs.router, reviews.router, platform.router):
+    for r in (
+        projects.router,
+        runs.router,
+        reviews.router,
+        platform.router,
+        workspace.router,
+        context.router,
+    ):
         app.include_router(r)
 
     @app.get("/healthz", include_in_schema=False)
@@ -100,7 +107,9 @@ def create_app() -> FastAPI:
             },
             "githubRepo": settings.github_repo,
             "runner": settings.runner_backend,
-            "demoFallback": settings.demo_fallback,
+            "llmProvider": settings.llm_provider,
+            "embedProvider": settings.embed_provider,
+            "reviewEngine": settings.review_engine,
         }
 
     @app.exception_handler(Exception)

@@ -28,11 +28,12 @@ import uuid
 
 from google.adk.agents import LlmAgent
 from google.adk.agents.run_config import RunConfig
-from google.adk.models import Gemini
+from google.adk.models import BaseLlm, Gemini
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
+from app.agents.ollama_llm import OllamaLlm
 from app.agents.tools import Workspace, make_tools
 from app.config import get_settings
 from app.schemas import ReviewOutput
@@ -41,9 +42,13 @@ logger = logging.getLogger(__name__)
 APP_NAME = "karkhana"
 
 
-def configure_vertex_env() -> None:
-    """Points ADK at Vertex AI with the service account's credentials."""
+def configure_gemini_env() -> None:
+    """Points ADK's Gemini at an AI Studio key, else Vertex AI with ADC."""
     s = get_settings()
+    if s.gemini_api_key:
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
+        os.environ["GOOGLE_API_KEY"] = s.gemini_api_key
+        return
     # Assign, never setdefault: a stray regional GOOGLE_CLOUD_LOCATION in the
     # environment would break Gemini 3 models, which are served from "global".
     os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
@@ -51,8 +56,11 @@ def configure_vertex_env() -> None:
     os.environ["GOOGLE_CLOUD_LOCATION"] = s.genai_location
 
 
-def _model(name: str) -> Gemini:
-    return Gemini(model=name, retry_options=types.HttpRetryOptions(attempts=3))
+def _model(gemini_name: str, ollama_name: str) -> BaseLlm:
+    """The ADK model for the configured provider (Gemini or Ollama)."""
+    if get_settings().llm_provider == "ollama":
+        return OllamaLlm(model=ollama_name)
+    return Gemini(model=gemini_name, retry_options=types.HttpRetryOptions(attempts=3))
 
 
 CODER_INSTRUCTION = """\
@@ -85,7 +93,9 @@ def build_coder(ws: Workspace) -> LlmAgent:
     return LlmAgent(
         name="coder",
         description="Implements one story with tests in a path-confined repository checkout.",
-        model=_model(get_settings().gemini_coder_model),
+        model=_model(
+            get_settings().gemini_coder_model, get_settings().ollama_coder_model
+        ),
         instruction=CODER_INSTRUCTION,
         tools=make_tools(ws),
         generate_content_config=types.GenerateContentConfig(temperature=0.2),
@@ -97,7 +107,7 @@ def build_reviewer() -> LlmAgent:
     return LlmAgent(
         name="reviewer",
         description="Reviews a diff and returns 3-5 typed comments.",
-        model=_model(get_settings().gemini_model),
+        model=_model(get_settings().gemini_model, get_settings().ollama_model),
         instruction=REVIEWER_INSTRUCTION,
         output_schema=ReviewOutput,
         output_key="review",
@@ -107,7 +117,7 @@ def build_reviewer() -> LlmAgent:
 
 async def _run(agent: LlmAgent, message: str, max_llm_calls: int) -> tuple[str, dict]:
     """Runs an agent to completion and returns (final text, session state)."""
-    configure_vertex_env()
+    configure_gemini_env()
     sessions = InMemorySessionService()
     runner = Runner(app_name=APP_NAME, agent=agent, session_service=sessions)
     user_id, session_id = "worker", uuid.uuid4().hex
@@ -130,13 +140,24 @@ async def _run(agent: LlmAgent, message: str, max_llm_calls: int) -> tuple[str, 
 
 
 async def run_coder(
-    ws: Workspace, *, title: str, description: str, criteria: list[str]
+    ws: Workspace,
+    *,
+    title: str,
+    description: str,
+    criteria: list[str],
+    context: list[str] | None = None,
 ) -> str:
     """Runs the Coder on one story and returns its summary."""
     message = (
         f"STORY: {title}\n\nDESCRIPTION:\n{description or '(none)'}\n\n"
         "ACCEPTANCE CRITERIA:\n" + "\n".join(f"- {c}" for c in criteria)
     )
+    if context:
+        message += (
+            "\n\nSHARED PROJECT CONTEXT (decisions and handoffs from people and "
+            "earlier runs; follow decisions, do not repeat finished work):\n"
+            + "\n".join(context)
+        )
     summary, _ = await _run(build_coder(ws), message, max_llm_calls=40)
     return summary
 

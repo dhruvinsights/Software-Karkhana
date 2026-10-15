@@ -9,6 +9,14 @@ RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
+# --- Stage 1b: AX manifest validator (uses google/ax's own validators) -----
+FROM golang:1.27 AS axtools
+WORKDIR /src
+COPY third_party/ax ./third_party/ax
+COPY tools/axcheck ./tools/axcheck
+WORKDIR /src/tools/axcheck
+RUN CGO_ENABLED=0 go build -o /out/axcheck .
+
 # --- Stage 2: Python runtime -------------------------------------------
 FROM python:3.12-slim
 # git: the worker clones and pushes. No compilers, no shells beyond the base.
@@ -26,6 +34,7 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --no-dev --no-install-project --frozen
 COPY app ./app
 COPY db ./db
+COPY --from=axtools /out/axcheck /usr/local/bin/axcheck
 COPY --from=web /web/dist ./web/dist
 RUN uv sync --no-dev --frozen
 
@@ -33,7 +42,7 @@ RUN uv sync --no-dev --frozen
 # modify its own code; all runtime writes go to temp directories.
 RUN useradd --create-home --uid 10001 karkhana
 USER karkhana
-ENV PATH="/code/.venv/bin:$PATH" PYTHONUNBUFFERED=1 STATIC_DIR=/code/web/dist
+ENV AXCHECK_BIN=/usr/local/bin/axcheck PATH="/code/.venv/bin:$PATH" PYTHONUNBUFFERED=1 STATIC_DIR=/code/web/dist
 
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=${COMMIT_SHA}

@@ -165,21 +165,15 @@ def pr_body(
     test_command: str,
     exit_code: int,
     output: str,
-    used_fallback: bool,
 ) -> str:
     """Markdown body for the PR, including the worker's real validation result."""
     status = "PASSED" if exit_code == 0 else "FAILED (opened as draft)"
-    note = (
-        "\n> Patch source: cached demo fallback (DEMO_FALLBACK=true); tests ran live.\n"
-        if used_fallback
-        else ""
-    )
     ac = "\n".join(f"- [ ] {c}" for c in criteria)
     return (
         f"Implements **{task_key}: {task_title}** for project *{project_name}*.\n\n"
-        f"Code by the Software Karkhana Coder agent (Google ADK + Gemini), run `{run_id}`.\n"
+        f"Code by the Software Karkhana Coder agent (Google ADK), run `{run_id}`.\n"
         f"Published by the control plane; the agent's worker holds no GitHub credentials.\n"
-        f"{note}\n### Acceptance criteria\n{ac}\n\n"
+        f"\n### Acceptance criteria\n{ac}\n\n"
         f"### Validation (run by the worker, not claimed by the agent)\n"
         f"`{test_command}` exit code **{exit_code}**: {status}\n\n"
         f"```\n{output[-2500:]}\n```\n"

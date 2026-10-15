@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useGet } from '../api';
+import { Empty, Loading, PageHead } from '../components/common';
 
 interface Row {
   id: string; name: string; stage: string; stage_status: string; merged_prs: number; runs: number;
@@ -7,17 +8,15 @@ interface Row {
   gates: { stage: string; name: string; gate: string; wired: boolean; state: string }[];
 }
 
-const STATE: Record<string, string> = { passed: 'pill outline ok', current: 'pill solid', pending: 'pill dash warn', rejected: 'pill solid bad', planned: 'pill mut' };
+const STATE: Record<string, string> = { passed: 'pill ok', current: 'pill solid', pending: 'pill dash warn', rejected: 'pill bad', planned: 'pill mut' };
 
 export default function Portfolio() {
   const { data } = useGet<Row[]>(['portfolio'], '/api/portfolio', 5000);
   return (
     <div className="stack">
-      <div className="vh">
-        <span className="eyebrow">Gates and portfolio</span>
-        <h2>Where every project stands</h2>
-        <p className="muted">Computed from the records, not typed by anyone. Nothing here claims production readiness: QA, security and release gates stay pending until their teams sign off.</p>
-      </div>
+      <PageHead eyebrow="Gates and portfolio" title="Where every project stands">Computed from the records, not typed by anyone. Nothing here claims production readiness: QA, security and release gates stay pending until their teams sign off.</PageHead>
+      {!data && <Loading />}
+      {data && data.length === 0 && <Empty>No projects yet.</Empty>}
       {(data ?? []).map((p) => (
         <div key={p.id} className="card stack" style={{ gap: 10 }}>
           <div className="row between">

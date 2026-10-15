@@ -27,7 +27,7 @@ import uuid
 import httpx
 import pytest
 
-from app.ai import genai
+from app.ai import llm
 from app.runner import base as runner_base
 from app.runner.base import BackendStatus, StartedRun, run_token
 from tests.fakes import IDEAS, FakeGemini
@@ -81,8 +81,8 @@ async def client(database):
 @pytest.fixture(autouse=True)
 def fakes(monkeypatch):
     fake = FakeGemini()
-    monkeypatch.setattr(genai, "generate_structured", fake.generate)
-    monkeypatch.setattr(genai, "embed", fake.embed)
+    monkeypatch.setattr(llm, "generate_structured", fake.generate)
+    monkeypatch.setattr(llm, "embed", fake.embed)
     backend = RecordingBackend()
     monkeypatch.setattr(runner_base, "get_backend", lambda: backend)
     import app.routers.runs as runs_router
@@ -219,6 +219,7 @@ async def test_golden_path(client, fakes):
         "test_exit_code": 0,
         "test_output": "19 passed",
         "review": review,
+        "reviewed": True,
     }
     assert (
         await client.post(
@@ -433,6 +434,7 @@ async def test_concurrent_runs_keep_project_and_tasks_consistent(client, fakes):
         "test_exit_code": 0,
         "test_output": "ok",
         "review": [],
+        "reviewed": True,
     }
     await client.post(
         f"/internal/runs/{r1}/complete",
@@ -486,18 +488,19 @@ async def test_missing_review_can_be_retried(client, fakes):
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
     assert "No AI review recorded" in pr["merge_blockers"]
 
-    import app.agents.coder as coder
-    from app.ai import fallbacks
+    from app.review import engine as review_engine
+    from app.review.types import ReviewResult
+    from tests import fixtures as fallbacks
 
     async def fake_reviewer(diff, **kw):
-        return fallbacks.review()
+        return ReviewResult("test", "test", list(fallbacks.review().comments))
 
-    coder_run = coder.run_reviewer
-    coder.run_reviewer = fake_reviewer
+    coder_run = review_engine.review_diff
+    review_engine.review_diff = fake_reviewer
     try:
         r = await client.post(f"/api/prs/{pr['id']}/review", headers=as_(DEV))
     finally:
-        coder.run_reviewer = coder_run
+        review_engine.review_diff = coder_run
     assert r.status_code == 200 and len(r.json()["comments"]) == 4
     assert (
         await client.post(f"/api/prs/{pr['id']}/review", headers=as_(DEV))
@@ -546,8 +549,9 @@ async def test_failing_tests_are_never_reported_as_success(client, fakes):
 async def test_concurrent_review_retries_post_one_review(client, fakes):
     import asyncio as aio
 
-    import app.agents.coder as coder
-    from app.ai import fallbacks
+    from app.review import engine as review_engine
+    from app.review.types import ReviewResult
+    from tests import fixtures as fallbacks
 
     pid, tasks = await _approved_project(client, "Retry race")
     tid = tasks[0]["id"]
@@ -569,17 +573,17 @@ async def test_concurrent_review_retries_post_one_review(client, fakes):
 
     async def slow_reviewer(diff, **kw):
         await aio.sleep(0.3)  # Both requests are in flight at once.
-        return fallbacks.review()
+        return ReviewResult("test", "test", list(fallbacks.review().comments))
 
-    original = coder.run_reviewer
-    coder.run_reviewer = slow_reviewer
+    original = review_engine.review_diff
+    review_engine.review_diff = slow_reviewer
     try:
         r1, r2 = await aio.gather(
             client.post(f"/api/prs/{pr['id']}/review", headers=as_(DEV)),
             client.post(f"/api/prs/{pr['id']}/review", headers=as_(DEV)),
         )
     finally:
-        coder.run_reviewer = original
+        review_engine.review_diff = original
     assert sorted([r1.status_code, r2.status_code]) == [200, 409]
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
     assert len(pr["comments"]) == 4  # Not 8.

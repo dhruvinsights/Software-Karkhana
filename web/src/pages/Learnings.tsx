@@ -1,6 +1,6 @@
 import { useGet, usePost, type Learning, type Project } from '../api';
 import { useAuth } from '../auth';
-import { Badge, ErrorBox } from '../components/common';
+import { Badge, Empty, ErrorBox, Loading, PageHead } from '../components/common';
 
 export default function Learnings() {
   const { me } = useAuth();
@@ -11,16 +11,13 @@ export default function Learnings() {
   const canVerify = me?.role === 'lead' || me?.role === 'director';
   return (
     <div className="stack">
-      <div className="vh">
-        <span className="eyebrow">Feedback and learning</span>
-        <h2>Learnings</h2>
-        <p className="muted">Captured on every merge from the PR and its triaged review. Only verified learnings are offered to the evaluator on the next project.</p>
-      </div>
+      <PageHead eyebrow="Feedback and learning" title="Learnings">Captured on every merge from the PR and its triaged review. Only verified learnings are offered to the evaluator on the next project.</PageHead>
       <ErrorBox error={verify.error} />
+      {!data && <Loading />}
       {(data ?? []).map((l) => (
         <div key={l.id} className="card stack" style={{ gap: 8 }}>
           <div className="row between">
-            <span className="row"><span className={`pill ${l.status === 'verified' ? 'outline ok' : l.status === 'rejected' ? 'solid bad' : 'dash'}`}>{l.status}</span>{l.status === 'verified' ? <Badge kind="human" /> : <Badge kind="ai" />}</span>
+            <span className="row"><span className={`pill ${l.status === 'verified' ? 'ok' : l.status === 'rejected' ? 'bad' : 'dash'}`}>{l.status}</span>{l.status === 'verified' ? <Badge kind="human" /> : <Badge kind="ai" />}</span>
             <span className="muted sm">{names[l.project_id] ?? 'project'} · {new Date(l.created_at).toLocaleString()}</span>
           </div>
           <p>{l.text}</p>
@@ -37,7 +34,7 @@ export default function Learnings() {
           )}
         </div>
       ))}
-      {data && data.length === 0 && <p className="muted">No learnings yet. Merge a PR to capture the first one.</p>}
+      {data && data.length === 0 && <Empty>No learnings yet. Merge a PR to capture the first one.</Empty>}
     </div>
   );
 }

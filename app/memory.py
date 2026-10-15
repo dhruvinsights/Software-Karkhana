@@ -27,7 +27,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ledger
-from app.ai import genai
+from app.ai import llm
+from app.ai.errors import ModelError
 from app.ai.evaluator import MemoryItem
 from app.models import Learning, Project, PullRequest, ReviewComment, Task
 from app.schemas import LearningOutput
@@ -43,15 +44,20 @@ async def retrieve(
 ) -> list[tuple[Learning, str, float]]:
     """Returns verified learnings similar to the idea as (learning, project name, similarity)."""
     try:
-        query_vec = await genai.embed(idea_text, task_type="RETRIEVAL_QUERY")
-    except genai.ModelError as exc:
+        query_vec = await llm.embed(idea_text, task_type="RETRIEVAL_QUERY")
+    except ModelError as exc:
         logger.warning("Memory retrieval skipped: %s", exc)
         return []
     distance = Learning.embedding.cosine_distance(query_vec)
     rows = await session.execute(
         select(Learning, Project.name, distance.label("d"))
         .join(Project, Project.id == Learning.project_id)
-        .where(Learning.status == "verified", Learning.embedding.is_not(None))
+        .where(
+            Learning.status == "verified",
+            Learning.embedding.is_not(None),
+            # Vectors from different models are not comparable.
+            Learning.embedding_model == llm.embed_model_name(),
+        )
         .order_by(distance)
         .limit(TOP_K)
     )
@@ -92,14 +98,14 @@ async def capture_on_merge(
     )
     prompt = f"Story: {task.title}\nPR: {pr.url}\nReview triage:\n{triage}"
     try:
-        out = await genai.generate_structured(
+        out = await llm.generate_structured(
             prompt=prompt,
             schema=LearningOutput,
             system=LEARNING_SYSTEM,
             temperature=0.2,
         )
         text = out.text
-    except genai.ModelError as exc:
+    except ModelError as exc:
         logger.warning("Learning distillation failed, storing raw triage: %s", exc)
         valid = [c.body for c in comments if c.triage == "valid"]
         text = (
@@ -109,8 +115,8 @@ async def capture_on_merge(
         )
 
     try:
-        vec = await genai.embed(text)
-    except genai.ModelError:
+        vec = await llm.embed(text)
+    except ModelError:
         vec = None  # Still saved; it simply cannot be retrieved until re-embedded.
 
     learning = Learning(
@@ -120,6 +126,7 @@ async def capture_on_merge(
         text=text,
         status="unverified",
         embedding=vec,
+        embedding_model=llm.embed_model_name() if vec is not None else None,
         source={
             "pr_url": pr.url,
             "pr_number": pr.number,

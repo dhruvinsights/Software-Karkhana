@@ -5,7 +5,7 @@ const fs = require('fs');
 const BASE = process.env.KARKHANA_URL || 'http://localhost:8080';
 const OUT = __dirname + '/shots';
 fs.mkdirSync(OUT, { recursive: true });
-const ideas = JSON.parse(fs.readFileSync(__dirname + '/../../app/ai/fallbacks/demo_ideas.json', 'utf8'));
+const ideas = JSON.parse(fs.readFileSync(__dirname + '/../../tests/fixtures/demo_ideas.json', 'utf8'));
 const log = [];
 const issues = [];
 const step = (m) => { log.push(m); console.log('STEP', m); };

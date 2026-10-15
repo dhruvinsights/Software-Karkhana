@@ -172,7 +172,7 @@ Done. The foundation is ready. Remaining steps (about 5 minutes + deploy):
   2. Project settings -> Web app -> copy apiKey, then:
        FIREBASE_WEB_API_KEY=<apiKey> PROJECT_ID=$PROJECT_ID ./infra/bootstrap.sh
   3. Check models:   GOOGLE_CLOUD_PROJECT=$PROJECT_ID make check-models
-  4. Deploy + seed:  make deploy-demo PROJECT_ID=$PROJECT_ID GITHUB_REPO=<owner>/invoicekit \\
+  4. Deploy + seed:  make deploy PROJECT_ID=$PROJECT_ID GITHUB_REPO=<owner>/invoicekit \\
                        SEED_USERS="you@gmail.com:pm,teammate@gmail.com:director"
      (re-run make deploy for every code change; see docs/GO_LIVE.md)
 

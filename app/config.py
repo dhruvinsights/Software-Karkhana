@@ -33,6 +33,27 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # --- Model providers -----------------------------------------------
+    # Two providers only: Gemini (hosted) and Ollama (local). Chat and
+    # embeddings are chosen independently, so you can run Gemini for text and
+    # Ollama's nomic-embed-text for vectors.
+    llm_provider: Literal["gemini", "ollama"] = "gemini"
+    embed_provider: Literal["gemini", "ollama"] = "gemini"
+
+    # Gemini through a Google AI Studio key (GEMINI_API_KEY), or through
+    # Vertex AI with the service account when no key is set.
+    gemini_api_key: str | None = Field(default=None, repr=False)
+
+    # Ollama (local). nomic-embed-text returns 768-d vectors, which matches
+    # the learnings.embedding column, so switching providers needs no schema
+    # change. Vectors from different models are never compared: each row
+    # records which model made it.
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5-coder:14b"
+    ollama_coder_model: str = "qwen2.5-coder:14b"
+    ollama_embed_model: str = "nomic-embed-text"
+    ollama_timeout_s: float = 300.0
+
     # --- Google Cloud ---------------------------------------------------
     google_cloud_project: str = Field(default="local-dev")
     region: str = Field(default="us-central1")
@@ -67,7 +88,14 @@ class Settings(BaseSettings):
     firebase_project_id: str | None = None
 
     # --- Agent runs ------------------------------------------------------
-    runner_backend: Literal["local", "cloudrun_job"] = "local"
+    # "ax" submits the run as a google/ax Task on Kubernetes + Agent Substrate.
+    runner_backend: Literal["local", "cloudrun_job", "ax"] = "local"
+    ax_bin: str = "ax"  # Path to the ax CLI (built from third_party/ax).
+    ax_server: str | None = None  # AX API server host:port; unset = kube context.
+    ax_atespace: str = "karkhana"
+    axcheck_bin: str | None = None  # Built from tools/axcheck; validates manifests.
+    ax_task_image: str | None = None  # Image that contains this app's worker.
+    ax_model_secret: str = "gemini-api-secret"  # noqa: S105 - a Secret *name*
     worker_job_name: str = "karkhana-worker"
     public_base_url: str = "http://localhost:8080"
     run_hmac_secret: str = Field(default="dev-only-change-me", repr=False)
@@ -84,8 +112,17 @@ class Settings(BaseSettings):
     # Optional local clone source for tests and offline demos.
     demo_repo_url: str | None = None
 
-    # --- Demo safety -----------------------------------------------------
-    demo_fallback: bool = False  # Serve cached Gemini output if a call fails.
+    # --- Review engine ---------------------------------------------------
+    # "pr_agent" runs The-PR-Agent/pr-agent (MIT) in its own virtualenv in
+    # plain-diff mode. "adk" uses the built-in ADK reviewer agent.
+    review_engine: Literal["pr_agent", "adk"] = "adk"
+    pr_agent_python: str | None = None  # Python of the isolated pr-agent venv.
+    review_timeout_s: float = 300.0
+
+    # --- Shared context --------------------------------------------------
+    # Directory of Markdown context files kept in Git (TeamContext-style).
+    context_dir: str = ".karkhana/context"
+
     google_chat_webhook_url: str | None = Field(default=None, repr=False)
     artifacts_bucket: str | None = None
 
