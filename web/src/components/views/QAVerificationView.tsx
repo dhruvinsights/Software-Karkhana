@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
 import { TestScenario } from '../../types/factory';
+import { stationsApi, useStationList, ApiTestScenario } from '../../lib/stationsApi';
+import { StationLoadState, StationWriteError } from './StationBanners';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { GlassCard } from '../reactbits/GlassCard';
@@ -29,60 +31,80 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
   const [userStoryPrompt, setUserStoryPrompt] = useState('');
   const [newTestTitle, setNewTestTitle] = useState('');
 
+  const [saving, setSaving] = useState(false);
+  const [writeError, setWriteError] = useState<string | null>(null);
+
   const selectedProject = state.projects.find((p) => p.id === state.selectedProjectId) || state.projects[0];
-  const passedCount = state.testScenarios.filter((t) => t.status === 'passed').length;
-  const totalCount = state.testScenarios.length;
-  const passRate = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 100;
+  const scenarios = useStationList<ApiTestScenario>(selectedProject?.id, stationsApi.listScenarios);
+  const passedCount = scenarios.items.filter((t) => t.status === 'passed').length;
+  const totalCount = scenarios.items.length;
+  const passRate = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
 
   const handleGenerateScenarios = async () => {
+    if (!selectedProject || scenarios.offline) return;
     setGenerating(true);
+    setWriteError(null);
     try {
       const res = await fetch('/api/gemini/test-plan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}) },
         body: JSON.stringify({
-          storyTitle: userStoryPrompt || selectedProject?.name || 'Distributed Service Endpoint',
+          storyTitle: userStoryPrompt || selectedProject.name || 'Distributed Service Endpoint',
           acceptanceCriteria: 'Response latency < 50ms. Zero unhandled exceptions under concurrency.',
           technicalDetails: 'Modern web & cloud architecture',
         }),
       });
+      if (!res.ok) throw new Error(`Test synthesis failed (HTTP ${res.status}).`);
       const data = await res.json();
-      if (data.scenarios && data.scenarios.length > 0) {
-        data.scenarios.forEach((sc: any) => {
-          const newScenario: TestScenario = {
-            id: `tc-${Date.now().toString().slice(-4)}`,
-            projectId: selectedProject?.id || '',
-            title: sc.title,
-            type: sc.type,
-            priority: sc.priority,
-            steps: sc.steps || ['Execute scenario assertions.'],
-            expectedResult: sc.expectedResult,
-            status: 'not_run',
-            automationScript: sc.automationScript,
-          };
-          factoryStore.addTestScenario(newScenario);
+      // Save each generated scenario on the server so the team sees it and the ledger records it.
+      for (const sc of (data.scenarios ?? []) as Partial<TestScenario>[]) {
+        if (!sc.title) continue;
+        const created = await stationsApi.createScenario(selectedProject.id, {
+          title: sc.title,
+          type: sc.type,
+          priority: sc.priority,
+          steps: sc.steps || [],
+          expected_result: sc.expectedResult || '',
+          automation_script: sc.automationScript ?? null,
         });
+        scenarios.upsert(created);
       }
+      setUserStoryPrompt('');
+      setActiveTab('scenarios');
     } catch (e) {
-      console.error(e);
+      setWriteError((e as Error).message);
     } finally {
       setGenerating(false);
-      setUserStoryPrompt('');
     }
   };
 
-  const handleCreateManualTest = (e: React.FormEvent) => {
+  const handleCreateManualTest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTestTitle.trim()) return;
+    if (!newTestTitle.trim() || !selectedProject || scenarios.offline) return;
+    setSaving(true);
+    setWriteError(null);
+    try {
+      const created = await stationsApi.createScenario(selectedProject.id, {
+        title: newTestTitle.trim(),
+        type: 'Functional',
+        priority: 'P1',
+      });
+      scenarios.upsert(created);
+      setNewTestTitle('');
+    } catch (err) {
+      setWriteError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    factoryStore.addTestScenario({
-      title: newTestTitle.trim(),
-      projectId: selectedProject?.id,
-      type: 'Functional',
-      priority: 'P1',
-      expectedResult: 'Asserts contract constraints successfully.',
-    });
-    setNewTestTitle('');
+  const recordResult = async (tc: ApiTestScenario, result: 'passed' | 'failed' | 'blocked') => {
+    setWriteError(null);
+    try {
+      scenarios.upsert(await stationsApi.updateScenario(tc.id, { status: result }));
+    } catch (err) {
+      setWriteError((err as Error).message);
+    }
   };
 
   if (!selectedProject) {
@@ -133,7 +155,7 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
               activeTab === 'scenarios' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Test Runner ({state.testScenarios.length})
+            Test Runner ({totalCount})
           </button>
           <button
             onClick={() => setActiveTab('generator')}
@@ -174,7 +196,7 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
             Quality Gate State
           </div>
           <div className="text-4xl sm:text-5xl font-bold tracking-tight text-emerald-400">
-            {passRate >= 90 ? 'Passed' : 'Pending'}
+            {totalCount > 0 && passRate >= 90 ? 'Passed' : 'Pending'}
           </div>
           <div className="text-xs text-slate-400 pt-1">Release sign-off verification</div>
         </SpotlightCard>
@@ -196,18 +218,20 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
           />
           <button
             type="submit"
-            disabled={!newTestTitle.trim()}
+            disabled={!newTestTitle.trim() || saving || scenarios.offline}
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold shrink-0 transition-all shadow-md shadow-blue-600/20"
           >
-            + Add Test
+            {saving ? 'Adding…' : '+ Add Test'}
           </button>
         </form>
+        <StationWriteError error={writeError} />
       </GlassCard>
 
       {/* Scenarios List */}
       {activeTab === 'scenarios' && (
         <div className="space-y-4">
-          {state.testScenarios.length === 0 ? (
+          <StationLoadState loading={scenarios.loading} error={scenarios.error} offline={scenarios.offline} onRetry={scenarios.reload} noun="test scenarios" />
+          {scenarios.loading || scenarios.error ? null : totalCount === 0 ? (
             <GlassCard className="p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto">
                 <FileCheck className="w-6 h-6" />
@@ -219,7 +243,7 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
             </GlassCard>
           ) : (
             <div className="divide-y divide-white/5 bg-[#0c0f18]/90 rounded-2xl border border-white/10 overflow-hidden">
-              {state.testScenarios.map((tc) => (
+              {scenarios.items.map((tc) => (
                 <div key={tc.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
@@ -233,7 +257,7 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
 
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => factoryStore.runTestScenario(tc.id, 'passed')}
+                      onClick={() => recordResult(tc, 'passed')}
                       className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
                         tc.status === 'passed'
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
@@ -244,7 +268,7 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
                       <span>Pass</span>
                     </button>
                     <button
-                      onClick={() => factoryStore.runTestScenario(tc.id, 'failed')}
+                      onClick={() => recordResult(tc, 'failed')}
                       className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
                         tc.status === 'failed'
                           ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
@@ -285,7 +309,7 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
             />
             <button
               onClick={handleGenerateScenarios}
-              disabled={generating}
+              disabled={generating || scenarios.offline}
               className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-600/30 flex items-center gap-2"
             >
               {generating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}

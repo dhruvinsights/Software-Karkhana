@@ -17,9 +17,18 @@ import {
 } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
 import { ADR } from '../../types/factory';
+import { stationsApi, useStationList, ApiAdr } from '../../lib/stationsApi';
+import { StationLoadState, StationWriteError } from './StationBanners';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { GlassCard } from '../reactbits/GlassCard';
+
+const ADR_STATUS_STYLE: Record<ADR['status'], string> = {
+  proposed: 'bg-blue-500/10 border-blue-500/20 text-blue-300',
+  accepted: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+  rejected: 'bg-rose-500/10 border-rose-500/20 text-rose-300',
+  superseded: 'bg-slate-500/10 border-slate-500/20 text-slate-400',
+};
 
 interface ArchitectureStudioViewProps {
   state: FactoryState;
@@ -27,40 +36,41 @@ interface ArchitectureStudioViewProps {
 
 export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ state }) => {
   const [activeTab, setActiveTab] = useState<'adrs' | 'diagram' | 'contracts'>('adrs');
-  const [selectedAdrId, setSelectedAdrId] = useState<string>(state.adrs[0]?.id || '');
   const [newAdrTitle, setNewAdrTitle] = useState('');
   const [newAdrDecision, setNewAdrDecision] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [writeError, setWriteError] = useState<string | null>(null);
 
   const selectedProject = state.projects.find((p) => p.id === state.selectedProjectId) || state.projects[0];
-  const activeDiagram = selectedProject
-    ? state.diagrams.find((d) => d.projectId === selectedProject.id) || state.diagrams[0]
-    : undefined;
-  const selectedAdr = state.adrs.find((a) => a.id === selectedAdrId) || state.adrs[0];
+  const adrs = useStationList<ApiAdr>(selectedProject?.id, stationsApi.listAdrs);
 
-  const handleCreateAdr = (e: React.FormEvent) => {
+  const handleCreateAdr = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdrTitle.trim()) return;
+    if (!newAdrTitle.trim() || !selectedProject || adrs.offline) return;
+    setSaving(true);
+    setWriteError(null);
+    try {
+      const created = await stationsApi.createAdr(selectedProject.id, {
+        title: newAdrTitle.trim(),
+        decision: newAdrDecision.trim(),
+      });
+      adrs.upsert(created);
+      setNewAdrTitle('');
+      setNewAdrDecision('');
+    } catch (err) {
+      setWriteError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    const newAdr: ADR = {
-      id: `adr-${Date.now().toString().slice(-4)}`,
-      projectId: selectedProject?.id || '',
-      number: state.adrs.length + 1,
-      title: newAdrTitle.trim(),
-      status: 'accepted',
-      context: 'Documented during system architecture review.',
-      decision: newAdrDecision.trim() || 'Adopted standardized modular architecture contract.',
-      rationale: 'Scalability, reliability, and clear interface boundaries.',
-      consequences: ['Enforces bounded memory allocations and strict typing.'],
-      author: state.members[0]?.name || 'Staff Architect',
-      date: new Date().toISOString().split('T')[0],
-      affectedComponents: ['core_service', 'ledger_engine'],
-    };
-
-    state.adrs.push(newAdr);
-    factoryStore.logAudit('Recorded Architecture Decision (ADR)', `Created ADR-${newAdr.number}: "${newAdr.title}"`);
-    setNewAdrTitle('');
-    setNewAdrDecision('');
-    setSelectedAdrId(newAdr.id);
+  const changeStatus = async (adr: ApiAdr, status: ADR['status']) => {
+    setWriteError(null);
+    try {
+      adrs.upsert(await stationsApi.updateAdr(adr.id, { status }));
+    } catch (err) {
+      setWriteError((err as Error).message);
+    }
   };
 
   if (!selectedProject) {
@@ -111,7 +121,7 @@ export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ 
               activeTab === 'adrs' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'text-slate-400 hover:text-white'
             }`}
           >
-            ADR Registry ({state.adrs.length})
+            ADR Registry ({adrs.items.length})
           </button>
           <button
             onClick={() => setActiveTab('diagram')}
@@ -139,7 +149,7 @@ export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ 
             <Sparkles className="w-4 h-4 text-blue-400" />
             <h3 className="text-sm font-semibold text-white">Record Architecture Decision (ADR)</h3>
           </div>
-          <span className="text-xs font-mono text-slate-400">Durable Immutable Contract</span>
+          <span className="text-xs font-mono text-slate-400">Saved to the project and recorded in the ledger</span>
         </div>
         <form onSubmit={handleCreateAdr} className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -160,17 +170,19 @@ export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ 
           </div>
           <button
             type="submit"
-            disabled={!newAdrTitle.trim()}
+            disabled={!newAdrTitle.trim() || saving || adrs.offline}
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-600/20"
           >
-            + Record ADR
+            {saving ? 'Recording…' : '+ Record ADR'}
           </button>
+          <StationWriteError error={writeError} />
         </form>
       </GlassCard>
 
       {activeTab === 'adrs' && (
-        <div>
-          {state.adrs.length === 0 ? (
+        <div className="space-y-4">
+          <StationLoadState loading={adrs.loading} error={adrs.error} offline={adrs.offline} onRetry={adrs.reload} noun="ADRs" />
+          {adrs.loading || adrs.error ? null : adrs.items.length === 0 ? (
             <GlassCard className="p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto">
                 <FileText className="w-6 h-6" />
@@ -182,11 +194,11 @@ export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ 
             </GlassCard>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {state.adrs.map((adr) => (
+              {adrs.items.map((adr) => (
                 <SpotlightCard key={adr.id} className="p-6 space-y-3 bg-[#0c0f18]/90 border border-white/10 hover:border-blue-500/30">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs text-blue-400 font-semibold">ADR-0{adr.number}</span>
-                    <span className="text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">
+                    <span className="font-mono text-xs text-blue-400 font-semibold">{adr.key}</span>
+                    <span className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border font-medium ${ADR_STATUS_STYLE[adr.status]}`}>
                       {adr.status}
                     </span>
                   </div>
@@ -196,6 +208,21 @@ export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ 
                     <span>Author: {adr.author}</span>
                     <span>Date: {adr.date}</span>
                   </div>
+                  {adr.status === 'proposed' && (
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => changeStatus(adr, 'accepted')} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10">
+                        Accept
+                      </button>
+                      <button onClick={() => changeStatus(adr, 'rejected')} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-rose-500/30 text-rose-300 hover:bg-rose-500/10">
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                  {adr.status === 'accepted' && (
+                    <button onClick={() => changeStatus(adr, 'superseded')} className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-white/10 text-slate-300 hover:bg-white/5">
+                      Mark superseded
+                    </button>
+                  )}
                 </SpotlightCard>
               ))}
             </div>
