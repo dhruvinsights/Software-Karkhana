@@ -62,6 +62,8 @@ class InviteIn(BaseModel):
 
 
 class AcceptIn(BaseModel):
+    """Request body for accepting a workspace invite."""
+
     token: str = Field(min_length=8, max_length=200)
 
 
@@ -197,7 +199,7 @@ async def create_invite(
                 ),
             )
             email_sent = result is not None
-        except Exception:  # noqa: BLE001 - never lose the invite because mail failed
+        except Exception:
             logger.exception("Invite email to %s failed", email)
 
     return {

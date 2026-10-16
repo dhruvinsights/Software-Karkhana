@@ -25,8 +25,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-
 from app import access, db, ledger
 from app.auth import CurrentUser
 from app.models import Product, User, Workspace, WorkspaceMember
@@ -104,7 +102,7 @@ async def onboard_workspace(
 
     # The requested role lives on the membership only. ``User.role`` is never
     # written from a request: it is an account label that grants nothing.
-    user.onboarded_at = dt.datetime.now(dt.timezone.utc)
+    user.onboarded_at = dt.datetime.now(dt.UTC)
     session.add(user)
     await session.flush()
 
@@ -213,7 +211,7 @@ async def create_workspace(
 
     if payload.get("user_name"):
         user.display_name = payload["user_name"].strip()
-    user.onboarded_at = dt.datetime.now(dt.timezone.utc)
+    user.onboarded_at = dt.datetime.now(dt.UTC)
     session.add(user)
 
     # The creator owns the new workspace with the role they asked for, in this

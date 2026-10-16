@@ -29,19 +29,26 @@ Architecture
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import uuid
 from collections import defaultdict
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import CurrentUser, current_user, decode_token
+from app.auth import CurrentUser, decode_token
 from app.db import get_session, sessionmaker
 from app.models import (
     ActivityEvent,
@@ -74,7 +81,8 @@ class _Conn:
         try:
             await self.ws.send_json(data)
         except Exception:
-            pass  # stale connection — will be removed on disconnect
+            # stale connection — will be removed on disconnect
+            logger.debug("WS send failed for %s", self.user_id, exc_info=True)
 
 
 class ConnectionManager:
@@ -85,10 +93,12 @@ class ConnectionManager:
         self._rooms: dict[str, list[_Conn]] = defaultdict(list)
 
     def connect(self, conn: _Conn) -> None:
+        """Register a connection in its workspace room."""
         self._rooms[conn.workspace_id].append(conn)
         logger.info("WS connected: %s in workspace %s", conn.user_id, conn.workspace_id)
 
     def disconnect(self, conn: _Conn) -> None:
+        """Remove a connection from its workspace room, if present."""
         room = self._rooms.get(conn.workspace_id, [])
         if conn in room:
             room.remove(conn)
@@ -108,6 +118,7 @@ class ConnectionManager:
                 await conn.send(frame)
 
     def online_users(self, workspace_id: str) -> list[str]:
+        """Return the distinct user ids currently connected to a workspace."""
         return list({c.user_id for c in self._rooms.get(workspace_id, [])})
 
 
@@ -117,25 +128,35 @@ manager = ConnectionManager()
 # ── Pydantic payloads ─────────────────────────────────────────────────────────
 
 class ChannelCreate(BaseModel):
+    """Request body for creating a chat channel."""
+
     name: str = Field(min_length=1, max_length=80)
     description: str | None = None
 
 
 class DMCreate(BaseModel):
+    """Request body for opening a direct-message channel."""
+
     target_user_id: uuid.UUID
 
 
 class MessageSend(BaseModel):
+    """Request body for sending a chat message."""
+
     body: str = Field(min_length=1, max_length=4000)
     mentions: list[uuid.UUID] = Field(default_factory=list)
 
 
 class CommentCreate(BaseModel):
+    """Request body for adding a project comment."""
+
     body: str = Field(min_length=1, max_length=4000)
     mentions: list[uuid.UUID] = Field(default_factory=list)
 
 
 class ReadCursorUpdate(BaseModel):
+    """Request body for advancing a channel read cursor."""
+
     message_id: uuid.UUID
 
 
@@ -215,8 +236,9 @@ async def chat_ws(
     websocket: WebSocket,
     token: str = Query(...),
 ):
-    """
-    Connect with ?token=<jwt>.  Frames are JSON objects with a ``type`` field:
+    """Chat WebSocket endpoint; connect with ``?token=<jwt>``.
+
+    Frames are JSON objects with a ``type`` field:
 
     Client → Server
     ---------------
@@ -424,6 +446,7 @@ async def list_channels(user: CurrentUser, session: Session) -> list[dict[str, A
 
 @router.post("/channels", status_code=201)
 async def create_channel(body: ChannelCreate, user: CurrentUser, session: Session) -> dict[str, Any]:
+    """Create a workspace chat channel, rejecting duplicate names."""
     workspace_id = await _get_workspace_id(user, session)
     # Prevent duplicate channel names
     existing = await session.scalar(
@@ -552,6 +575,7 @@ async def get_messages(
     before: str | None = Query(default=None),  # ISO timestamp for pagination
     limit: int = Query(default=50, le=100),
 ) -> list[dict[str, Any]]:
+    """List a channel's messages, paginated backwards by timestamp."""
     workspace_id = await _get_workspace_id(user, session)
     await _assert_channel_access(channel_id, workspace_id, user.id, session)
 
@@ -562,7 +586,7 @@ async def get_messages(
         .limit(limit)
     )
     if before:
-        from datetime import datetime, timezone
+        from datetime import datetime
         ts = datetime.fromisoformat(before)
         q = q.where(ChatMessage.created_at < ts)
 
@@ -626,6 +650,7 @@ async def mark_read(
     user: CurrentUser,
     session: Session,
 ) -> dict[str, str]:
+    """Advance the caller's read cursor for a channel."""
     workspace_id = await _get_workspace_id(user, session)
     await _assert_channel_access(channel_id, workspace_id, user.id, session)
 
@@ -646,6 +671,7 @@ async def get_project_comments(
     user: CurrentUser,
     session: Session,
 ) -> list[dict[str, Any]]:
+    """List a project's comments in creation order."""
     comments = (await session.scalars(
         select(ProjectComment)
         .where(ProjectComment.project_id == project_id)
@@ -681,6 +707,7 @@ async def add_project_comment(
     user: CurrentUser,
     session: Session,
 ) -> dict[str, Any]:
+    """Add a comment to a project and notify mentioned users."""
     workspace_id = await _get_workspace_id(user, session)
 
     comment = ProjectComment(
@@ -771,6 +798,7 @@ async def get_activity(
 
 @router.post("/activity/{event_id}/read")
 async def mark_activity_read(event_id: uuid.UUID, user: CurrentUser, session: Session) -> dict[str, str]:
+    """Mark one of the caller's activity events as read."""
     ev = await session.get(ActivityEvent, event_id)
     if not ev or ev.recipient_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
@@ -781,6 +809,7 @@ async def mark_activity_read(event_id: uuid.UUID, user: CurrentUser, session: Se
 
 @router.post("/activity/read-all")
 async def mark_all_activity_read(user: CurrentUser, session: Session) -> dict[str, int]:
+    """Mark all of the caller's unread activity events in the workspace as read."""
     workspace_id = await _get_workspace_id(user, session)
     events = (await session.scalars(
         select(ActivityEvent).where(

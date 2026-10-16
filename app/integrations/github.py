@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -370,6 +370,7 @@ class GitHubOAuth:
         )
 
     async def aclose(self) -> None:
+        """Close the underlying HTTP client."""
         await self._http.aclose()
 
     async def start(self) -> DeviceFlowStart:

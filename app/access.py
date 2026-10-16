@@ -40,6 +40,7 @@ OPEN = "open"
 
 
 def is_restricted(project: Project) -> bool:
+    """Return True when the project's settings mark it as restricted-access."""
     return (project.settings or {}).get("access") == RESTRICTED
 
 

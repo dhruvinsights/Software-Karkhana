@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import subprocess
 import uuid
@@ -73,9 +74,10 @@ class FakeCP:
 def bare_repo(tmp_path):
     src = tmp_path / "src"
     shutil.copytree(DEMO, src)
-    run = lambda *a, cwd=src: subprocess.run(
-        a, cwd=cwd, check=True, capture_output=True
-    )
+
+    def run(*a, cwd=src):
+        return subprocess.run(a, cwd=cwd, check=True, capture_output=True)
+
     run("git", "init", "-q", "-b", "main")
     run("git", "add", "-A")
     run("git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
@@ -103,7 +105,9 @@ async def test_worker_reports_real_exit_code(bare_repo, monkeypatch, break_tests
     async def fake_coder(ws, **kw):
         patch = ws.root / "p.diff"
         patch.write_text(fallbacks.demo_patch())
-        subprocess.run(["git", "apply", str(patch)], cwd=ws.root, check=True)
+        await asyncio.to_thread(
+            subprocess.run, ["git", "apply", str(patch)], cwd=ws.root, check=True
+        )
         patch.unlink()
         if break_tests:  # The agent claims success but leaves a failing test.
             (ws.root / "tests" / "test_bad.py").write_text(
@@ -129,8 +133,14 @@ async def test_worker_reports_real_exit_code(bare_repo, monkeypatch, break_tests
     assert len(result.review) == 4
     assert cp.phases == ["cloning", "coding", "validating", "reviewing"]
     # The worker published nothing: the remote still has only main.
-    branches = subprocess.run(
-        ["git", "branch"], cwd=bare_repo, capture_output=True, text=True
+    branches = (
+        await asyncio.to_thread(
+            subprocess.run,
+            ["git", "branch"],
+            cwd=bare_repo,
+            capture_output=True,
+            text=True,
+        )
     ).stdout
     assert branches.strip() == "* main"
 
@@ -163,12 +173,15 @@ async def test_control_plane_publishes_patch(bare_repo, monkeypatch, tests_passe
     )
     assert out.pr_url.startswith("local://") and len(out.head_sha) == 40
     assert out.draft is (not tests_passed)  # Failing tests -> draft PR.
-    files = subprocess.run(
-        ["git", "show", "--name-only", "--format=", out.branch],
-        cwd=bare_repo,
-        capture_output=True,
-        text=True,
-        check=True,
+    files = (
+        await asyncio.to_thread(
+            subprocess.run,
+            ["git", "show", "--name-only", "--format=", out.branch],
+            cwd=bare_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
     ).stdout
     assert "invoicekit/discounts.py" in files
 

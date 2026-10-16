@@ -63,6 +63,8 @@ async def _guard_pr(session: AsyncSession, user: User, pr: PullRequest, *roles: 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
 class DeviceFlowOut(BaseModel):
+    """Response for starting the GitHub device authorization flow."""
+
     user_code: str
     verification_uri: str
     device_code: str
@@ -71,6 +73,8 @@ class DeviceFlowOut(BaseModel):
 
 
 class TokenPollOut(BaseModel):
+    """Response for polling the GitHub device flow token status."""
+
     # The token itself is never returned: it is stored encrypted server-side.
     status: str          # "pending" | "granted" | "expired" | "error"
     error: str | None = None
@@ -86,12 +90,16 @@ class AuthStatusOut(BaseModel):
 
 
 class CITriggerOut(BaseModel):
+    """Response describing a triggered CI check run."""
+
     check_run_id: int
     check_run_url: str
     status: str
 
 
 class PRStatusOut(BaseModel):
+    """Response describing a pull request and its CI status."""
+
     pr_number: int
     pr_url: str
     head_sha: str

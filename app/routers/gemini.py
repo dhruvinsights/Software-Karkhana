@@ -38,6 +38,8 @@ router = APIRouter(
 
 
 class EvaluateIdeaRequest(BaseModel):
+    """Request body for evaluating a single idea."""
+
     title: str
     problem: str = ""
     description: str = ""
@@ -45,22 +47,30 @@ class EvaluateIdeaRequest(BaseModel):
 
 
 class GenerateIdeasRequest(BaseModel):
+    """Request body for generating idea suggestions."""
+
     prompt: str = ""
     productContext: str = ""
     count: int = 3
 
 
 class GenerateAdrsRequest(BaseModel):
+    """Request body for drafting architecture decision records."""
+
     systemName: str
     requirements: str = ""
 
 
 class GenerateTasksRequest(BaseModel):
+    """Request body for breaking an epic into tasks."""
+
     epicTitle: str
     epicDescription: str = ""
 
 
 class GenerateTestsRequest(BaseModel):
+    """Request body for drafting test scenarios from acceptance criteria."""
+
     featureName: str
     acceptanceCriteria: list[str] = Field(default_factory=list)
 
@@ -128,14 +138,14 @@ async def evaluate_idea(payload: EvaluateIdeaRequest) -> dict[str, Any]:
         "engineeringRisk": risk,
         "verdict": "APPROVED" if score >= 75 else "NEEDS_REFINEMENT",
         "recommendations": [
-            f"Implement progressive schema migration on Cloud SQL PostgreSQL.",
+            "Implement progressive schema migration on Cloud SQL PostgreSQL.",
             f"Establish automated GateVerifier unlazy test contracts for {payload.title}.",
             "Deploy stateless container workers to Google Cloud Run.",
         ],
         "suggestedEpics": [
             f"Core Service API & Gateway for {payload.title}",
             f"Telemetry & Observability for {payload.title}",
-            f"Automated Integration Test Suite & Verification",
+            "Automated Integration Test Suite & Verification",
         ],
         "riskFactors": [
             "Brownfield database schema compatibility",
@@ -182,7 +192,7 @@ async def generate_ideas(payload: GenerateIdeasRequest) -> dict[str, Any]:
             "tags": ["QualityGate", "Security", "Automation"],
         },
         {
-            "title": f"One-Click Cloud Run Staging Canary",
+            "title": "One-Click Cloud Run Staging Canary",
             "problemStatement": "Staging deployments require multi-step manual cloud orchestration.",
             "targetUser": "Release Managers",
             "expectedValue": "Instant automated canary container rollout with automated rollbacks.",
@@ -241,11 +251,15 @@ async def generate_tests(payload: GenerateTestsRequest) -> dict[str, Any]:
 
 
 class CompanionMessage(BaseModel):
+    """One chat turn sent to the AI companion."""
+
     role: str
     content: str
 
 
 class CompanionContext(BaseModel):
+    """UI context (role, screen, entity) passed to the AI companion."""
+
     role: str = ""
     screen: str = ""
     entityTitle: str = ""
@@ -253,6 +267,8 @@ class CompanionContext(BaseModel):
 
 
 class CompanionRequest(BaseModel):
+    """Request body for the AI companion endpoint."""
+
     messages: list[CompanionMessage] = Field(default_factory=list)
     context: CompanionContext = Field(default_factory=CompanionContext)
 

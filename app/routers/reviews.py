@@ -295,7 +295,9 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
                     ),
                 )
             except Exception:
-                pass
+                _log.getLogger(__name__).debug(
+                    "Plain review comment also failed for PR %s", pr.number, exc_info=True
+                )
         finally:
             await gh.aclose()
     return await _pr_out(session, pr)

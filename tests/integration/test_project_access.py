@@ -99,7 +99,7 @@ async def test_only_managers_can_change_access(client):
 
 
 async def test_promoted_projects_start_restricted(client):
-    from tests.integration.test_idea_approvals import _approved_idea  # noqa: PLC0415
+    from tests.integration.test_idea_approvals import _approved_idea
 
     idea = await _approved_idea(client, "Restricted by default")
     r = await client.post(f"/api/ideas/{idea}/promote", headers=as_(PM), json={"name": "Born Restricted"})

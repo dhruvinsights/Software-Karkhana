@@ -34,7 +34,7 @@ async def _tenant(s, name: str) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
 async def test_rls_hides_other_tenants_without_any_where_clause(client):
     async with db.sessionmaker()() as s:
         ua, _, pa = await _tenant(s, "acme")
-        ub, _, pb = await _tenant(s, "globex")
+        _ub, _, pb = await _tenant(s, "globex")
         await s.commit()
 
     async with db.sessionmaker()() as s:

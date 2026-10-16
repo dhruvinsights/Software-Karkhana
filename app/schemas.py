@@ -154,7 +154,7 @@ class TokenOut(BaseModel):
     """JWT / Session token response."""
 
     access_token: str
-    token_type: str = "Bearer"
+    token_type: str = "Bearer"  # noqa: S105 - OAuth token type label, not a secret
     user: UserOut
 
 

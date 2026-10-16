@@ -14,39 +14,38 @@
 
 """Unit tests for Factory Station routers: Gemini AI, Products/Ideas, Architecture, QA, Security, DevOps."""
 
+import uuid
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi import HTTPException
-import uuid
-from unittest.mock import AsyncMock, MagicMock
 
 from app.models import User
 from app.routers.gemini import (
     EvaluateIdeaRequest,
-    GenerateIdeasRequest,
     GenerateAdrsRequest,
+    GenerateIdeasRequest,
     evaluate_idea,
-    generate_ideas,
     generate_adrs,
-)
-from app.routers.products import (
-    ProductCreatePayload,
-    IdeaCreatePayload,
-    create_product,
-    create_idea,
-    list_products,
-    list_ideas,
+    generate_ideas,
 )
 from app.routers.operations import (
-    list_adrs,
-    create_adr,
     ADRCreatePayload,
-    get_swarm_status,
-    list_qa_scenarios,
+    create_adr,
     execute_qa_test_suite,
-    list_security_findings,
-    trigger_security_scan,
+    get_swarm_status,
+    list_adrs,
     list_pipelines,
+    list_qa_scenarios,
+    list_security_findings,
     trigger_deployment,
+    trigger_security_scan,
+)
+from app.routers.products import (
+    IdeaCreatePayload,
+    ProductCreatePayload,
+    create_idea,
+    create_product,
 )
 
 

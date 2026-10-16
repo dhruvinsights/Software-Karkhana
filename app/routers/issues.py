@@ -34,6 +34,8 @@ Session = Annotated[AsyncSession, Depends(db.get_session)]
 
 
 class IssueIn(BaseModel):
+    """Request body for creating an issue."""
+
     title: str = Field(min_length=3, max_length=200)
     description: str = Field(default="", max_length=8000)
     type: str = "task"
@@ -46,6 +48,8 @@ class IssueIn(BaseModel):
 
 
 class IssuePatch(BaseModel):
+    """Request body for partially updating an issue."""
+
     title: str | None = Field(default=None, min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=8000)
     type: str | None = None
@@ -107,7 +111,7 @@ async def list_issues(
     user: CurrentUser,
     status_: Annotated[str | None, Query(alias="status")] = None,
     assignee_id: uuid.UUID | None = None,
-    type: str | None = None,  # noqa: A002 - public query parameter name
+    type: str | None = None,
     mine: bool = False,
 ) -> list[dict[str, Any]]:
     """Issues of a project, newest first."""

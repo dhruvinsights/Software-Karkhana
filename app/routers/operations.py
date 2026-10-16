@@ -17,11 +17,10 @@
 from __future__ import annotations
 
 import datetime as dt
-import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import db, ledger
@@ -40,7 +39,7 @@ _ADR_STORE: list[dict[str, Any]] = [
         "decision": "Deploy FastAPI and microservices to Google Cloud Run connected to managed Cloud SQL.",
         "consequences": "Seamless scaling, low operational overhead, built-in TLS.",
         "author": "Systems Architect",
-        "createdAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "createdAt": dt.datetime.now(dt.UTC).isoformat(),
     },
     {
         "id": "ADR-002",
@@ -50,7 +49,7 @@ _ADR_STORE: list[dict[str, Any]] = [
         "decision": "Enforce GateVerifier exit code verification prior to every git merge.",
         "consequences": "Eliminates hallucinations and regression breaks.",
         "author": "Lead Architect",
-        "createdAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "createdAt": dt.datetime.now(dt.UTC).isoformat(),
     },
 ]
 
@@ -60,7 +59,7 @@ _QA_SCENARIOS: list[dict[str, Any]] = [
         "title": "Enterprise Auth & 6-digit OTP Verification",
         "suite": "Security & Authentication",
         "status": "passed",
-        "lastRun": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "lastRun": dt.datetime.now(dt.UTC).isoformat(),
         "duration": "0.42s",
         "coverage": "98%",
     },
@@ -69,7 +68,7 @@ _QA_SCENARIOS: list[dict[str, Any]] = [
         "title": "Cloud Run Gateway & Rate Limiting",
         "suite": "Infrastructure & Gateway",
         "status": "passed",
-        "lastRun": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "lastRun": dt.datetime.now(dt.UTC).isoformat(),
         "duration": "0.35s",
         "coverage": "95%",
     },
@@ -78,7 +77,7 @@ _QA_SCENARIOS: list[dict[str, Any]] = [
         "title": "Tamper-Evident SHA-256 Ledger Append & Verification",
         "suite": "Governance & Compliance",
         "status": "passed",
-        "lastRun": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "lastRun": dt.datetime.now(dt.UTC).isoformat(),
         "duration": "0.28s",
         "coverage": "100%",
     },
@@ -92,7 +91,7 @@ _SECURITY_FINDINGS: list[dict[str, Any]] = [
         "status": "RESOLVED",
         "cve": "CWE-942",
         "remediation": "Scoped allowed origins to enterprise domain and trusted Cloud Run services.",
-        "detectedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "detectedAt": dt.datetime.now(dt.UTC).isoformat(),
     },
     {
         "id": "SEC-002",
@@ -101,7 +100,7 @@ _SECURITY_FINDINGS: list[dict[str, Any]] = [
         "status": "VERIFIED",
         "cve": "CWE-347",
         "remediation": "Enforced strict expiration checks and sub claim validation.",
-        "detectedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "detectedAt": dt.datetime.now(dt.UTC).isoformat(),
     },
 ]
 
@@ -113,7 +112,7 @@ _PIPELINES: list[dict[str, Any]] = [
         "branch": "main",
         "commit": "a4f89d2",
         "duration": "1m 12s",
-        "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "updatedAt": dt.datetime.now(dt.UTC).isoformat(),
     },
     {
         "id": "pipe-gate-02",
@@ -122,7 +121,7 @@ _PIPELINES: list[dict[str, Any]] = [
         "branch": "main",
         "commit": "a4f89d2",
         "duration": "42s",
-        "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "updatedAt": dt.datetime.now(dt.UTC).isoformat(),
     },
     {
         "id": "pipe-deploy-03",
@@ -131,7 +130,7 @@ _PIPELINES: list[dict[str, Any]] = [
         "branch": "main",
         "commit": "a4f89d2",
         "duration": "28s",
-        "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "updatedAt": dt.datetime.now(dt.UTC).isoformat(),
     },
 ]
 
@@ -147,6 +146,8 @@ async def list_adrs(user: CurrentUser) -> list[dict[str, Any]]:
 
 
 class ADRCreatePayload(BaseModel):
+    """Request body for creating an architecture decision record."""
+
     title: str
     context: str
     decision: str
@@ -170,7 +171,7 @@ async def create_adr(
         "decision": payload.decision.strip(),
         "consequences": payload.consequences.strip(),
         "author": user.display_name,
-        "createdAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "createdAt": dt.datetime.now(dt.UTC).isoformat(),
     }
     _ADR_STORE.insert(0, item)
 
@@ -223,7 +224,7 @@ async def execute_qa_test_suite(
     user: CurrentUser,
 ) -> dict[str, Any]:
     """Executes the full automated factory test suite."""
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    now = dt.datetime.now(dt.UTC).isoformat()
     for s in _QA_SCENARIOS:
         s["lastRun"] = now
         s["status"] = "passed"
@@ -262,7 +263,7 @@ async def trigger_security_scan(
     user: CurrentUser,
 ) -> dict[str, Any]:
     """Runs automated SAST / DAST vulnerability scan."""
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    now = dt.datetime.now(dt.UTC).isoformat()
     await ledger.append(
         session,
         actor=ledger.Actor.human(user),
@@ -299,7 +300,7 @@ async def trigger_deployment(
     user: CurrentUser,
 ) -> dict[str, Any]:
     """Triggers deployment to Google Cloud Run."""
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    now = dt.datetime.now(dt.UTC).isoformat()
     await ledger.append(
         session,
         actor=ledger.Actor.human(user),

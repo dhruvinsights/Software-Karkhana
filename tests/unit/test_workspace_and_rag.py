@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
-import pytest
-from unittest.mock import AsyncMock, patch
-
-from app.models import Product, User, Workspace, WorkspaceMember
 from app.routers.products import _chunk_text, _fallback_extract_spec
 
 
@@ -22,13 +17,13 @@ def test_fallback_extract_spec():
     doc_text = """
     # Cloud Telemetry Ingestion Service
     High throughput distributed telemetry ingest for microservices.
-    
+
     Features:
     - Real-time gRPC stream ingestion
     - Automated pgvector semantic indexing
     - Multi-tenant workspace isolation
     - Strict schema verification
-    
+
     Tech Stack: TypeScript, Python, FastAPI, PostgreSQL, Docker
     """
     spec = _fallback_extract_spec(doc_text, "telemetry_service.md")

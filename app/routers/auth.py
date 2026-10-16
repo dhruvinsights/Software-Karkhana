@@ -17,21 +17,19 @@
 from __future__ import annotations
 
 import datetime as dt
+import hmac
+import logging
+import os
 import re
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-import hmac
-import logging
-import os
-
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, db, ledger, otp
 from app.auth import CurrentUser, create_token, hash_password, verify_password
@@ -51,15 +49,21 @@ _OTP = otp.OtpStore()
 
 
 class SendOTPRequest(BaseModel):
+    """Request body for sending an email OTP code."""
+
     email: str
 
 
 class VerifyOTPRequest(BaseModel):
+    """Request body for verifying an email OTP code."""
+
     email: str
     code: str
 
 
 class GoogleAuthRequest(BaseModel):
+    """Request body carrying a Google Identity Services ID token."""
+
     credential: str
 
 
@@ -72,8 +76,8 @@ def _send_otp_email(to_email: str, otp_code: str) -> bool:
     Returns True when the email was dispatched, False when RESEND_API_KEY is
     not configured (local dev without secrets set).
     """
-    from app.config import get_settings  # noqa: PLC0415
-    from app.email import send_email  # noqa: PLC0415
+    from app.config import get_settings
+    from app.email import send_email
 
     settings = get_settings()
     base_url = settings.public_base_url.rstrip("/")
@@ -144,16 +148,12 @@ def _send_welcome_email(to_email: str, display_name: str) -> None:
 
     Non-blocking: failures are logged, never raised.
     """
-    from app.config import get_settings  # noqa: PLC0415
-    from app.email import send_email  # noqa: PLC0415
+    from app.config import get_settings
+    from app.email import send_email
 
     settings = get_settings()
-    base_url = settings.public_base_url.rstrip("/")
-    logo_url = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo-iPRZvqKRlb13DWnnPrieJh1ogqAfm9.png"
-    first_name = display_name.split()[0] if display_name else "there"
-    year = dt.datetime.now(dt.timezone.utc).year
 
-    html_body = f"""<!doctype html>
+    html_body = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -311,7 +311,7 @@ async def verify_otp(
         "name": user.display_name,
     })
 
-    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))
+    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))  # noqa: S106 - OAuth token type label, not a secret
 
 
 @router.post("/api/auth/google", response_model=TokenOut)
@@ -333,8 +333,8 @@ async def google_auth(
         logging.getLogger("auth").error(f"Google OAuth verification failed: {exc}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Google authentication failed: {str(exc)}",
-        )
+            detail=f"Google authentication failed: {exc!s}",
+        ) from exc
 
     email = (id_info.get("email") or "").strip().lower()
     if not email:
@@ -358,7 +358,7 @@ async def google_auth(
             avatar_url=avatar_url,
             is_active=True,
             is_verified=True,
-            onboarded_at=dt.datetime.now(dt.timezone.utc),
+            onboarded_at=dt.datetime.now(dt.UTC),
         )
         session.add(user)
         await session.flush()
@@ -383,10 +383,12 @@ async def google_auth(
         "name": user.display_name,
     })
 
-    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))
+    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))  # noqa: S106 - OAuth token type label, not a secret
 
 
 class GitHubAuthRequest(BaseModel):
+    """Request body carrying a GitHub OAuth authorization code."""
+
     code: str
 
 
@@ -490,8 +492,8 @@ async def github_auth(
         logging.getLogger("auth").error(f"GitHub OAuth error: {exc}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"GitHub authentication failed: {str(exc)}",
-        )
+            detail=f"GitHub authentication failed: {exc!s}",
+        ) from exc
 
     stmt = select(User).where(User.email == email)
     user = (await session.execute(stmt)).scalar_one_or_none()
@@ -506,7 +508,7 @@ async def github_auth(
             avatar_url=avatar_url,
             is_active=True,
             is_verified=True,
-            onboarded_at=dt.datetime.now(dt.timezone.utc),
+            onboarded_at=dt.datetime.now(dt.UTC),
         )
         session.add(user)
         await session.flush()
@@ -531,7 +533,7 @@ async def github_auth(
         "name": user.display_name,
     })
 
-    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))
+    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))  # noqa: S106 - OAuth token type label, not a secret
 
 
 @router.post("/api/auth/signup", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
@@ -573,7 +575,7 @@ async def signup(
         "name": user.display_name,
     })
 
-    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))
+    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))  # noqa: S106 - OAuth token type label, not a secret
 
 
 @router.post("/api/auth/login", response_model=TokenOut)
@@ -605,7 +607,7 @@ async def login(
         "name": user.display_name,
     })
 
-    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))
+    return TokenOut(access_token=token, token_type="Bearer", user=UserOut.model_validate(user))  # noqa: S106 - OAuth token type label, not a secret
 
 
 @router.get("/api/auth/me", response_model=UserOut)

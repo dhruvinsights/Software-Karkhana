@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 import uuid
 from typing import Annotated, Any
@@ -27,7 +28,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, db, ledger
-import logging
 from app.ai import llm
 from app.ai.errors import ModelError
 from app.auth import CurrentUser
@@ -36,8 +36,6 @@ from app.models import (
     Product,
     ProductDocument,
     ProductDocumentChunk,
-    Project,
-    Workspace,
 )
 from app.schemas import (
     DocumentExtractRequest,
@@ -51,6 +49,8 @@ Session = Annotated[AsyncSession, Depends(db.get_session)]
 
 
 class ProductCreatePayload(BaseModel):
+    """Request body for creating a product."""
+
     name: str
     code: str | None = None
     domain: str = "Cloud Services"
@@ -59,6 +59,8 @@ class ProductCreatePayload(BaseModel):
 
 
 class IdeaCreatePayload(BaseModel):
+    """Request body for submitting an idea."""
+
     title: str
     problem_statement: str
     target_user: str = "Enterprise Users"
@@ -70,6 +72,8 @@ class IdeaCreatePayload(BaseModel):
 
 
 class IdeaUpdatePayload(BaseModel):
+    """Request body for updating an idea's fields or status."""
+
     title: str | None = None
     problem_statement: str | None = None
     expected_value: str | None = None
@@ -142,7 +146,7 @@ async def create_product(
         payload={"name": product.name, "code": product.code, "domain": product.domain},
     )
 
-    created_str = (product.created_at or dt.datetime.now(dt.timezone.utc)).isoformat()
+    created_str = (product.created_at or dt.datetime.now(dt.UTC)).isoformat()
     return {
         "id": str(product.id),
         "workspaceId": str(product.workspace_id) if product.workspace_id else None,
@@ -232,7 +236,7 @@ async def create_idea(
         payload={"title": idea.title, "target_user": idea.target_user},
     )
 
-    created_str = (idea.created_at or dt.datetime.now(dt.timezone.utc)).isoformat()
+    created_str = (idea.created_at or dt.datetime.now(dt.UTC)).isoformat()
     return {
         "id": str(idea.id),
         "productId": str(idea.product_id) if idea.product_id else None,
@@ -262,7 +266,7 @@ async def update_idea(
     try:
         idea_uuid = uuid.UUID(idea_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid idea ID format.")
+        raise HTTPException(status_code=400, detail="Invalid idea ID format.") from None
 
     idea = await session.scalar(select(Idea).where(Idea.id == idea_uuid))
     if not idea:
