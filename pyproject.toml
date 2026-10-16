@@ -26,6 +26,8 @@ dependencies = [
     "asyncpg>=0.30.0,<1.0.0",
     "pgvector>=0.3.6,<1.0.0",
     "httpx>=0.28,<1.0",
+    # Encryption at rest for stored OAuth tokens (app/crypto.py).
+    "cryptography>=43.0,<51.0",
     # Transactional email via Resend.
     "resend>=2.0.0,<3.0.0",
     # LangChain RAG pipeline (Ollama + FAISS + Google GenAI).

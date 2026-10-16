@@ -40,7 +40,6 @@ from app.models import (
 )
 from app.process import Event, Role
 from app.routers.common import advance_or_http, get_or_404
-from app.services.evaluation import run_evaluation
 from app.schemas import (
     ApprovalOut,
     BatchApprovalOut,
@@ -54,6 +53,7 @@ from app.schemas import (
     ProjectOut,
     TaskOut,
 )
+from app.services.evaluation import run_evaluation
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])

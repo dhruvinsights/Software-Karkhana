@@ -89,7 +89,9 @@ async def seed(domain: str, firebase: bool, history: bool) -> None:
             users[role] = u
         await s.flush()
 
-        ws = await s.scalar(select(Workspace).where(Workspace.slug == DEMO_WORKSPACE_SLUG))
+        ws = await s.scalar(
+            select(Workspace).where(Workspace.slug == DEMO_WORKSPACE_SLUG)
+        )
         if ws is None:
             ws = Workspace(
                 id=uuid.uuid4(),
@@ -105,7 +107,8 @@ async def seed(domain: str, firebase: bool, history: bool) -> None:
         for u, role in members:
             m = await s.scalar(
                 select(WorkspaceMember).where(
-                    WorkspaceMember.workspace_id == ws.id, WorkspaceMember.user_id == u.id
+                    WorkspaceMember.workspace_id == ws.id,
+                    WorkspaceMember.user_id == u.id,
                 )
             )
             if m is None:

@@ -105,7 +105,11 @@ _WORKER_SETTINGS = (
 
 def build_worker_env(run_id: uuid.UUID) -> dict[str, str]:
     """The complete environment for a local worker: an allowlist, never ``os.environ``."""
-    env = {k: v for k, v in os.environ.items() if k in _OS_PASSTHROUGH or k.startswith("LC_")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k in _OS_PASSTHROUGH or k.startswith("LC_")
+    }
     settings = get_settings()
     for field in _WORKER_SETTINGS:
         value = getattr(settings, field, None)

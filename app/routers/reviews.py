@@ -280,8 +280,10 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
         except Exception:
             # Fall back to plain comment if inline review fails
             import logging as _log
+
             _log.getLogger(__name__).warning(
-                "Inline review failed for PR %s, falling back to plain comment", pr.number
+                "Inline review failed for PR %s, falling back to plain comment",
+                pr.number,
             )
             try:
                 await gh.post_review(
@@ -313,9 +315,7 @@ async def pr_diff(pr_id: uuid.UUID, session: Session, user: AnyRole) -> dict[str
     run = await get_or_404(session, Run, pr.run_id)
     files = parse_unified_diff(run.patch or "")
     rows = (
-        await session.scalars(
-            select(ReviewComment).where(ReviewComment.pr_id == pr.id)
-        )
+        await session.scalars(select(ReviewComment).where(ReviewComment.pr_id == pr.id))
     ).all()
     rank = {"high": 0, "medium": 1, "low": 2}
     comments = [

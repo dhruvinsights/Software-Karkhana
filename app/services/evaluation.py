@@ -43,7 +43,12 @@ async def run_evaluation(project_id: uuid.UUID) -> None:
         if project is None:
             return
         try:
-            hits = await memory.retrieve(session, project.idea_text)
+            hits = await memory.retrieve(
+                session,
+                project.idea_text,
+                project_id=project.id,
+                workspace_id=project.workspace_id,
+            )
             result = await evaluator.evaluate(
                 idea_text=project.idea_text,
                 project_name=project.name,

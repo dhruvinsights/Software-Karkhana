@@ -30,7 +30,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import access, db, ledger
 from app.auth import CurrentUser
 from app.models import Product, User, Workspace, WorkspaceMember
-from app.process import Role
 from app.schemas import (
     WorkspaceOnboard,
     WorkspaceOut,
@@ -41,14 +40,6 @@ _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 router = APIRouter(tags=["auth"])
 
 router = APIRouter(tags=["workspaces"])
-
-
-def _creator_role(requested: str | None, user: User) -> str:
-    """The workspace creator's role in it: the requested one if it is real."""
-    valid = {r.value for r in Role}
-    if requested in valid:
-        return requested
-    return user.role if user.role in valid else Role.PM.value
 
 
 def _slugify(text: str) -> str:
@@ -90,7 +81,7 @@ async def onboard_workspace(
         id=uuid.uuid4(),
         workspace_id=workspace.id,
         user_id=user.id,
-        role=_creator_role(payload.role, user),
+        role="pm",
         is_owner=True,
     )
     session.add(member)
@@ -128,7 +119,7 @@ async def onboard_workspace(
             "workspace_name": workspace.name,
             "slug": workspace.slug,
             "security_posture": workspace.security_posture,
-            "role": member.role,
+            "role": "pm",
         },
     )
 
@@ -231,7 +222,7 @@ async def create_workspace(
         id=uuid.uuid4(),
         workspace_id=workspace.id,
         user_id=user.id,
-        role=_creator_role(payload.get("user_role"), user),
+        role="pm",
         is_owner=True,
     )
     session.add(member)

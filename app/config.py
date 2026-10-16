@@ -27,6 +27,8 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEV_SESSION_JWT_SECRET = "dev-session-secret-change-me"  # noqa: S105 - dev default
+
 
 class Settings(BaseSettings):
     """Process-wide settings. Use :func:`get_settings` to read them."""
@@ -92,11 +94,6 @@ class Settings(BaseSettings):
     auth_mode: Literal["firebase", "dev"] = "dev"
     allow_dev_auth_on_cloud_run: bool = False
     firebase_project_id: str | None = None
-    # Signs user session JWTs (OTP / password / OAuth sign-in). A separate key
-    # from RUN_HMAC_SECRET, so a worker token can never become a session.
-    # Required outside AUTH_MODE=dev; in dev an ephemeral per-process key is
-    # generated when it is unset (sessions then end on restart).
-    session_jwt_secret: str | None = Field(default=None, repr=False)
 
     # --- Agent runs ------------------------------------------------------
     # "ax" submits the run as a google/ax Task on Kubernetes + Agent Substrate.
@@ -111,6 +108,11 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8080"
     # Signs per-run worker callback tokens ONLY. Never used for user sessions.
     run_hmac_secret: str = Field(default="dev-only-change-me", repr=False)
+    # Signs user session JWTs (OTP / password / OAuth sign-in) only. A separate
+    # key from RUN_HMAC_SECRET, so a worker run token can never become a
+    # session. The default works only in AUTH_MODE=dev (app.auth refuses it in
+    # any other mode) and is refused outright on Cloud Run.
+    session_jwt_secret: str = Field(default=DEV_SESSION_JWT_SECRET, repr=False)
     # One run at a time keeps the shared project stage simple for the demo. The
     # multi-run transitions are still tested with MAX_ACTIVE_RUNS_PER_PROJECT=3.
     max_active_runs_per_project: int = 1
@@ -121,6 +123,10 @@ class Settings(BaseSettings):
     github_repo: str | None = None  # "owner/name" of the demo repo
     github_base_branch: str = "main"
     github_api_url: str = "https://api.github.com"
+    # Comma-separated Fernet keys for encrypting stored OAuth tokens; the first
+    # encrypts, all decrypt (rotation). Required outside AUTH_MODE=dev. See
+    # app/crypto.py.
+    token_encryption_keys: str | None = Field(default=None, repr=False)
     # Optional local clone source for tests and offline demos.
     demo_repo_url: str | None = None
 
@@ -175,14 +181,20 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RUN_HMAC_SECRET must come from Secret Manager on Cloud Run."
             )
-        if on_cloud_run_service and self.auth_mode != "dev":
-            if not self.session_jwt_secret:
-                raise ValueError(
-                    "SESSION_JWT_SECRET must come from Secret Manager on Cloud Run."
-                )
-        if self.session_jwt_secret and self.session_jwt_secret == self.run_hmac_secret:
+        if on_cloud_run_service and (
+            not self.session_jwt_secret
+            or self.session_jwt_secret == DEV_SESSION_JWT_SECRET
+        ):
             raise ValueError(
-                "SESSION_JWT_SECRET must differ from RUN_HMAC_SECRET."
+                "SESSION_JWT_SECRET must come from Secret Manager on Cloud Run "
+                "(and must not use the development default)."
+            )
+        if self.session_jwt_secret and self.session_jwt_secret == self.run_hmac_secret:
+            raise ValueError("SESSION_JWT_SECRET must differ from RUN_HMAC_SECRET.")
+        # The API service stores OAuth tokens; jobs (worker, migrate) do not.
+        if on_cloud_run_service and not self.token_encryption_keys:
+            raise ValueError(
+                "TOKEN_ENCRYPTION_KEYS must come from Secret Manager on Cloud Run."
             )
         return self
 

@@ -61,17 +61,23 @@ def decide(
     if not restricted or privileged:
         return True, ""
     if member_stations is None:
-        return False, "This project is restricted to its team. Ask the project lead for an invite."
+        return (
+            False,
+            "This project is restricted to its team. Ask the project lead for an invite.",
+        )
     needed = [w for w in wanted if w]
     if needed and not set(needed) & set(member_stations):
         names = " or ".join(needed)
-        return False, f"Your access to this project does not include the {names} station."
+        return (
+            False,
+            f"Your access to this project does not include the {names} station.",
+        )
     return True, ""
 
 
-# The account-level role new sign-ups get. ``User.role`` is only a display
-# label and the default for workspaces a person creates; it grants nothing.
-DEFAULT_ACCOUNT_ROLE = "support"
+# The account-level role new sign-ups get (a non-manager role). ``User.role``
+# is only a display label; it grants nothing anywhere.
+DEFAULT_ACCOUNT_ROLE = "developer"
 
 
 async def workspace_member(
@@ -82,7 +88,8 @@ async def workspace_member(
         return None
     return await session.scalar(
         select(WorkspaceMember).where(
-            WorkspaceMember.workspace_id == workspace_id, WorkspaceMember.user_id == user.id
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user.id,
         )
     )
 
@@ -97,7 +104,9 @@ def _member_role(member: WorkspaceMember | None) -> str:
     return role
 
 
-async def effective_role(session: AsyncSession, user: Any, workspace_id: uuid.UUID | None) -> str:
+async def effective_role(
+    session: AsyncSession, user: Any, workspace_id: uuid.UUID | None
+) -> str:
     """The role that counts for permissions: the one held *in that workspace*.
 
     ``User.role`` (the account label) never grants authority. A non-member
@@ -185,7 +194,9 @@ async def _is_privileged(session: AsyncSession, user: Any, project: Project) -> 
     return await effective_role(session, user, project.workspace_id) in MANAGER_ROLES
 
 
-async def my_access(session: AsyncSession, user: Any, project: Project) -> dict[str, Any]:
+async def my_access(
+    session: AsyncSession, user: Any, project: Project
+) -> dict[str, Any]:
     """What the signed-in user can do on this project, for the UI and the guards."""
     privileged = await _is_privileged(session, user, project)
     member = await session.scalar(
@@ -232,7 +243,10 @@ async def ensure_station(
             )
         )
         if in_workspace is None:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this project's workspace.")
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "You are not a member of this project's workspace.",
+            )
         return
     ok, why = decide(
         restricted=True,
@@ -250,12 +264,21 @@ def visible_projects(user: Any):
     Their workspaces only (plus legacy projects with no workspace), and within
     those, restricted projects only when they are on the team or manage it.
     """
-    my_workspaces = select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
-    my_projects = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
-    not_restricted = func.coalesce(Project.settings["access"].astext, OPEN) != RESTRICTED
+    my_workspaces = select(WorkspaceMember.workspace_id).where(
+        WorkspaceMember.user_id == user.id
+    )
+    my_projects = select(ProjectMember.project_id).where(
+        ProjectMember.user_id == user.id
+    )
+    not_restricted = (
+        func.coalesce(Project.settings["access"].astext, OPEN) != RESTRICTED
+    )
     managed_workspaces = select(WorkspaceMember.workspace_id).where(
         WorkspaceMember.user_id == user.id,
-        or_(WorkspaceMember.is_owner.is_(True), WorkspaceMember.role.in_(tuple(MANAGER_ROLES))),
+        or_(
+            WorkspaceMember.is_owner.is_(True),
+            WorkspaceMember.role.in_(tuple(MANAGER_ROLES)),
+        ),
     )
     manages = or_(
         Project.lead_id == user.id,
@@ -268,7 +291,9 @@ def visible_projects(user: Any):
     )
 
 
-async def get_visible_project(session: AsyncSession, user: Any, project_id: uuid.UUID) -> Project:
+async def get_visible_project(
+    session: AsyncSession, user: Any, project_id: uuid.UUID
+) -> Project:
     """Loads a project or 404s; restricted ones 403 for people outside the team."""
     project = await session.get(Project, project_id)
     if project is None:

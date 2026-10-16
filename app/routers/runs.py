@@ -38,7 +38,6 @@ from app.models import (
     ReviewComment,
     Run,
     Task,
-    User,
 )
 from app.process import Event, Role
 from app.review.diff import anchor_comments
@@ -250,7 +249,9 @@ async def run_spec(
         repo=s.github_repo,
         repo_url=s.demo_repo_url,
         base_branch=s.github_base_branch,
-        context=context_notes.as_notes(await context_notes.recent(session, run.project_id)),
+        context=context_notes.as_notes(
+            await context_notes.recent(session, run.project_id)
+        ),
     )
 
 

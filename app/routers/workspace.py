@@ -30,8 +30,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.providers import gemini, ollama
 from app import access
+from app.ai.providers import gemini, ollama
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session

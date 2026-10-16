@@ -36,9 +36,8 @@ from app.models import (
     ReviewComment,
     Run,
     Task,
-    User,
 )
-from app.process import STAGE_INDEX, STAGES, Role
+from app.process import STAGE_INDEX, STAGES
 from app.routers.common import get_or_404
 from app.schemas import ChainOut, LearningOut, LedgerOut, StageOut, TaskOut, UserOut
 
@@ -50,7 +49,7 @@ BOARD_COLUMNS = ("backlog", "ready", "in_progress", "review", "done")
 @router.get("/prs")
 async def list_prs(
     session: Session,
-    _: CurrentUser,
+    user: CurrentUser,
     project_id: uuid.UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
 ) -> list[dict]:
@@ -141,14 +140,21 @@ async def board(project_id: uuid.UUID, session: Session, user: CurrentUser) -> d
 @router.get("/ledger", response_model=list[LedgerOut])
 async def list_ledger(
     session: Session,
-    _: CurrentUser,
+    user: CurrentUser,
     project_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[LedgerEntry]:
     """Newest ledger entries, optionally for one project."""
     q = select(LedgerEntry).order_by(LedgerEntry.seq.desc()).limit(limit)
     if project_id:
+        await access.get_visible_project(session, user, project_id)
         q = q.where(LedgerEntry.project_id == project_id)
+    else:
+        q = q.where(
+            LedgerEntry.project_id.in_(
+                select(Project.id).where(access.visible_projects(user))
+            )
+        )
     return list((await session.scalars(q)).all())
 
 
@@ -166,11 +172,16 @@ async def verify_ledger(session: Session, _: CurrentUser) -> ChainOut:
 
 
 @router.get("/learnings", response_model=list[LearningOut])
-async def list_learnings(session: Session, _: CurrentUser) -> list[Learning]:
-    """All learnings, newest first."""
+async def list_learnings(session: Session, user: CurrentUser) -> list[Learning]:
+    """Learnings attached to projects the caller may access."""
     return list(
         (
-            await session.scalars(select(Learning).order_by(Learning.created_at.desc()))
+            await session.scalars(
+                select(Learning)
+                .join(Project, Project.id == Learning.project_id)
+                .where(access.visible_projects(user))
+                .order_by(Learning.created_at.desc())
+            )
         ).all()
     )
 
@@ -187,8 +198,16 @@ async def verify_learning(
     The caller must be a lead or director in the learning's project workspace.
     """
     lr = await get_or_404(session, Learning, learning_id)
-    project = await get_or_404(session, Project, lr.project_id)
-    await access.require_project_role(session, user, project, Role.LEAD, Role.DIRECTOR)
+    project = await session.get(Project, lr.project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning not found")
+    role = await access.effective_role(session, user, project.workspace_id)
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning not found")
+    if role not in {"lead", "director"}:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only a lead or director verifies learnings"
+        )
     if lr.status != "unverified":
         raise HTTPException(
             status.HTTP_409_CONFLICT, f"Learning is already {lr.status}"

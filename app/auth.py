@@ -38,7 +38,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
+from app.config import DEV_SESSION_JWT_SECRET, get_settings
 from app.db import get_session
 from app.models import User
 
@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Password Hashing (PBKDF2-HMAC-SHA256)
 # ---------------------------------------------------------------------------
+
 
 def hash_password(password: str) -> str:
     """Hashes a password with a random 16-byte salt using PBKDF2-HMAC-SHA256."""
@@ -74,6 +75,7 @@ def verify_password(plain_password: str, hashed_password: str | None) -> bool:
 # ---------------------------------------------------------------------------
 # JWT / Signed Token Generation & Verification
 # ---------------------------------------------------------------------------
+
 
 def _b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
@@ -103,12 +105,21 @@ def _session_secret() -> bytes:
     global _EPHEMERAL_DEV_SECRET
     settings = get_settings()
     configured = getattr(settings, "session_jwt_secret", None)
+    if configured == DEV_SESSION_JWT_SECRET:
+        # The built-in development default is only good for AUTH_MODE=dev.
+        if settings.auth_mode != "dev":
+            raise AuthConfigError(
+                "SESSION_JWT_SECRET is the development default; refusing outside AUTH_MODE=dev"
+            )
+        return configured.encode("utf-8")
     if configured:
         if configured == getattr(settings, "run_hmac_secret", None):
             raise AuthConfigError("SESSION_JWT_SECRET must differ from RUN_HMAC_SECRET")
         return configured.encode("utf-8")
     if settings.auth_mode != "dev":
-        raise AuthConfigError("SESSION_JWT_SECRET is not set; refusing to sign or verify sessions")
+        raise AuthConfigError(
+            "SESSION_JWT_SECRET is not set; refusing to sign or verify sessions"
+        )
     if _EPHEMERAL_DEV_SECRET is None:
         logger.warning(
             "SESSION_JWT_SECRET is unset: using an ephemeral dev-only key. "
@@ -123,12 +134,19 @@ def create_token(payload: dict[str, Any], expires_in_seconds: int = 86400 * 7) -
     secret = _session_secret()
     now = int(time.time())
     header = {"alg": "HS256", "typ": "JWT"}
-    body = {**payload, "typ": SESSION_TOKEN_TYPE, "exp": now + expires_in_seconds, "iat": now}
+    body = {
+        **payload,
+        "typ": SESSION_TOKEN_TYPE,
+        "exp": now + expires_in_seconds,
+        "iat": now,
+    }
 
     header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
     body_bytes = json.dumps(body, separators=(",", ":")).encode("utf-8")
 
-    signing_input = f"{_b64url_encode(header_bytes)}.{_b64url_encode(body_bytes)}".encode()
+    signing_input = (
+        f"{_b64url_encode(header_bytes)}.{_b64url_encode(body_bytes)}".encode()
+    )
     signature = hmac.new(secret, signing_input, hashlib.sha256).digest()
 
     return f"{signing_input.decode('utf-8')}.{_b64url_encode(signature)}"
@@ -144,7 +162,9 @@ def decode_token(token: str) -> dict[str, Any] | None:
     try:
         secret = _session_secret()
     except AuthConfigError:
-        logger.error("Session verification refused: SESSION_JWT_SECRET is not configured")
+        logger.error(
+            "Session verification refused: SESSION_JWT_SECRET is not configured"
+        )
         return None
     try:
         parts = token.split(".")
@@ -214,7 +234,9 @@ async def current_user(
             if claims.get("email"):
                 email = claims["email"]
         else:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "Invalid or expired token"
+            )
     elif x_dev_user and settings.auth_mode == "dev":
         # The dev header is trusted only in dev mode. In any other mode it is
         # ignored, so it can never be used to sign in as someone else.
@@ -225,7 +247,9 @@ async def current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in required")
 
     if not email:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Could not determine identity")
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Could not determine identity"
+        )
 
     user = await session.scalar(select(User).where(User.email == email.lower()))
     if user is None:
