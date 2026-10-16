@@ -33,6 +33,25 @@ created from an approved idea start restricted. Each teammate has *stations*
 server checks them in `app.access`, and the UI hides what the server would refuse.
 Nobody outside a project's workspace can see it.
 
+## Secrets at rest
+
+GitHub OAuth tokens (device flow, `repo` scope) are stored only in
+`github_tokens.token`, encrypted with Fernet as `fernet:v1:<ciphertext>`
+(`app/crypto.py`). Only `app/integrations/github_tokens.py` reads or writes the
+table. The token is never returned by an API (`/api/github/auth/poll` answers
+`granted`; `/api/github/auth/status` reports `connected`), never logged, and
+never put in a worker's environment: the worker holds only its `RUN_TOKEN`.
+A `CHECK (token LIKE 'fernet:v1:%')` constraint (migration 013) refuses
+plaintext writes at the database.
+
+Keys come from `TOKEN_ENCRYPTION_KEYS` (Secret Manager `token-encryption-keys`
+on Cloud Run): comma-separated Fernet keys, first encrypts, all decrypt. The
+API refuses to start on Cloud Run without it; `AUTH_MODE=dev` falls back to an
+ephemeral key with a warning. Rotation: add a secret version `NEW,OLD`, deploy,
+run `python -m app.scripts.reencrypt_tokens` as the schema owner (also encrypts
+any legacy plaintext rows and validates the constraint), then add a version
+`NEW`. Planned: Cloud KMS envelope encryption behind `app.crypto.load_keys`.
+
 ## Rules (enforced by `make arch` and CI)
 
 1. Routers never import each other. Shared logic lives in `app.services`.
