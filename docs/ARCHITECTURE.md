@@ -33,6 +33,23 @@ created from an approved idea start restricted. Each teammate has *stations*
 server checks them in `app.access`, and the UI hides what the server would refuse.
 Nobody outside a project's workspace can see it.
 
+**Roles are per workspace.** Authority is the caller's `WorkspaceMember.role` in
+the workspace of the resource being acted on (`access.effective_role`,
+`access.require_project_role`); a workspace owner counts at least as `pm`.
+`User.role` is an account label for the UI only and grants nothing, and a
+resource with no workspace grants no role to anyone. There is no global
+`require_role`. New projects and ideas always go into a workspace the caller
+belongs to (`access.resolve_workspace`). Sign-up never picks a manager role,
+and creating a workspace never changes the account label.
+
+**Sign-in.** `X-Dev-User` is honoured only when `AUTH_MODE=dev`. Session JWTs
+are signed with `SESSION_JWT_SECRET` and carry `typ: session`; worker callback
+tokens are HMACs under `RUN_HMAC_SECRET`. The two keys must differ, so neither
+token is accepted as the other. Outside dev mode the built-in session default
+is refused (fail closed). The local runner gives the worker an allowlisted
+environment (`app.runner.local.build_worker_env`) and tells it not to read
+`.env`, so no platform secret reaches untrusted code.
+
 ## Secrets at rest
 
 GitHub OAuth tokens (device flow, `repo` scope) are stored only in

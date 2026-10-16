@@ -42,7 +42,7 @@ RBAC + ABAC (attribute-based access control):
 4. **Input handling**: Pydantic limits on every text field; uploaded or repo-derived text is never rendered as HTML (React escaping only; Markdown rendered with a sanitizer).
 5. **HTTP hardening**: CSP without `unsafe-inline`, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`, CORS allow-list from settings.
 6. **Audit**: every state change writes a ledger entry with actor and org; admin reads of other users' data are logged.
-7. **Secrets rotation**: documented procedure for `RUN_HMAC_SECRET`, `GITHUB_TOKEN`, `GEMINI_API_KEY`; GitHub token scoped to the one repository, contents + pull requests only.
+7. **Secrets rotation**: documented procedure for `RUN_HMAC_SECRET` (worker run tokens only), `SESSION_JWT_SECRET` (user sessions only; rotating it signs everyone out), `GITHUB_TOKEN`, `GEMINI_API_KEY`; GitHub token scoped to the one repository, contents + pull requests only.
 8. **Backups and encryption**: Cloud SQL encryption at rest (default) and in transit; backups encrypted.
 9. **Pen test**: external or internal test of auth, tenancy and the worker sandbox before general availability; findings tracked to closure.
 10. **Privacy**: personal data inventory (email, display name, activity); data subject export and deletion path.
