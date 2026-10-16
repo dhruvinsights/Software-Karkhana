@@ -46,6 +46,17 @@ import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
+import { stationsApi, useStationList, ApiTestScenario } from '../../lib/stationsApi';
+
+/** Server-side QA scenario count for the project card. */
+const ScenarioSummary: React.FC<{ projectId: string }> = ({ projectId }) => {
+  const { items, loading, error, offline } = useStationList<ApiTestScenario>(projectId, stationsApi.listScenarios);
+  if (offline) return <>No server record yet.</>;
+  if (loading) return <>Loading scenarios…</>;
+  if (error) return <>Scenarios unavailable.</>;
+  const passed = items.filter((t) => t.status === 'passed').length;
+  return <>{items.length} scenarios · {passed} passed.</>;
+};
 
 interface ProjectHubViewProps {
   state: FactoryState;
@@ -251,8 +262,6 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   const projectEpics = state.epics.filter((e) => e.projectId === selectedProject.id);
   const projectTasks = state.issues.filter((i) => i.projectId === selectedProject.id);
   const projectPRs = state.pullRequests.filter((pr) => pr.projectId === selectedProject.id);
-  const projectADRs = state.adrs.filter((a) => a.projectId === selectedProject.id);
-  const projectTests = state.testScenarios.filter((t) => t.projectId === selectedProject.id);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto animate-fade-in pb-16">
@@ -491,7 +500,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
               </div>
               <h3 className="text-lg font-semibold text-white">Test Suites & Gates</h3>
               <p className="text-xs text-[#827D8E]">
-                {projectTests.length} Automated scenarios · Chaos fault-injection ready.
+                <ScenarioSummary projectId={selectedProject.id} />
               </p>
             </div>
           </div>
