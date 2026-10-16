@@ -51,6 +51,7 @@ from app.routers import (
     rag,
     reviews,
     runs,
+    stations,
     workspace,
     workspaces,
 )
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
         workspace.router,
         workspaces.router,
         context.router,
+        stations.router,
     ):
         app.include_router(r)
 

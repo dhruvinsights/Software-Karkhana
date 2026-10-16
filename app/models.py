@@ -494,3 +494,80 @@ class Issue(Base):
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ── Lifecycle stations (016_stations.sql) ─────────────────────────────────────
+from sqlalchemy import Date, Numeric  # noqa: E402 - appended block, kept self-contained
+
+
+class Adr(Base):
+    """An architecture decision record on a project."""
+
+    __tablename__ = "adrs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    number: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="proposed")
+    context: Mapped[str] = mapped_column(Text, default="")
+    decision: Mapped[str] = mapped_column(Text, default="")
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    consequences: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    affected_components: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+
+
+class TestScenario(Base):
+    """A QA test scenario and its latest execution result."""
+
+    __test__ = False  # not a pytest class
+    __tablename__ = "test_scenarios"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String)
+    type: Mapped[str] = mapped_column(String, default="Functional")
+    priority: Mapped[str] = mapped_column(String, default="P1")
+    steps: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    expected_result: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="not_run")
+    actual_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    automation_script: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+
+
+class SecurityFinding(Base):
+    """A security finding (CVE/CWE) tracked to remediation or waiver."""
+
+    __tablename__ = "security_findings"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String)
+    cve_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    cwe_category: Mapped[str] = mapped_column(String, default="")
+    severity: Mapped[str] = mapped_column(String, default="MEDIUM")
+    cvss_score: Mapped[float] = mapped_column(Numeric(3, 1, asdecimal=False), default=0)
+    status: Mapped[str] = mapped_column(String, default="open")
+    affected_component: Mapped[str] = mapped_column(String, default="")
+    remediation_advice: Mapped[str] = mapped_column(Text, default="")
+    sla_deadline: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
