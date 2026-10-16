@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, LayoutDashboard, Sliders, Check, RotateCcw, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
 import { DashboardWidget } from '../../types/factory';
+import { authJsonHeaders } from '../../lib/authHeaders';
 
 interface DashboardCustomizerModalProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ export const DashboardCustomizerModal: React.FC<DashboardCustomizerModalProps> =
     try {
       const res = await fetch('/api/gemini/dashboard-layout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           prompt,
           userRole: state.currentRole,

@@ -1,3 +1,4 @@
+import { acceptInvite, clearPendingInvite, readPendingInvite } from '../lib/invites';
 import {
   Workspace,
   TeamMember,
@@ -116,6 +117,7 @@ export interface FactoryState {
   currentUser: CurrentUser | null;
   currentRole: FactoryRole;
   currentScreen: ScreenId;
+  inviteNotice: string | null;
   selectedProductId?: string;
   selectedProjectId?: string;
   selectedIdeaId?: string;
@@ -166,6 +168,28 @@ const DEFAULT_WIDGETS: DashboardWidget[] = [
   { id: 'w-pipelines', title: 'CI/CD Multi-Stage Canary Health', category: 'system', enabled: true, order: 4 },
 ];
 
+/** Server issue -> the shape the UI renders. */
+function mapIssue(i: any): Issue {
+  return {
+    id: i.id,
+    projectId: i.projectId,
+    key: i.key,
+    title: i.title,
+    description: i.description,
+    type: i.type,
+    status: i.status,
+    priority: i.priority,
+    assigneeId: i.assigneeId ?? '',
+    assigneeName: i.assigneeName ?? null,
+    reporterName: i.reporterName,
+    source: i.source,
+    labels: i.labels ?? [],
+    acceptanceCriteria: [],
+    commentsCount: 0,
+    updatedAt: i.updatedAt,
+  };
+}
+
 function freshDefaults(): FactoryState {
   return {
     authStatus: 'guest',
@@ -173,6 +197,7 @@ function freshDefaults(): FactoryState {
     currentUser: null,
     currentRole: 'product_manager',
     currentScreen: 'landing',
+    inviteNotice: null,
     selectedProductId: undefined,
     selectedProjectId: undefined,
     selectedIdeaId: undefined,
@@ -267,7 +292,7 @@ export const factoryStore = {
     };
     notify();
     // Fetch live workspace data in background
-    factoryStore.syncSessionFromServer();
+    void factoryStore.syncSessionFromServer().then(() => factoryStore.acceptPendingInvite());
   },
 
   syncSessionFromServer: async () => {
@@ -592,6 +617,36 @@ export const factoryStore = {
     notify();
   },
 
+  /** Accepts an invite remembered from a link opened before sign-in. */
+  acceptPendingInvite: async (): Promise<void> => {
+    const invite = readPendingInvite();
+    const jwt = state.token;
+    if (!invite || !jwt) return;
+    try {
+      const res = await acceptInvite(jwt, invite);
+      clearPendingInvite();
+      await factoryStore.syncSessionFromServer();
+      factoryStore.switchWorkspace(res.workspace.id);
+      if (res.projectId) {
+        factoryStore.selectProject(res.projectId);
+        factoryStore.setScreen('projects');
+      }
+      state = {
+        ...state,
+        inviteNotice: `You joined ${res.workspace.name} as ${res.workspace.role.replace('_', ' ')}.`,
+      };
+    } catch (e) {
+      clearPendingInvite();
+      state = { ...state, inviteNotice: (e as Error).message };
+    }
+    notify();
+  },
+
+  dismissInviteNotice: () => {
+    state = { ...state, inviteNotice: null };
+    notify();
+  },
+
   setScreen: (screen: ScreenId) => {
     state = { ...state, currentScreen: screen };
     notify();
@@ -639,9 +694,38 @@ export const factoryStore = {
     notify();
   },
 
-  promoteIdeaToProject: (ideaId: string, projectName: string) => {
+  /**
+   * Creates a project from an approved idea. With a session this calls the
+   * server, which enforces approval, roles and membership; the demo fallback
+   * (no token) keeps the local-only behaviour so offline demos still work.
+   */
+  promoteIdeaToProject: async (
+    ideaId: string,
+    projectName: string,
+    leads: { user_id: string; role: string; is_lead: boolean }[] = [],
+  ): Promise<{ ok: boolean; projectId?: string; error?: string }> => {
+    const token = state.token;
+    if (token && state.authStatus === 'authenticated') {
+      try {
+        const res = await fetch(`/api/ideas/${ideaId}/promote`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: projectName, leads }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return { ok: false, error: typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}` };
+        }
+        await factoryStore.syncSessionFromServer();
+        factoryStore.logAudit('Promoted Idea to Project', `Project "${body.projectName}" created from idea ${ideaId}.`);
+        return { ok: true, projectId: body.projectId };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    }
+
     const idea = state.ideas.find((i) => i.id === ideaId);
-    if (!idea) return;
+    if (!idea) return { ok: false, error: 'Idea not found.' };
 
     const newPrjId = `prj-gen-${Date.now()}`;
     const newProject: Project = {
@@ -674,35 +758,124 @@ export const factoryStore = {
 
     factoryStore.logAudit('Promoted Idea to Project', `Idea "${idea.title}" promoted to Project "${newProject.name}".`);
     notify();
+  
+    return { ok: true, projectId: newPrjId };
   },
 
-  createIssue: (issue: Partial<Issue>) => {
-    const newIssueId = `iss-${Date.now()}`;
+  /** Replaces a project's issues with what the server has. */
+  loadIssues: async (projectId: string): Promise<void> => {
+    const jwt = state.token;
+    if (!jwt || projectId.length !== 36) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/issues`, { headers: { Authorization: `Bearer ${jwt}` } });
+      if (!res.ok) return;
+      const rows = (await res.json()) as any[];
+      state = {
+        ...state,
+        issues: [...state.issues.filter((i) => i.projectId !== projectId), ...rows.map(mapIssue)],
+      };
+      notify();
+    } catch {
+      /* keep what we have */
+    }
+  },
+
+  createIssue: async (
+    issue: Partial<Issue> & { description?: string },
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const projectId = issue.projectId || state.selectedProjectId || state.projects[0]?.id || '';
+    const jwt = state.token;
+    if (jwt && projectId.length === 36) {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/issues`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify({
+            title: issue.title,
+            description: issue.description ?? '',
+            type: issue.type ?? 'task',
+            priority: issue.priority ?? 'P2',
+            assignee_id: issue.assigneeId || null,
+            source: issue.source ?? 'manual',
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) return { ok: false, error: typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}` };
+        await factoryStore.loadIssues(projectId);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    }
+
+    // Offline demo: keep the board usable without a server.
     const newIssue: Issue = {
-      id: newIssueId,
-      projectId: issue.projectId || state.selectedProjectId || state.projects[0]?.id || '',
+      id: `iss-${Date.now()}`,
+      projectId,
       title: issue.title || 'New Task',
       type: issue.type || 'story',
       status: issue.status || 'todo',
       priority: issue.priority || 'P2',
-      assigneeId: issue.assigneeId || state.members[0]?.id || 'usr-lead',
-      labels: issue.labels || ['Sprint 1'],
-      acceptanceCriteria: issue.acceptanceCriteria || ['Deliverable verified.'],
+      assigneeId: issue.assigneeId || '',
+      labels: issue.labels || [],
+      acceptanceCriteria: issue.acceptanceCriteria || [],
       commentsCount: 0,
       updatedAt: new Date().toISOString(),
     };
     state = { ...state, issues: [newIssue, ...state.issues] };
-    factoryStore.logAudit('Created Issue', `Created task "${newIssue.title}"`);
     notify();
+    return { ok: true };
   },
 
-  updateIssueStatus: (issueId: string, newStatus: Issue['status']) => {
+  /** Changes status and/or assignee. ``assigneeId: null`` unassigns. */
+  updateIssue: async (
+    issueId: string,
+    patch: { status?: Issue['status']; assigneeId?: string | null; priority?: Issue['priority']; title?: string },
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const jwt = state.token;
+    const current = state.issues.find((i) => i.id === issueId);
+    if (jwt && issueId.length === 36) {
+      const body: Record<string, unknown> = {};
+      if (patch.status !== undefined) body.status = patch.status;
+      if (patch.priority !== undefined) body.priority = patch.priority;
+      if (patch.title !== undefined) body.title = patch.title;
+      if (patch.assigneeId !== undefined) body.assignee_id = patch.assigneeId;
+      try {
+        const res = await fetch(`/api/issues/${issueId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify(body),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) return { ok: false, error: typeof json.detail === 'string' ? json.detail : `HTTP ${res.status}` };
+        const updated = mapIssue(json);
+        state = { ...state, issues: state.issues.map((i) => (i.id === issueId ? updated : i)) };
+        notify();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    }
+    if (!current) return { ok: false, error: 'Issue not found.' };
     state = {
       ...state,
-      issues: state.issues.map((i) => (i.id === issueId ? { ...i, status: newStatus, updatedAt: new Date().toISOString() } : i)),
+      issues: state.issues.map((i) =>
+        i.id === issueId
+          ? {
+              ...i,
+              ...(patch.status !== undefined ? { status: patch.status } : {}),
+              ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+              ...(patch.assigneeId !== undefined ? { assigneeId: patch.assigneeId ?? '' } : {}),
+              updatedAt: new Date().toISOString(),
+            }
+          : i,
+      ),
     };
     notify();
+    return { ok: true };
   },
+
+  updateIssueStatus: (issueId: string, newStatus: Issue['status']) => factoryStore.updateIssue(issueId, { status: newStatus }),
 
   createPullRequest: (pr: Partial<PullRequest>) => {
     const newPrId = `pr-${Date.now().toString().slice(-4)}`;

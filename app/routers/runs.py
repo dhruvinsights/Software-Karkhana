@@ -26,8 +26,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger, process, publisher
-from app.auth import require_role
+from app import access, ledger, process, publisher
+from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
 from app.integrations import github
@@ -38,10 +38,9 @@ from app.models import (
     ReviewComment,
     Run,
     Task,
-    User,
 )
 from app.process import Event, Role
-from app.routers import context
+from app.review.diff import anchor_comments
 from app.routers.common import (
     advance_if_legal,
     advance_or_http,
@@ -50,6 +49,7 @@ from app.routers.common import (
 )
 from app.runner.base import get_backend, verify_run_token
 from app.schemas import RunOut, RunProgress, RunResult, RunSpec
+from app.services import context_notes
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["runs"])
@@ -67,11 +67,18 @@ REVIEWER = ledger.Actor.ai("reviewer-agent")
 async def start_run(
     task_id: uuid.UUID,
     session: Session,
-    user: Annotated[User, Depends(require_role(Role.DEVELOPER, Role.LEAD))],
+    user: CurrentUser,
 ) -> Run:
-    """Developer clicks "Assign to agent". The process engine decides if it may run."""
+    """Developer clicks "Assign to agent". The process engine decides if it may run.
+
+    The caller must be a developer or lead *in the project's workspace*.
+    """
     task = await get_or_404(session, Task, task_id)
     project = await lock_project(session, task.project_id)  # Serializes admission.
+    my_role = await access.require_project_role(
+        session, user, project, Role.DEVELOPER, Role.LEAD
+    )
+    await access.ensure_station(session, user, project, "developer")
     if task.status != "ready":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -94,7 +101,7 @@ async def start_run(
         project,
         Event.RUN_STARTED,
         actor=actor,
-        role=Role(user.role),
+        role=Role(my_role),
         payload={"task": task.key},
     )
     process.move_task(task, "in_progress")
@@ -165,10 +172,11 @@ async def start_run(
 async def get_run(
     run_id: uuid.UUID,
     session: Session,
-    _: Annotated[User, Depends(require_role(*Role))],
+    user: CurrentUser,
 ) -> Run:
     """Polled by the browser. Marks silent runs as timed out (ADR-001 reliability rules)."""
     run = await get_or_404(session, Run, run_id)
+    await access.get_visible_project(session, user, run.project_id)
     timeout = dt.timedelta(seconds=get_settings().run_heartbeat_timeout_sec)
     if (
         run.status == "running"
@@ -190,9 +198,11 @@ async def get_run(
 async def list_task_runs(
     task_id: uuid.UUID,
     session: Session,
-    _: Annotated[User, Depends(require_role(*Role))],
+    user: CurrentUser,
 ) -> list[Run]:
     """Run history for a task."""
+    task = await get_or_404(session, Task, task_id)
+    await access.get_visible_project(session, user, task.project_id)
     return list(
         (
             await session.scalars(
@@ -239,7 +249,9 @@ async def run_spec(
         repo=s.github_repo,
         repo_url=s.demo_repo_url,
         base_branch=s.github_base_branch,
-        context=context.as_notes(await context.recent(session, run.project_id)),
+        context=context_notes.as_notes(
+            await context_notes.recent(session, run.project_id)
+        ),
     )
 
 
@@ -298,10 +310,12 @@ async def run_complete(
     task = await get_or_404(session, Task, run.task_id)
     project = await get_or_404(session, Project, run.project_id)
     tests_passed = body.test_exit_code == 0
-    # Pre-format a fallback plain-body review; inline review happens below after DB flush
+    # Anchor every comment to a line that exists in the diff, so GitHub accepts
+    # the inline threads and the UI can render them under the right line.
+    anchored_review = anchor_comments(body.patch, list(body.review))
     review_md = (
         github.review_markdown(
-            [c.model_dump() for c in body.review],
+            [c.model_dump() for c in anchored_review],
             engine=body.review_engine or "",
             summary=body.review_summary or "",
         )
@@ -329,6 +343,11 @@ async def run_complete(
             tests_passed=tests_passed,
             test_summary=f"pytest exit {body.test_exit_code} (Karkhana worker)",
             review_markdown=review_md,
+            review_comments=(
+                [c.model_dump() for c in anchored_review] if body.reviewed else None
+            ),
+            review_engine=body.review_engine or "",
+            review_summary=body.review_summary or "",
         )
     except Exception as exc:
         logger.exception("Publishing run %s failed", run.id)
@@ -356,6 +375,7 @@ async def run_complete(
         body.test_output,
         body.artifacts_uri,
     )
+    run.context_compression = body.context_compression
     await ledger.append(
         session,
         actor=CODER,
@@ -417,7 +437,7 @@ async def run_complete(
         session, project, Event.PR_OPENED, actor=CODER, payload={"pr": pr.number}
     )
 
-    for c in body.review:
+    for c in anchored_review:
         session.add(
             ReviewComment(
                 pr_id=pr.id, path=c.path, line=c.line, severity=c.severity, body=c.body
@@ -474,6 +494,7 @@ async def _finish_failed(
             body.test_output,
             body.test_command,
         )
+        run.context_compression = body.context_compression
     if task.status == "in_progress":
         process.move_task(task, "ready")
     await advance_if_legal(session, project, Event.RUN_FAILED, actor=ledger.SYSTEM)

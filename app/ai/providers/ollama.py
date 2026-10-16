@@ -99,6 +99,40 @@ async def generate_structured(
         ) from exc
 
 
+async def generate_text(
+    *,
+    messages: list[dict[str, str]],
+    system: str,
+    model: str | None = None,
+    temperature: float = 0.3,
+    timeout_s: float = 60.0,
+) -> str:
+    """Calls an Ollama model for free text over a short conversation.
+
+    Raises:
+        ModelError: On connection failure, API error or an empty reply.
+    """
+    s = get_settings()
+    model = model or s.ollama_model
+    body = {
+        "model": model,
+        "stream": False,
+        "options": {"temperature": temperature},
+        "messages": [{"role": "system", "content": system}]
+        + [{"role": m["role"], "content": m["content"]} for m in messages],
+    }
+    try:
+        async with _http(max(timeout_s, 5.0)) as http:
+            r = await http.post("/api/chat", json=body)
+            r.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise ModelError(f"ollama {model} call failed: {exc!r}") from exc
+    text = ((r.json().get("message") or {}).get("content") or "").strip()
+    if not text:
+        raise ModelError(f"ollama {model} returned an empty reply")
+    return text
+
+
 async def embed(text: str, *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
     """Embeds text with Ollama (default ``nomic-embed-text``)."""
     s = get_settings()

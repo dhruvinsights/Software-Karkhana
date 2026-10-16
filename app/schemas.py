@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -154,7 +154,7 @@ class TokenOut(BaseModel):
     """JWT / Session token response."""
 
     access_token: str
-    token_type: str = "Bearer"
+    token_type: str = "Bearer"  # noqa: S105 - OAuth token type label, not a secret
     user: UserOut
 
 
@@ -434,6 +434,7 @@ class RunOut(ORM):
     error: str | None
     created_at: dt.datetime
     finished_at: dt.datetime | None
+    context_compression: dict[str, Any] | None = None
 
 
 class CommentOut(ORM):
@@ -501,14 +502,44 @@ class LedgerOut(ORM):
     hash: str
 
 
+class ChainReportOut(BaseModel):
+    """Verification of one tenant chain."""
+
+    chain: str
+    workspace_id: uuid.UUID | None = None
+    ok: bool
+    entries: int
+    head: str
+    first_bad_seq: int | None
+    reason: str | None
+
+
 class ChainOut(BaseModel):
-    """Chain verification result."""
+    """Chain verification result: all of the caller's chains, combined.
+
+    ``ok`` is true only when every chain in ``chains`` verifies; ``head`` is the
+    head of the single chain when only one was checked.
+    """
 
     ok: bool
     entries: int
     head: str
     first_bad_seq: int | None
     reason: str | None
+    chains: list[ChainReportOut] = []
+
+
+class AnchorOut(BaseModel):
+    """One external anchor of a chain head."""
+
+    ok: bool
+    chain: str
+    sink: str | None = None
+    location: str | None = None
+    position: int | None = None
+    hash: str | None = None
+    anchored_at: str | None = None
+    error: str | None = None
 
 
 class StageOut(BaseModel):
@@ -598,3 +629,5 @@ class RunResult(BaseModel):
     review_summary: str | None = None
     summary: str | None = None  # What the Coder says it did; becomes a handoff.
     artifacts_uri: str | None = None
+    # Headroom token accounting for every model call in the run.
+    context_compression: dict[str, Any] | None = None

@@ -16,11 +16,13 @@ import {
 import { factoryStore, FactoryState } from '../../store/factoryStore';
 import { Idea } from '../../types/factory';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
+import { IdeaApprovalPanel } from './IdeaApprovalPanel';
 import { GlassCard } from '../reactbits/GlassCard';
 import { GlassSurface } from '../reactbits/GlassSurface';
 import { ShinyText } from '../reactbits/ShinyText';
 import { Terminal } from '../reactbits/Terminal';
 import { SpecularButton } from '../reactbits/SpecularButton';
+import { authJsonHeaders } from '../../lib/authHeaders';
 
 interface IdeaValidationViewProps {
   state: FactoryState;
@@ -48,7 +50,7 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
     try {
       const res = await fetch('/api/gemini/evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           title: selectedIdea.title,
           problem: selectedIdea.problemStatement,
@@ -73,7 +75,7 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
     try {
       const res = await fetch('/api/gemini/ideas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           prompt: brainstormPrompt || 'Scalable enterprise cloud systems and automated workflows',
           productContext: activeProduct?.description || 'Autonomous Cloud Software Factory',
@@ -348,15 +350,24 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
                   )}
 
                   {/* Actions */}
-                  <div className="pt-2 flex items-center gap-3">
-                    <button
-                      onClick={() => factoryStore.promoteIdeaToProject(selectedIdea.id, `${selectedIdea.title} Service`)}
-                      className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-[#075BFF]/20"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Promote to Engineering Project</span>
-                    </button>
-                  </div>
+                  {state.token && state.currentUser ? (
+                    <IdeaApprovalPanel
+                      idea={selectedIdea}
+                      token={state.token}
+                      workspaceId={state.activeWorkspaceId}
+                      currentUserId={state.currentUser.id}
+                    />
+                  ) : (
+                    <div className="pt-2 flex items-center gap-3">
+                      <button
+                        onClick={() => void factoryStore.promoteIdeaToProject(selectedIdea.id, `${selectedIdea.title} Service`)}
+                        className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-[#075BFF]/20"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Promote to Engineering Project (demo)</span>
+                      </button>
+                    </div>
+                  )}
                 </SpotlightCard>
               )}
             </div>
@@ -397,7 +408,7 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
                   try {
                     const res = await fetch('/api/gemini/ideas', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: authJsonHeaders(),
                       body: JSON.stringify({
                         prompt: cmd || 'Scalable enterprise cloud systems and automated workflows',
                         productContext: activeProduct?.description || 'Autonomous Cloud Software Factory',

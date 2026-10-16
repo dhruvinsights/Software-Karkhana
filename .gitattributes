@@ -1,0 +1,19 @@
+# Normalise line endings so Windows checkouts match the repository (LF).
+# Agent patches are applied with `git apply`, which rejects CRLF/LF mismatches.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary

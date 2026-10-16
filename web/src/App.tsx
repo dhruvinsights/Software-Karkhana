@@ -1,29 +1,59 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { factoryStore, FactoryState } from './store/factoryStore';
-import { AppShell } from './components/shell/AppShell';
-import { MarketingLandingPage } from './components/marketing/MarketingLandingPage';
-import { AuthScreen } from './components/auth/AuthScreen';
-import { WorkspaceChooser } from './components/auth/WorkspaceChooser';
-import { CreateWorkspaceModal } from './components/auth/CreateWorkspaceModal';
-import { DreamTransitionScreen } from './components/auth/DreamTransitionScreen';
-import { GuidedTutorialOverlay } from './components/workspace/GuidedTutorialOverlay';
+import { stashPendingInvite, takeInviteFromUrl } from './lib/invites';
+import { COMING_SOON_SCREENS, ComingSoonBanner } from './components/views/StationBanners';
 
-import { WorkspaceHomeView } from './components/views/WorkspaceHomeView';
-import { IdeaValidationView } from './components/views/IdeaValidationView';
-import { ExecutivePortfolioView } from './components/views/ExecutivePortfolioView';
-import { ProjectHubView } from './components/views/ProjectHubView';
-import { PlanningRoadmapView } from './components/views/PlanningRoadmapView';
-import { DesignStudioView } from './components/views/DesignStudioView';
-import { ArchitectureStudioView } from './components/views/ArchitectureStudioView';
-import { DeveloperWorkspaceView } from './components/views/DeveloperWorkspaceView';
-import { QAVerificationView } from './components/views/QAVerificationView';
-import { SecurityAppSecView } from './components/views/SecurityAppSecView';
-import { DevOpsPipelinesView } from './components/views/DevOpsPipelinesView';
-import { ReleaseManagementView } from './components/views/ReleaseManagementView';
-import { FeedbackIncidentsView } from './components/views/FeedbackIncidentsView';
-import { KnowledgeLearningView } from './components/views/KnowledgeLearningView';
-import { WorkflowAdminView } from './components/views/WorkflowAdminView';
-import { ProductWorkspaceView } from './components/views/ProductWorkspaceView';
+// Every screen is its own chunk: the marketing page (WebGL/GSAP), auth flow and each
+// station view load on first use, so the entry bundle stays small.
+const AppShell = lazy(() => import('./components/shell/AppShell').then((m) => ({ default: m.AppShell })));
+const MarketingLandingPage = lazy(() => import('./components/marketing/MarketingLandingPage').then((m) => ({ default: m.MarketingLandingPage })));
+const AuthScreen = lazy(() => import('./components/auth/AuthScreen').then((m) => ({ default: m.AuthScreen })));
+const WorkspaceChooser = lazy(() => import('./components/auth/WorkspaceChooser').then((m) => ({ default: m.WorkspaceChooser })));
+const CreateWorkspaceModal = lazy(() => import('./components/auth/CreateWorkspaceModal').then((m) => ({ default: m.CreateWorkspaceModal })));
+const DreamTransitionScreen = lazy(() => import('./components/auth/DreamTransitionScreen').then((m) => ({ default: m.DreamTransitionScreen })));
+const GuidedTutorialOverlay = lazy(() => import('./components/workspace/GuidedTutorialOverlay').then((m) => ({ default: m.GuidedTutorialOverlay })));
+const WorkspaceHomeView = lazy(() => import('./components/views/WorkspaceHomeView').then((m) => ({ default: m.WorkspaceHomeView })));
+const IdeaValidationView = lazy(() => import('./components/views/IdeaValidationView').then((m) => ({ default: m.IdeaValidationView })));
+const ExecutivePortfolioView = lazy(() => import('./components/views/ExecutivePortfolioView').then((m) => ({ default: m.ExecutivePortfolioView })));
+const ProjectHubView = lazy(() => import('./components/views/ProjectHubView').then((m) => ({ default: m.ProjectHubView })));
+const PlanningRoadmapView = lazy(() => import('./components/views/PlanningRoadmapView').then((m) => ({ default: m.PlanningRoadmapView })));
+const DesignStudioView = lazy(() => import('./components/views/DesignStudioView').then((m) => ({ default: m.DesignStudioView })));
+const ArchitectureStudioView = lazy(() => import('./components/views/ArchitectureStudioView').then((m) => ({ default: m.ArchitectureStudioView })));
+const DeveloperWorkspaceView = lazy(() => import('./components/views/DeveloperWorkspaceView').then((m) => ({ default: m.DeveloperWorkspaceView })));
+const QAVerificationView = lazy(() => import('./components/views/QAVerificationView').then((m) => ({ default: m.QAVerificationView })));
+const SecurityAppSecView = lazy(() => import('./components/views/SecurityAppSecView').then((m) => ({ default: m.SecurityAppSecView })));
+const DevOpsPipelinesView = lazy(() => import('./components/views/DevOpsPipelinesView').then((m) => ({ default: m.DevOpsPipelinesView })));
+const ReleaseManagementView = lazy(() => import('./components/views/ReleaseManagementView').then((m) => ({ default: m.ReleaseManagementView })));
+const FeedbackIncidentsView = lazy(() => import('./components/views/FeedbackIncidentsView').then((m) => ({ default: m.FeedbackIncidentsView })));
+const KnowledgeLearningView = lazy(() => import('./components/views/KnowledgeLearningView').then((m) => ({ default: m.KnowledgeLearningView })));
+const WorkflowAdminView = lazy(() => import('./components/views/WorkflowAdminView').then((m) => ({ default: m.WorkflowAdminView })));
+const ProductWorkspaceView = lazy(() => import('./components/views/ProductWorkspaceView').then((m) => ({ default: m.ProductWorkspaceView })));
+
+const ScreenFallback: React.FC = () => (
+  <div role="status" aria-live="polite" className="min-h-screen w-full flex items-center justify-center bg-[#07070B] text-xs font-mono text-slate-400">
+    Loading…
+  </div>
+);
+
+const ViewFallback: React.FC = () => (
+  <div role="status" aria-live="polite" className="py-16 text-center text-xs font-mono text-slate-400">
+    Loading…
+  </div>
+);
+
+const COMING_SOON_NAMES: Record<string, string> = {
+  devops: 'CI/CD Pipelines',
+  release: 'Releases & Canary',
+  feedback: 'Incidents & Triage',
+  knowledge: 'Knowledge Base & Governance',
+};
+
+function comingSoonName(screen: string): string {
+  if (screen.startsWith('release')) return COMING_SOON_NAMES.release;
+  if (screen.startsWith('feedback') || screen === 'incidents' || screen === 'public_portal') return COMING_SOON_NAMES.feedback;
+  if (['knowledge_hub', 'learning_capture', 'rule_governance', 'skills_library', 'memory_inspector'].includes(screen)) return COMING_SOON_NAMES.knowledge;
+  return COMING_SOON_NAMES.devops;
+}
 
 export default function App() {
   const [state, setState] = useState<FactoryState>(factoryStore.getState());
@@ -40,53 +70,14 @@ export default function App() {
     // 1. Initial Session Restore & Data Sync
     factoryStore.syncSessionFromServer();
 
-    // 2. Parse URL parameters for workspace/project invite links
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const joinWs = urlParams.get('join_workspace') || urlParams.get('invite_workspace');
-      const token = urlParams.get('token');
-      const role = urlParams.get('role');
-      const joinProject = urlParams.get('join_project');
-
-      if (joinWs || token || joinProject) {
-        const pendingInvite = {
-          workspaceId: joinWs,
-          token,
-          role: role || 'developer',
-          projectId: joinProject,
-        };
-
-        const currentToken = localStorage.getItem('karkhana_jwt_token');
-        if (currentToken) {
-          // If already authenticated, directly enroll
-          fetch('/api/workspaces/join', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${currentToken}`,
-            },
-            body: JSON.stringify({
-              workspace_id: joinWs,
-              token: token,
-              role: role || 'developer',
-            }),
-          })
-            .then((r) => r.json())
-            .then((data) => {
-              if (data.status === 'ok' && data.workspace) {
-                factoryStore.switchWorkspace(data.workspace.id);
-                if (joinProject) {
-                  factoryStore.selectProject(joinProject);
-                  factoryStore.setScreen('projects');
-                }
-              }
-            })
-            .catch((e) => console.warn('Auto-join workspace error:', e));
-        } else {
-          // Not logged in: store pending invite and prompt login
-          localStorage.setItem('karkhana_pending_invite', JSON.stringify(pendingInvite));
-          factoryStore.setScreen('signin');
-        }
+    // 2. Invite links: /?invite=TOKEN. Remember it, then accept once signed in.
+    const inviteToken = takeInviteFromUrl();
+    if (inviteToken) {
+      stashPendingInvite(inviteToken);
+      if (localStorage.getItem('karkhana_jwt_token')) {
+        void factoryStore.syncSessionFromServer().then(() => factoryStore.acceptPendingInvite());
+      } else {
+        factoryStore.setScreen('signin');
       }
     }
 
@@ -100,6 +91,7 @@ export default function App() {
   // ---------------------------------------------------------------------------
   if (showDreamTransition) {
     return (
+      <Suspense fallback={<ScreenFallback />}>
       <DreamTransitionScreen
         workspaceName={pendingWorkspaceName}
         onFinish={() => {
@@ -108,6 +100,7 @@ export default function App() {
           setShowTutorial(true);
         }}
       />
+      </Suspense>
     );
   }
 
@@ -123,10 +116,12 @@ export default function App() {
 
   if (isMarketingScreen && state.authStatus === 'guest') {
     return (
-      <MarketingLandingPage
-        onGetStarted={() => factoryStore.setScreen('signin')}
-        onSignIn={() => factoryStore.setScreen('signin')}
-      />
+      <Suspense fallback={<ScreenFallback />}>
+        <MarketingLandingPage
+          onGetStarted={() => factoryStore.setScreen('signin')}
+          onSignIn={() => factoryStore.setScreen('signin')}
+        />
+      </Suspense>
     );
   }
 
@@ -135,12 +130,14 @@ export default function App() {
   // ---------------------------------------------------------------------------
   if (state.currentScreen === 'signin' || (state.authStatus === 'guest' && !isMarketingScreen)) {
     return (
-      <AuthScreen
-        onSuccessAuthenticated={() => {
-          factoryStore.setScreen('workspace_chooser');
-        }}
-        onCancel={() => factoryStore.setScreen('landing')}
-      />
+      <Suspense fallback={<ScreenFallback />}>
+        <AuthScreen
+          onSuccessAuthenticated={() => {
+            factoryStore.setScreen('workspace_chooser');
+          }}
+          onCancel={() => factoryStore.setScreen('landing')}
+        />
+      </Suspense>
     );
   }
 
@@ -149,7 +146,7 @@ export default function App() {
   // ---------------------------------------------------------------------------
   if (state.currentScreen === 'workspace_chooser') {
     return (
-      <>
+      <Suspense fallback={<ScreenFallback />}>
         <WorkspaceChooser
           state={state}
           onOpenWorkspace={(id, name) => {
@@ -170,7 +167,7 @@ export default function App() {
             setShowDreamTransition(true);
           }}
         />
-      </>
+      </Suspense>
     );
   }
 
@@ -301,13 +298,20 @@ export default function App() {
     }
   };
 
+  const comingSoon = COMING_SOON_SCREENS.has(state.currentScreen);
+
   return (
-    <>
-      <AppShell state={state}>{renderCurrentView()}</AppShell>
-      <GuidedTutorialOverlay
-        isOpen={showTutorial}
-        onClose={() => setShowTutorial(false)}
-      />
-    </>
+    <Suspense fallback={<ScreenFallback />}>
+      <AppShell state={state}>
+        {comingSoon && <ComingSoonBanner station={comingSoonName(state.currentScreen)} />}
+        <Suspense fallback={<ViewFallback />}>{renderCurrentView()}</Suspense>
+      </AppShell>
+      {showTutorial && (
+        <GuidedTutorialOverlay
+          isOpen={showTutorial}
+          onClose={() => setShowTutorial(false)}
+        />
+      )}
+    </Suspense>
   );
 }

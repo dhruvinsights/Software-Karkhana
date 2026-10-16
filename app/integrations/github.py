@@ -22,7 +22,8 @@ as real PRs.
 ## Authentication
 If no ``GITHUB_TOKEN`` is configured, the OAuth Device Flow is available via
 :func:`start_device_flow` / :func:`poll_device_token`. Persisted tokens are
-stored in the ``github_tokens`` table (migration 009).
+stored encrypted in the ``github_tokens`` table (migrations 009, 013; see
+``app/integrations/github_tokens.py``).
 
 ## Review strategy
 ``post_inline_review`` uses the GitHub Pull Request Reviews API
@@ -35,7 +36,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -251,11 +252,17 @@ class GitHub:
         comments: list[dict[str, Any]],
         summary: str = "",
         engine: str = "",
+        diff: str | None = None,
     ) -> int:
         """Posts inline review comments as a single GitHub PR Review object.
 
         Each entry in *comments* must have: ``path``, ``body``, ``severity``.
         Optional: ``line`` (positive int → RIGHT-side diff line).
+
+        When the PR's unified *diff* is given, every comment is first anchored to
+        a line that really exists in it. GitHub rejects the whole review (422)
+        if even one inline comment points outside the diff, so unanchorable
+        comments become file-level findings instead.
 
         Returns the GitHub review ID. Falls back to a plain issue comment when
         the diff position cannot be determined (e.g. new-file paths).
@@ -270,6 +277,11 @@ class GitHub:
             "Each must be triaged in Karkhana before merge.\n\n"
             "---"
         )
+
+        if diff:
+            from app.review.diff import anchor_dicts
+
+            comments = anchor_dicts(diff, comments)
 
         gh_comments = []
         fallback_lines = []
@@ -314,6 +326,12 @@ class GitHub:
             # Inline comments failed (e.g. diff not found) — retry without them.
             logger.warning("GitHub inline review rejected, retrying as body-only")
             payload.pop("comments")
+            payload["body"] += (
+                "\n\n**Findings (could not be anchored inline):**\n"
+                + "\n".join(
+                    f"- `{gc['path']}:{gc['line']}`: {gc['body']}" for gc in gh_comments
+                )
+            )
             r = await self._http.post(f"/pulls/{number}/reviews", json=payload)
         r.raise_for_status()
         return r.json().get("id", 0)
@@ -352,6 +370,7 @@ class GitHubOAuth:
         )
 
     async def aclose(self) -> None:
+        """Close the underlying HTTP client."""
         await self._http.aclose()
 
     async def start(self) -> DeviceFlowStart:
@@ -398,11 +417,16 @@ def git_auth_header(token: str) -> str:
     return f"AUTHORIZATION: basic {basic}"
 
 
-def client() -> GitHub | None:
-    """Returns a GitHub client if a repo and token are configured."""
+def client(token: str | None = None) -> GitHub | None:
+    """Returns a GitHub client if a repo and token are configured.
+
+    ``token`` (a user's decrypted OAuth token, see ``github_tokens``) takes
+    precedence over the server's ``GITHUB_TOKEN``.
+    """
     s = get_settings()
-    if s.github_token and s.github_repo:
-        return GitHub(s.github_token, s.github_repo, s.github_api_url)
+    token = token or s.github_token
+    if token and s.github_repo:
+        return GitHub(token, s.github_repo, s.github_api_url)
     return None
 
 

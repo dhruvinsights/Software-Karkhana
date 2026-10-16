@@ -8,7 +8,17 @@ export default defineConfig({
   envDir: '..',
   plugins: [react(), tailwindcss()],
   build: {
-    rollupOptions: { output: { manualChunks: { motion: ['motion/react'] } } },
+    rollupOptions: {
+      output: {
+        // Stable vendor chunks cache across deploys; icons in one chunk instead of
+        // dozens of tiny per-icon requests from the lazy-loaded views.
+        manualChunks: {
+          motion: ['motion/react'],
+          react: ['react', 'react-dom', 'react-dom/client'],
+          icons: ['lucide-react'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

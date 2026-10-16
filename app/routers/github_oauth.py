@@ -15,8 +15,11 @@
 """GitHub OAuth Device Flow + PR operations requiring live GitHub access.
 
 Endpoints:
-  POST /api/github/auth/start      — kick off device flow, return user_code + uri
-  GET  /api/github/auth/poll       — poll until token granted (SSE-friendly)
+  POST   /api/github/auth/start    — kick off device flow, return user_code + uri
+  POST   /api/github/auth/poll     — poll until granted; the token is stored
+                                     encrypted server-side and never returned
+  GET    /api/github/auth/status   — whether the caller has a stored token
+  DELETE /api/github/auth          — disconnect (delete the stored token)
   GET  /api/github/prs/{id}/status — live check-run status from GitHub
   POST /api/github/prs/{id}/ci     — trigger CI check run on GitHub
 """
@@ -29,26 +32,39 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import CurrentUser, require_role
+from app import access
+from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
 from app.integrations import github as gh_module
-from app.models import PullRequest, Run, Task, User
+from app.integrations import github_tokens
+from app.models import PullRequest, Task, User
 from app.process import Role
 from app.routers.common import get_or_404
 
 router = APIRouter(prefix="/api/github", tags=["github"])
 Session = Annotated[AsyncSession, Depends(get_session)]
-AnyRole = Annotated[User, Depends(require_role(*Role))]
-Dev = Annotated[User, Depends(require_role(Role.DEVELOPER, Role.LEAD))]
+# Any signed-in user; per-PR authority is checked against the PR's project.
+AnyRole = CurrentUser
+Dev = CurrentUser
+
+
+async def _guard_pr(session: AsyncSession, user: User, pr: PullRequest, *roles: str) -> None:
+    """The caller must reach the PR's project (and hold ``roles`` in its workspace)."""
+    task = await get_or_404(session, Task, pr.task_id)
+    project = await access.get_visible_project(session, user, task.project_id)
+    if roles:
+        await access.require_project_role(session, user, project, *roles)
+    await access.ensure_station(session, user, project, "developer", "qa")
 
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
 class DeviceFlowOut(BaseModel):
+    """Response for starting the GitHub device authorization flow."""
+
     user_code: str
     verification_uri: str
     device_code: str
@@ -57,18 +73,33 @@ class DeviceFlowOut(BaseModel):
 
 
 class TokenPollOut(BaseModel):
+    """Response for polling the GitHub device flow token status."""
+
+    # The token itself is never returned: it is stored encrypted server-side.
     status: str          # "pending" | "granted" | "expired" | "error"
-    token: str | None = None
     error: str | None = None
 
 
+class AuthStatusOut(BaseModel):
+    """Whether the caller has a stored GitHub token. Never the token itself."""
+
+    connected: bool
+    scopes: str | None = None
+    connected_at: dt.datetime | None = None
+    server_token: bool = False  # A server-wide GITHUB_TOKEN is configured.
+
+
 class CITriggerOut(BaseModel):
+    """Response describing a triggered CI check run."""
+
     check_run_id: int
     check_run_url: str
     status: str
 
 
 class PRStatusOut(BaseModel):
+    """Response describing a pull request and its CI status."""
+
     pr_number: int
     pr_url: str
     head_sha: str
@@ -107,7 +138,9 @@ async def github_auth_start(_: AnyRole) -> DeviceFlowOut:
 
 
 @router.post("/auth/poll", response_model=TokenPollOut)
-async def github_auth_poll(device_code: str, _: AnyRole) -> TokenPollOut:
+async def github_auth_poll(
+    device_code: str, session: Session, user: AnyRole
+) -> TokenPollOut:
     """Polls the device flow. Call every ``interval`` seconds until status != pending."""
     oauth = gh_module.oauth_client()
     if oauth is None:
@@ -125,7 +158,31 @@ async def github_auth_poll(device_code: str, _: AnyRole) -> TokenPollOut:
 
     if token is None:
         return TokenPollOut(status="pending")
-    return TokenPollOut(status="granted", token=token)
+    await github_tokens.save_token(session, user.id, token, gh_module.GitHubOAuth.SCOPES)
+    return TokenPollOut(status="granted")
+
+
+@router.get("/auth/status", response_model=AuthStatusOut)
+async def github_auth_status(session: Session, user: AnyRole) -> AuthStatusOut:
+    """Whether the caller has connected GitHub. Never includes the token."""
+    row = await github_tokens.token_info(session, user.id)
+    return AuthStatusOut(
+        connected=row is not None,
+        scopes=row.scopes if row else None,
+        connected_at=row.updated_at if row else None,
+        server_token=bool(get_settings().github_token),
+    )
+
+
+@router.delete("/auth", status_code=status.HTTP_204_NO_CONTENT)
+async def github_auth_disconnect(session: Session, user: AnyRole) -> None:
+    """Deletes the caller's stored GitHub token."""
+    await github_tokens.delete_token(session, user.id)
+
+
+async def _client_for(session: AsyncSession, user: User) -> gh_module.GitHub | None:
+    """The caller's own GitHub token if connected, else the server token."""
+    return gh_module.client(await github_tokens.load_token(session, user.id))
 
 
 # ── PR status (live from GitHub) ──────────────────────────────────────────────
@@ -134,13 +191,15 @@ async def github_auth_poll(device_code: str, _: AnyRole) -> TokenPollOut:
 async def pr_github_status(
     pr_id: uuid.UUID,
     session: Session,
-    _: AnyRole,
+    user: AnyRole,
 ) -> PRStatusOut:
     """Returns live CI / check-run status from GitHub for a stored PR."""
     from sqlalchemy import func, select
+
     from app.models import ReviewComment
 
     pr = await get_or_404(session, PullRequest, pr_id)
+    await _guard_pr(session, user, pr)
 
     open_c = await session.scalar(
         select(func.count())
@@ -164,7 +223,7 @@ async def pr_github_status(
             can_merge=(pr.status == "open" and pr.tests_passed and pr.reviewed_at is not None and open_c == 0),
         )
 
-    gh = gh_module.client()
+    gh = await _client_for(session, user)
     if gh is None:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -223,12 +282,13 @@ async def trigger_ci_check(
     blocking check-run entry in the GitHub PR checks UI.
     """
     pr = await get_or_404(session, PullRequest, pr_id)
+    await _guard_pr(session, user, pr, Role.DEVELOPER, Role.LEAD)
     if pr.url.startswith("local://"):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Cannot create GitHub check-run for a local-only PR.",
         )
-    gh = gh_module.client()
+    gh = await _client_for(session, user)
     if gh is None:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,

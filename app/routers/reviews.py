@@ -18,25 +18,28 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger, memory, process
-from app.auth import require_role
+from app import access, ledger, memory, process
+from app.auth import CurrentUser
 from app.db import get_session
 from app.integrations import github
-from app.models import PullRequest, ReviewComment, Run, Task, User
+from app.models import Project, PullRequest, ReviewComment, Run, Task, User
 from app.process import Event, Role
+from app.review.diff import anchor_comments, diff_to_json, parse_unified_diff
 from app.routers.common import advance_if_legal, get_or_404, lock_project
 from app.schemas import CommentOut, LearningOut, PullRequestOut, TriageIn
 
 router = APIRouter(prefix="/api", tags=["reviews"])
 Session = Annotated[AsyncSession, Depends(get_session)]
-Dev = Annotated[User, Depends(require_role(Role.DEVELOPER, Role.LEAD))]
-AnyRole = Annotated[User, Depends(require_role(*Role))]
+# Authority is checked per project in ``_guard_task`` (workspace role + station).
+Dev = CurrentUser
+AnyRole = CurrentUser
+DEV_ROLES = (Role.DEVELOPER, Role.LEAD)
 
 
 def merge_blockers(pr: PullRequest, comments: list[ReviewComment]) -> list[str]:
@@ -71,11 +74,27 @@ async def _pr_out(session: AsyncSession, pr: PullRequest) -> PullRequestOut:
     return out
 
 
+async def _guard_task(
+    session: AsyncSession, user: User, task_id: uuid.UUID, *roles: str
+) -> None:
+    """Only people on the developer or QA station of the task's project reach its PRs.
+
+    With ``roles``, the caller must also hold one of them in the project's
+    workspace (for example developer/lead to triage or merge).
+    """
+    task = await get_or_404(session, Task, task_id)
+    project = await get_or_404(session, Project, task.project_id)
+    if roles:
+        await access.require_project_role(session, user, project, *roles)
+    await access.ensure_station(session, user, project, "developer", "qa")
+
+
 @router.get("/tasks/{task_id}/pr", response_model=PullRequestOut | None)
 async def task_pr(
-    task_id: uuid.UUID, session: Session, _: AnyRole
+    task_id: uuid.UUID, session: Session, user: AnyRole
 ) -> PullRequestOut | None:
     """The latest PR for a task, with comments and merge readiness."""
+    await _guard_task(session, user, task_id)
     pr = await session.scalar(
         select(PullRequest)
         .where(PullRequest.task_id == task_id)
@@ -92,6 +111,7 @@ async def triage(
     """Developer marks an AI comment Valid or Dismissed (a reason is required to dismiss)."""
     comment = await get_or_404(session, ReviewComment, comment_id)
     pr = await get_or_404(session, PullRequest, comment.pr_id)
+    await _guard_task(session, user, pr.task_id, *DEV_ROLES)
     if pr.status != "open":
         raise HTTPException(status.HTTP_409_CONFLICT, "PR is no longer open")
     reason = (body.reason or "").strip() or None
@@ -119,6 +139,7 @@ async def triage(
 async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
     """Merges on GitHub only when every blocker is cleared, then captures a learning."""
     pr = await get_or_404(session, PullRequest, pr_id)
+    await _guard_task(session, user, pr.task_id, *DEV_ROLES)
     comments = list(
         (
             await session.scalars(
@@ -200,6 +221,7 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
     )
     if pr is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "PullRequest not found")
+    await _guard_task(session, user, pr.task_id, *DEV_ROLES)
     if pr.status != "open":
         raise HTTPException(status.HTTP_409_CONFLICT, "PR is not open")
     if pr.reviewed_at is not None:
@@ -214,7 +236,7 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY, f"Reviewer failed: {exc}"
         ) from exc
-    comments = result.comments
+    comments = anchor_comments(run.patch or "", list(result.comments))
     project = await lock_project(session, task.project_id)
     for c in comments:
         session.add(
@@ -253,12 +275,15 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
                 comments=[c.model_dump() for c in comments],
                 engine=result.engine,
                 summary=result.summary,
+                diff=run.patch or None,
             )
         except Exception:
             # Fall back to plain comment if inline review fails
             import logging as _log
+
             _log.getLogger(__name__).warning(
-                "Inline review failed for PR %s, falling back to plain comment", pr.number
+                "Inline review failed for PR %s, falling back to plain comment",
+                pr.number,
             )
             try:
                 await gh.post_review(
@@ -270,7 +295,51 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
                     ),
                 )
             except Exception:
-                pass
+                _log.getLogger(__name__).debug(
+                    "Plain review comment also failed for PR %s", pr.number, exc_info=True
+                )
         finally:
             await gh.aclose()
     return await _pr_out(session, pr)
+
+
+@router.get("/prs/{pr_id}/diff")
+async def pr_diff(pr_id: uuid.UUID, session: Session, user: AnyRole) -> dict[str, Any]:
+    """The PR's change as parsed hunks, with each AI comment tied to its line.
+
+    The patch is the one the worker produced and the control plane pushed, so
+    what a reviewer sees here is exactly what is on the branch. Comments were
+    anchored to real diff lines when stored; any whose file is not in the diff
+    come back in ``unplaced`` so the UI can still show and triage them.
+    """
+    pr = await get_or_404(session, PullRequest, pr_id)
+    await _guard_task(session, user, pr.task_id)
+    run = await get_or_404(session, Run, pr.run_id)
+    files = parse_unified_diff(run.patch or "")
+    rows = (
+        await session.scalars(select(ReviewComment).where(ReviewComment.pr_id == pr.id))
+    ).all()
+    rank = {"high": 0, "medium": 1, "low": 2}
+    comments = [
+        {
+            "id": str(c.id),
+            "path": c.path,
+            "line": c.line,
+            "severity": c.severity,
+            "body": c.body,
+            "triage": c.triage,
+            "triage_reason": c.triage_reason,
+        }
+        for c in sorted(rows, key=lambda c: (rank.get(c.severity, 3), c.line or 0))
+    ]
+    known = {f.path for f in files}
+    return {
+        "prId": str(pr.id),
+        "number": pr.number,
+        "truncated": len(run.patch or "") >= 200_000,
+        "additions": sum(f.additions for f in files),
+        "deletions": sum(f.deletions for f in files),
+        "files": diff_to_json(files),
+        "comments": comments,
+        "unplaced": [c["id"] for c in comments if c["path"] not in known],
+    }

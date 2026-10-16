@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 import uuid
 from typing import Annotated, Any
@@ -26,8 +27,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import db, ledger
-import logging
+from app import access, db, ledger
 from app.ai import llm
 from app.ai.errors import ModelError
 from app.auth import CurrentUser
@@ -36,8 +36,6 @@ from app.models import (
     Product,
     ProductDocument,
     ProductDocumentChunk,
-    Project,
-    Workspace,
 )
 from app.schemas import (
     DocumentExtractRequest,
@@ -51,6 +49,8 @@ Session = Annotated[AsyncSession, Depends(db.get_session)]
 
 
 class ProductCreatePayload(BaseModel):
+    """Request body for creating a product."""
+
     name: str
     code: str | None = None
     domain: str = "Cloud Services"
@@ -59,6 +59,8 @@ class ProductCreatePayload(BaseModel):
 
 
 class IdeaCreatePayload(BaseModel):
+    """Request body for submitting an idea."""
+
     title: str
     problem_statement: str
     target_user: str = "Enterprise Users"
@@ -70,6 +72,8 @@ class IdeaCreatePayload(BaseModel):
 
 
 class IdeaUpdatePayload(BaseModel):
+    """Request body for updating an idea's fields or status."""
+
     title: str | None = None
     problem_statement: str | None = None
     expected_value: str | None = None
@@ -142,7 +146,7 @@ async def create_product(
         payload={"name": product.name, "code": product.code, "domain": product.domain},
     )
 
-    created_str = (product.created_at or dt.datetime.now(dt.timezone.utc)).isoformat()
+    created_str = (product.created_at or dt.datetime.now(dt.UTC)).isoformat()
     return {
         "id": str(product.id),
         "workspaceId": str(product.workspace_id) if product.workspace_id else None,
@@ -185,6 +189,7 @@ async def list_ideas(
             "complexity": i.complexity,
             "tags": i.tags or [],
             "assessment": i.assessment,
+            "promotedProjectId": str(i.project_id) if i.project_id else None,
             "createdAt": i.created_at.isoformat(),
             "updatedAt": i.updated_at.isoformat() if i.updated_at else i.created_at.isoformat(),
         }
@@ -200,7 +205,10 @@ async def create_idea(
 ) -> dict[str, Any]:
     """Creates a new feature idea for validation."""
     prod_uuid = uuid.UUID(payload.product_id) if payload.product_id else None
-    ws_uuid = uuid.UUID(payload.workspace_id) if payload.workspace_id else None
+    ws_requested = uuid.UUID(payload.workspace_id) if payload.workspace_id else None
+    # Ideas live in a workspace the author belongs to, so approvals and
+    # promotion are governed by that workspace's roles.
+    ws_uuid = await access.resolve_workspace(session, user, ws_requested)
 
     idea = Idea(
         id=uuid.uuid4(),
@@ -228,7 +236,7 @@ async def create_idea(
         payload={"title": idea.title, "target_user": idea.target_user},
     )
 
-    created_str = (idea.created_at or dt.datetime.now(dt.timezone.utc)).isoformat()
+    created_str = (idea.created_at or dt.datetime.now(dt.UTC)).isoformat()
     return {
         "id": str(idea.id),
         "productId": str(idea.product_id) if idea.product_id else None,
@@ -258,7 +266,7 @@ async def update_idea(
     try:
         idea_uuid = uuid.UUID(idea_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid idea ID format.")
+        raise HTTPException(status_code=400, detail="Invalid idea ID format.") from None
 
     idea = await session.scalar(select(Idea).where(Idea.id == idea_uuid))
     if not idea:
@@ -289,53 +297,6 @@ async def update_idea(
         "problemStatement": idea.problem_statement,
         "status": idea.status,
         "assessment": idea.assessment,
-    }
-
-
-@router.post("/api/ideas/{idea_id}/promote", status_code=status.HTTP_201_CREATED)
-async def promote_idea_to_project(
-    idea_id: str,
-    session: Session,
-    user: CurrentUser,
-) -> dict[str, Any]:
-    """Promotes a validated idea into an active engineering project."""
-    try:
-        idea_uuid = uuid.UUID(idea_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid idea ID.")
-
-    idea = await session.scalar(select(Idea).where(Idea.id == idea_uuid))
-    if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found.")
-
-    # Create project
-    project = Project(
-        id=uuid.uuid4(),
-        name=idea.title,
-        idea_text=f"{idea.problem_statement}\n\nExpected Value:\n{idea.expected_value}",
-        created_by=user.id,
-        stage="evaluate",
-        stage_status="submitted",
-    )
-    session.add(project)
-    idea.status = "approved"
-    session.add(idea)
-    await session.flush()
-
-    await ledger.append(
-        session,
-        actor=ledger.Actor.human(user),
-        action="idea.promoted",
-        subject_type="project",
-        subject_id=project.id,
-        payload={"idea_id": str(idea.id), "project_name": project.name},
-    )
-
-    return {
-        "status": "promoted",
-        "projectId": str(project.id),
-        "projectName": project.name,
-        "ideaId": str(idea.id),
     }
 
 

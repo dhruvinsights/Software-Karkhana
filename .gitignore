@@ -44,3 +44,6 @@ Thumbs.db
 desktop.ini
 third_party/
 .github/
+
+# --- Local ledger anchors (dev only; production uses a locked bucket) ---
+.ledger-anchors.jsonl

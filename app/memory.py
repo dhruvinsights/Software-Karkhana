@@ -40,7 +40,11 @@ TOP_K = 3
 
 
 async def retrieve(
-    session: AsyncSession, idea_text: str
+    session: AsyncSession,
+    idea_text: str,
+    *,
+    project_id: uuid.UUID,
+    workspace_id: uuid.UUID | None,
 ) -> list[tuple[Learning, str, float]]:
     """Returns verified learnings similar to the idea as (learning, project name, similarity)."""
     try:
@@ -57,6 +61,13 @@ async def retrieve(
             Learning.embedding.is_not(None),
             # Vectors from different models are not comparable.
             Learning.embedding_model == llm.embed_model_name(),
+            # Tenant boundary: learnings from the same workspace only. Legacy
+            # projects without a workspace share the single-tenant pool.
+            (
+                Project.workspace_id.is_(None)
+                if workspace_id is None
+                else Project.workspace_id == workspace_id
+            ),
         )
         .order_by(distance)
         .limit(TOP_K)

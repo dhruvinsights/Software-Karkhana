@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Mail,
   Lock,
@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { factoryStore } from '../../store/factoryStore';
+import { InvitePreview, previewInvite, readPendingInvite } from '../../lib/invites';
 import { ChromaWaves } from '../reactbits/ChromaWaves';
 import { ShinyText } from '../reactbits/ShinyText';
 
@@ -48,6 +49,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [otpCode, setOtpCode] = useState('');
   const [password, setPassword] = useState('');
   const [isRobotVerified, setIsRobotVerified] = useState(true);
+  const [invite, setInvite] = useState<InvitePreview | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const pending = readPendingInvite();
+    if (!pending) return;
+    previewInvite(pending)
+      .then((p) => {
+        setInvite(p);
+        if (p.email) setEmail(p.email);
+      })
+      .catch((e: Error) => setInviteError(e.message));
+  }, []);
   const [isVerifyingBot, setIsVerifyingBot] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -302,6 +316,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       <div className="absolute inset-0 pointer-events-none opacity-30">
         <ChromaWaves />
       </div>
+
+      {(invite || inviteError) && (
+        <div className="max-w-4xl mx-auto w-full relative z-10 mb-4 rounded-xl border border-[#075bff]/40 bg-[#075bff]/10 px-4 py-3 text-sm">
+          {invite ? (
+            <span>
+              <b>{invite.inviter.name}</b> invited you to <b>{invite.workspace?.name}</b>
+              {invite.project ? <> ({invite.project.name})</> : null} as{' '}
+              <b>{invite.role.replace('_', ' ')}</b>. Sign in{invite.email ? ` with ${invite.email}` : ''} to join.
+            </span>
+          ) : (
+            <span>{inviteError}</span>
+          )}
+        </div>
+      )}
 
       {/* Top Header */}
       <div className="max-w-4xl mx-auto w-full flex items-center justify-between pb-6 border-b border-white/[0.08] relative z-10">

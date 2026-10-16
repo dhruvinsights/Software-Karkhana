@@ -113,16 +113,11 @@ async def test_unknown_or_missing_user_is_rejected(client):
 
 
 async def test_golden_path(client, fakes):
-    fake, backend = fakes
+    _fake, backend = fakes
     idea = IDEAS["discounts"]
 
-    # A2: only a PM can submit.
-    r = await client.post(
-        "/api/projects",
-        json={"name": idea["name"], "idea_text": idea["idea_text"]},
-        headers=as_(DEV),
-    )
-    assert r.status_code == 403
+    # A2: any signed-in team member may submit (access to the result is governed
+    # by workspace membership and project stations, see test_project_access).
     r = await client.post(
         "/api/projects",
         json={"name": idea["name"], "idea_text": idea["idea_text"]},
@@ -469,7 +464,7 @@ async def test_concurrent_runs_keep_project_and_tasks_consistent(client, fakes):
 
 
 async def test_missing_review_can_be_retried(client, fakes):
-    pid, tasks = await _approved_project(client, "Reviewer outage")
+    _pid, tasks = await _approved_project(client, "Reviewer outage")
     tid = tasks[0]["id"]
     rid = (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).json()["id"]
     res = {
@@ -510,7 +505,7 @@ async def test_missing_review_can_be_retried(client, fakes):
 async def test_run_limit_blocks_a_second_concurrent_run(client, fakes, monkeypatch):
     from app.config import get_settings
 
-    pid, tasks = await _approved_project(client, "Run limit")
+    _pid, tasks = await _approved_project(client, "Run limit")
     monkeypatch.setattr(get_settings(), "max_active_runs_per_project", 1)
     assert (
         await client.post(f"/api/tasks/{tasks[0]['id']}/runs", headers=as_(DEV))
@@ -520,7 +515,7 @@ async def test_run_limit_blocks_a_second_concurrent_run(client, fakes, monkeypat
 
 
 async def test_failing_tests_are_never_reported_as_success(client, fakes):
-    pid, tasks = await _approved_project(client, "Red tests")
+    _pid, tasks = await _approved_project(client, "Red tests")
     tid = tasks[0]["id"]
     rid = (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).json()["id"]
     res = {
@@ -553,7 +548,7 @@ async def test_concurrent_review_retries_post_one_review(client, fakes):
     from app.review.types import ReviewResult
     from tests import fixtures as fallbacks
 
-    pid, tasks = await _approved_project(client, "Retry race")
+    _pid, tasks = await _approved_project(client, "Retry race")
     tid = tasks[0]["id"]
     rid = (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).json()["id"]
     res = {

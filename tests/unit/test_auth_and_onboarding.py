@@ -14,8 +14,13 @@
 
 """Unit tests for enterprise password hashing, JWT creation & auth contracts."""
 
+from unittest.mock import AsyncMock
+
+import pytest
+
 from app.auth import create_token, decode_token, hash_password, verify_password
 from app.process import Role
+from app.routers.auth import SendOTPRequest, VerifyOTPRequest, send_otp, verify_otp
 
 
 def test_password_hashing_and_verification():
@@ -53,13 +58,10 @@ def test_factory_roles_supported():
     assert "admin" in all_roles
 
 
-import pytest
-from app.routers.auth import send_otp, verify_otp, SendOTPRequest, VerifyOTPRequest
-from unittest.mock import AsyncMock, MagicMock
-
-
 @pytest.mark.asyncio
-async def test_send_and_verify_otp_flow():
+async def test_send_and_verify_otp_flow(monkeypatch):
+    monkeypatch.setenv("DEV_OTP_CODE", "424242")
+    monkeypatch.delenv("K_SERVICE", raising=False)
     # Test send OTP
     req = SendOTPRequest(email="test.pilot@enterprise.internal")
     resp = await send_otp(req)
@@ -67,12 +69,12 @@ async def test_send_and_verify_otp_flow():
     assert "expires_in" in resp
 
     # Test verify OTP with private bypass code and cache
-    code = "9068"
+    code = "424242"
 
     # Test verify OTP
     mock_session = AsyncMock()
     mock_session.scalar.return_value = None  # user doesn't exist yet (auto-provision)
-    
+
     verify_req = VerifyOTPRequest(email="test.pilot@enterprise.internal", code=code)
     token_out = await verify_otp(verify_req, mock_session)
     assert token_out.access_token is not None

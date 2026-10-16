@@ -36,6 +36,7 @@ import {
   Terminal,
   Info,
 } from 'lucide-react';
+import { PRDiffViewer } from './PRDiffViewer';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -151,7 +152,7 @@ function DeviceFlowModal({
   onDismiss,
 }: {
   token: string;
-  onGranted: (ghToken: string) => void;
+  onGranted: () => void;
   onDismiss: () => void;
 }) {
   const [flow, setFlow] = useState<DeviceFlow | null>(null);
@@ -187,10 +188,11 @@ function DeviceFlowModal({
             { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
           );
           const data = await res.json();
-          if (data.status === 'granted' && data.token) {
+          // The token is stored encrypted server-side and never sent back.
+          if (data.status === 'granted') {
             stopped = true;
             setPolling(false);
-            onGranted(data.token);
+            onGranted();
             return;
           }
           if (data.status === 'error') {
@@ -428,7 +430,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDeviceFlow, setShowDeviceFlow] = useState(false);
-  const [sessionGhToken, setSessionGhToken] = useState<string | null>(null);
+  const [ghConnected, setGhConnected] = useState(false);
   const [showAddPR, setShowAddPR] = useState(false);
   const [newPrBranch, setNewPrBranch] = useState('');
   const [newPrTitle, setNewPrTitle] = useState('');
@@ -436,7 +438,6 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
   const authHeaders = (extra?: Record<string, string>) => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
-    ...(sessionGhToken ? { 'X-GitHub-Token': sessionGhToken } : {}),
     ...extra,
   });
 
@@ -456,7 +457,14 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
     } finally {
       setLoading(false);
     }
-  }, [projectId, token, sessionGhToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, token, ghConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetch('/api/github/auth/status', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setGhConnected(Boolean(d.connected || d.server_token)); })
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     fetchPrs();
@@ -565,7 +573,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
       {showDeviceFlow && (
         <DeviceFlowModal
           token={token}
-          onGranted={(t) => { setSessionGhToken(t); setShowDeviceFlow(false); }}
+          onGranted={() => { setGhConnected(true); setShowDeviceFlow(false); }}
           onDismiss={() => setShowDeviceFlow(false)}
         />
       )}
@@ -648,7 +656,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
         )}
 
         {/* Authenticate button when no GH config */}
-        {!sessionGhToken && (
+        {!ghConnected && (
           <button
             onClick={() => setShowDeviceFlow(true)}
             className="btn btn-ghost"
@@ -943,6 +951,32 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Files changed, with the AI review's comments as inline threads */}
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <FileCode2 size={15} style={{ color: 'var(--accent)' }} />
+                <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  Files changed
+                </h3>
+              </div>
+              <PRDiffViewer
+                prId={selectedPrId!}
+                token={token}
+                reloadKey={(detail?.comments ?? []).map((c) => `${c.id}:${c.triage}`).join(',')}
+                renderComment={(c) => (
+                  <CommentCard
+                    comment={c}
+                    token={token}
+                    onTriaged={() => {
+                      fetch(`/api/tasks/${selectedPr?.task_id}/pr`, { headers: authHeaders() })
+                        .then((r) => (r.ok ? r.json() : null))
+                        .then((d) => d && setDetail(d));
+                    }}
+                  />
+                )}
+              />
             </div>
 
             {/* Merge blockers + merge button */}

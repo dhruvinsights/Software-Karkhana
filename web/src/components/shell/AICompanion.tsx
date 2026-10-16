@@ -75,6 +75,12 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
   const activeProject = state.projects.find((p) => p.id === state.selectedProjectId);
   const activePr = state.pullRequests.find((p) => p.id === state.selectedPrId);
 
+  // The RAG API is tenant-scoped: every call needs a server workspace id (a UUID).
+  // The offline placeholder workspace ('ws-main') has no server records, so the
+  // companion stays disabled until a real workspace is loaded.
+  const workspaceId = /^[0-9a-f-]{36}$/i.test(state.activeWorkspaceId || '') ? state.activeWorkspaceId : null;
+  const wsQuery = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+
   const token = state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('karkhana_jwt_token') : null);
   const authHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -84,9 +90,13 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
   // Load chat history on mount
   useEffect(() => {
     if (!state.companionOpen) return;
+    if (!workspaceId) {
+      setMessages([]);
+      return;
+    }
     const loadHistory = async () => {
       try {
-        const res = await fetch(`/api/rag/history/${sessionId}`, { headers: authHeaders });
+        const res = await fetch(`/api/rag/history/${encodeURIComponent(sessionId)}${wsQuery}`, { headers: authHeaders });
         if (res.ok) {
           const data: ChatMessage[] = await res.json();
           if (data.length > 0) {
@@ -104,7 +114,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
       }]);
     };
     loadHistory();
-  }, [state.companionOpen, sessionId]);
+  }, [state.companionOpen, sessionId, workspaceId]);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -114,13 +124,18 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
   // Load documents on docs tab
   useEffect(() => {
     if (activeTab !== 'docs' || !state.companionOpen) return;
+    if (!workspaceId) {
+      setDocuments([]);
+      return;
+    }
     loadDocuments();
-  }, [activeTab, state.companionOpen]);
+  }, [activeTab, state.companionOpen, workspaceId]);
 
   const loadDocuments = async () => {
+    if (!workspaceId) return;
     setDocsLoading(true);
     try {
-      const res = await fetch('/api/rag/documents', { headers: authHeaders });
+      const res = await fetch(`/api/rag/documents${wsQuery}`, { headers: authHeaders });
       if (res.ok) {
         const data: RagDocument[] = await res.json();
         setDocuments(data);
@@ -134,7 +149,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
 
   const handleSend = useCallback(async (customPrompt?: string) => {
     const text = (customPrompt ?? input).trim();
-    if (!text || loading) return;
+    if (!text || loading || !workspaceId) return;
 
     const userMsg: ChatMessage = {
       role: 'user',
@@ -152,7 +167,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
         body: JSON.stringify({
           session_id: sessionId,
           message: text,
-          workspace_id: state.activeWorkspaceId,
+          workspace_id: workspaceId,
         }),
       });
 
@@ -205,7 +220,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, sessionId, state, authHeaders, activeProject, activePr]);
+  }, [input, loading, messages, sessionId, state, authHeaders, activeProject, activePr, workspaceId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -215,8 +230,9 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
   };
 
   const handleClearHistory = async () => {
+    if (!workspaceId) return;
     try {
-      await fetch(`/api/rag/history/${sessionId}`, { method: 'DELETE', headers: authHeaders });
+      await fetch(`/api/rag/history/${encodeURIComponent(sessionId)}${wsQuery}`, { method: 'DELETE', headers: authHeaders });
     } catch { /* offline */ }
     setMessages([{
       role: 'assistant',
@@ -227,7 +243,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
 
   const handleIngest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ingestTitle.trim() || !ingestContent.trim()) return;
+    if (!workspaceId || !ingestTitle.trim() || !ingestContent.trim()) return;
     setIngestLoading(true);
     try {
       const res = await fetch('/api/rag/ingest', {
@@ -236,7 +252,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
         body: JSON.stringify({
           title: ingestTitle.trim(),
           content: ingestContent.trim(),
-          workspace_id: state.activeWorkspaceId,
+          workspace_id: workspaceId,
           tags: ['manual'],
         }),
       });
@@ -251,9 +267,10 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
   };
 
   const handleDeleteDocument = async (docId: string) => {
+    if (!workspaceId) return;
     try {
-      await fetch(`/api/rag/documents/${docId}`, { method: 'DELETE', headers: authHeaders });
-      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+      const res = await fetch(`/api/rag/documents/${encodeURIComponent(docId)}${wsQuery}`, { method: 'DELETE', headers: authHeaders });
+      if (res.ok) setDocuments((prev) => prev.filter((d) => d.id !== docId));
     } catch { /* offline */ }
   };
 
@@ -287,8 +304,9 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
           </button>
           <button
             onClick={handleClearHistory}
+            disabled={!workspaceId}
             title="Clear chat history"
-            className="p-1.5 rounded-md text-[#827D8E] hover:text-white hover:bg-white/[0.06] transition-colors"
+            className="p-1.5 rounded-md text-[#827D8E] hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
@@ -348,8 +366,16 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
         </button>
       </div>
 
+      {!workspaceId && (
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 gap-2 bg-[#07070B]">
+          <Database className="w-8 h-8 text-[#4e5668]" />
+          <p className="text-xs text-[#B5B1C0]">Sign in and select a workspace to use the AI Companion.</p>
+          <p className="text-[11px] text-[#4e5668]">The knowledge base is private to each workspace.</p>
+        </div>
+      )}
+
       {/* --- CHAT TAB --- */}
-      {activeTab === 'chat' && (
+      {workspaceId && activeTab === 'chat' && (
         <>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#07070B]">
@@ -437,7 +463,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
       )}
 
       {/* --- DOCS / KNOWLEDGE BASE TAB --- */}
-      {activeTab === 'docs' && (
+      {workspaceId && activeTab === 'docs' && (
         <div className="flex-1 flex flex-col overflow-hidden bg-[#07070B]">
           {/* Ingest form toggle */}
           <div className="p-4 border-b border-white/[0.08] shrink-0">

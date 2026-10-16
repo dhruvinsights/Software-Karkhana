@@ -251,7 +251,7 @@ export interface Idea {
   targetUser: string;
   expectedValue: string;
   authorId: string;
-  status: 'draft' | 'evaluating' | 'needs_evidence' | 'approved' | 'rejected' | 'promoted';
+  status: 'draft' | 'evaluating' | 'needs_evidence' | 'pending_approval' | 'approved' | 'rejected' | 'promoted';
   promotedProjectId?: string;
   complexity: 'Low' | 'Medium' | 'High';
   tags: string[];
@@ -320,9 +320,14 @@ export interface Issue {
   projectId: string;
   title: string;
   type: 'story' | 'bug' | 'task' | 'chore' | 'security';
-  status: 'todo' | 'in_progress' | 'in_review' | 'done';
+  status: 'todo' | 'in_progress' | 'in_review' | 'done' | 'wont_fix';
   priority: 'P0' | 'P1' | 'P2' | 'P3';
   assigneeId: string;
+  key?: string;
+  description?: string;
+  assigneeName?: string | null;
+  reporterName?: string;
+  source?: string;
   labels: string[];
   acceptanceCriteria: string[];
   linkedPrId?: string;

@@ -111,10 +111,30 @@ class Idea(Base):
     complexity: Mapped[str] = mapped_column(String, default="Medium")
     tags: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     assessment: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class IdeaApproval(Base):
+    """One reviewer's decision on an idea (all assigned reviewers must approve)."""
+
+    __tablename__ = "idea_approvals"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    idea_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ideas.id", ondelete="CASCADE"))
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    requested_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String, default="pending")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Project(Base):
@@ -131,6 +151,9 @@ class Project(Base):
     stage: Mapped[str] = mapped_column(String, default="evaluate")
     stage_status: Mapped[str] = mapped_column(String, default="submitted")
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    idea_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ideas.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -149,6 +172,14 @@ class WorkspaceInvite(Base):
     token: Mapped[str] = mapped_column(String, unique=True)
     status: Mapped[str] = mapped_column(String, default="pending")
     created_at: Mapped[dt.datetime] = _now()
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    stations: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    is_lead: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    accepted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProjectMember(Base):
@@ -163,6 +194,7 @@ class ProjectMember(Base):
         JSONB,
         default=lambda: ["product", "architecture", "developer", "qa", "devops", "security", "release"],
     )
+    is_lead: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[dt.datetime] = _now()
 
 
@@ -275,6 +307,8 @@ class Run(Base):
     validation_status: Mapped[str] = mapped_column(String, default="not_run")
     error: Mapped[str | None] = mapped_column(Text)
     artifacts_uri: Mapped[str | None] = mapped_column(String)
+    # Headroom token accounting reported by the worker (migration 015).
+    context_compression: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class PullRequest(Base):
@@ -353,6 +387,11 @@ class LedgerEntry(Base):
     __tablename__ = "ledger"
     seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id"))
+    # Tenant chain (migration 014): "<workspace id>", "platform" or "legacy".
+    # No FK on workspace_id: evidence outlives the workspace it describes.
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    chain: Mapped[str] = mapped_column(String, default="legacy")
+    chain_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     actor_label: Mapped[str] = mapped_column(String)
     actor_kind: Mapped[str] = mapped_column(String)
@@ -439,3 +478,164 @@ class ActivityEvent(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = _now()
+
+
+class Issue(Base):
+    """An issue or bug raised on a project and assigned to whoever fixes it."""
+
+    __tablename__ = "issues"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    number: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(String, default="task")
+    priority: Mapped[str] = mapped_column(String, default="P2")
+    status: Mapped[str] = mapped_column(String, default="todo")
+    source: Mapped[str] = mapped_column(String, default="manual")
+    labels: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    reporter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    pr_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pull_requests.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+    closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class GitHubToken(Base):
+    """A user's GitHub OAuth token, encrypted at rest (migrations 009, 013).
+
+    ``token`` is ciphertext from :mod:`app.crypto`; read and write it only via
+    :mod:`app.integrations.github_tokens`.
+    """
+
+    __tablename__ = "github_tokens"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    token: Mapped[str] = mapped_column(Text)
+    scopes: Mapped[str] = mapped_column(Text, default="repo,read:org")
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+
+
+# ── Lifecycle stations (016_stations.sql) ─────────────────────────────────────
+from sqlalchemy import Date, Numeric  # noqa: E402 - appended block, kept self-contained
+
+
+class Adr(Base):
+    """An architecture decision record on a project."""
+
+    __tablename__ = "adrs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    number: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="proposed")
+    context: Mapped[str] = mapped_column(Text, default="")
+    decision: Mapped[str] = mapped_column(Text, default="")
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    consequences: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    affected_components: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+
+
+class TestScenario(Base):
+    """A QA test scenario and its latest execution result."""
+
+    __test__ = False  # not a pytest class
+    __tablename__ = "test_scenarios"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String)
+    type: Mapped[str] = mapped_column(String, default="Functional")
+    priority: Mapped[str] = mapped_column(String, default="P1")
+    steps: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    expected_result: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="not_run")
+    actual_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    automation_script: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+
+
+class SecurityFinding(Base):
+    """A security finding (CVE/CWE) tracked to remediation or waiver."""
+
+    __tablename__ = "security_findings"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String)
+    cve_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    cwe_category: Mapped[str] = mapped_column(String, default="")
+    severity: Mapped[str] = mapped_column(String, default="MEDIUM")
+    cvss_score: Mapped[float] = mapped_column(Numeric(3, 1, asdecimal=False), default=0)
+    status: Mapped[str] = mapped_column(String, default="open")
+    affected_component: Mapped[str] = mapped_column(String, default="")
+    remediation_advice: Mapped[str] = mapped_column(Text, default="")
+    sla_deadline: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+
+class RagDocument(Base):
+    """A document in a workspace's RAG knowledge base (migration 015)."""
+
+    __tablename__ = "rag_documents"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String)
+    tags: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    content_chars: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class RagChunk(Base):
+    """One embedded chunk of a RAG document; carries its workspace for SQL filtering."""
+
+    __tablename__ = "rag_chunks"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768))
+    embedding_model: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class RagChatMessage(Base):
+    """A RAG chat turn, private to one user in one workspace."""
+
+    __tablename__ = "rag_chat_messages"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    session_id: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String)
+    content: Mapped[str] = mapped_column(Text)
+    sources: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp()
+    )

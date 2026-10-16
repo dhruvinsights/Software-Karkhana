@@ -24,8 +24,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger
-from app.auth import CurrentUser, require_role
+from app import access, ledger
+from app.auth import CurrentUser
 from app.db import get_session
 from app.models import (
     Approval,
@@ -37,10 +37,20 @@ from app.models import (
     Run,
     Task,
     User,
+    WorkspaceMember,
 )
-from app.process import STAGE_INDEX, STAGES, Role
+from app.process import STAGE_INDEX, STAGES
 from app.routers.common import get_or_404
-from app.schemas import ChainOut, LearningOut, LedgerOut, StageOut, TaskOut, UserOut
+from app.schemas import (
+    AnchorOut,
+    ChainOut,
+    ChainReportOut,
+    LearningOut,
+    LedgerOut,
+    StageOut,
+    TaskOut,
+    UserOut,
+)
 
 router = APIRouter(prefix="/api", tags=["platform"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -50,7 +60,7 @@ BOARD_COLUMNS = ("backlog", "ready", "in_progress", "review", "done")
 @router.get("/prs")
 async def list_prs(
     session: Session,
-    _: CurrentUser,
+    user: CurrentUser,
     project_id: uuid.UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
 ) -> list[dict]:
@@ -106,9 +116,15 @@ async def list_prs(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> User:
-    """The signed-in user and their server-side role."""
-    return user
+async def me(user: CurrentUser, session: Session) -> UserOut:
+    """The signed-in user, with the role they hold in their primary workspace.
+
+    The role is a label for the UI; every server-side check uses the role in
+    the workspace of the resource being acted on.
+    """
+    out = UserOut.model_validate(user)
+    out.role = await access.display_role(session, user)
+    return out
 
 
 @router.get("/stages", response_model=list[StageOut])
@@ -118,9 +134,9 @@ async def stages(_: CurrentUser) -> list[StageOut]:
 
 
 @router.get("/projects/{project_id}/board")
-async def board(project_id: uuid.UUID, session: Session, _: CurrentUser) -> dict:
+async def board(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict:
     """Task board columns. Draft cards are shown separately until approval."""
-    await get_or_404(session, Project, project_id)
+    await access.get_visible_project(session, user, project_id)
     tasks = (
         await session.scalars(
             select(Task).where(Task.project_id == project_id).order_by(Task.key)
@@ -135,36 +151,125 @@ async def board(project_id: uuid.UUID, session: Session, _: CurrentUser) -> dict
 @router.get("/ledger", response_model=list[LedgerOut])
 async def list_ledger(
     session: Session,
-    _: CurrentUser,
+    user: CurrentUser,
     project_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[LedgerEntry]:
     """Newest ledger entries, optionally for one project."""
     q = select(LedgerEntry).order_by(LedgerEntry.seq.desc()).limit(limit)
     if project_id:
+        await access.get_visible_project(session, user, project_id)
         q = q.where(LedgerEntry.project_id == project_id)
+    else:
+        q = q.where(
+            LedgerEntry.project_id.in_(
+                select(Project.id).where(access.visible_projects(user))
+            )
+        )
     return list((await session.scalars(q)).all())
 
 
+def _my_workspaces(user: User):
+    """Subquery: ids of the workspaces ``user`` is a member of."""
+    return select(WorkspaceMember.workspace_id).where(
+        WorkspaceMember.user_id == user.id
+    )
+
+
+async def _require_member(
+    session: AsyncSession, user: User, workspace_id: uuid.UUID
+) -> None:
+    member = await session.scalar(
+        select(WorkspaceMember.id).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user.id,
+        )
+    )
+    if member is None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You are not a member of this workspace."
+        )
+
+
 @router.get("/ledger/verify", response_model=ChainOut)
-async def verify_ledger(session: Session, _: CurrentUser) -> ChainOut:
-    """Recomputes the whole hash chain from genesis."""
-    r = await ledger.verify_chain(session)
+async def verify_ledger(
+    session: Session, user: CurrentUser, workspace_id: uuid.UUID | None = None
+) -> ChainOut:
+    """Recomputes the caller's chains from genesis.
+
+    With ``workspace_id``, only that workspace's chain (members only). Without
+    it, every workspace the caller belongs to plus the shared ``platform``
+    chain (rows with no workspace). Other tenants' rows are never read. The
+    pre-014 ``legacy`` chain mixes tenants and is verified by operators with
+    ``python -m app.scripts.anchor_ledger --verify``.
+    """
+    if workspace_id is not None:
+        await _require_member(session, user, workspace_id)
+        chains = [ledger.chain_for(workspace_id)]
+    else:
+        mine = (await session.scalars(_my_workspaces(user))).all()
+        chains = [ledger.chain_for(w) for w in sorted(set(mine), key=str)]
+        chains.append(ledger.PLATFORM_CHAIN)
+    reports = [await ledger.verify_chain(session, c) for c in chains]
+    first_bad = next((r for r in reports if not r.ok), None)
     return ChainOut(
-        ok=r.ok,
-        entries=r.entries,
-        head=r.head,
-        first_bad_seq=r.first_bad_seq,
-        reason=r.reason,
+        ok=first_bad is None,
+        entries=sum(r.entries for r in reports),
+        head=reports[0].head if len(reports) == 1 else "",
+        first_bad_seq=first_bad.first_bad_seq if first_bad else None,
+        reason=f"{first_bad.chain}: {first_bad.reason}" if first_bad else None,
+        chains=[
+            ChainReportOut(
+                chain=r.chain,
+                workspace_id=None if r.chain == ledger.PLATFORM_CHAIN else r.chain,
+                ok=r.ok,
+                entries=r.entries,
+                head=r.head,
+                first_bad_seq=r.first_bad_seq,
+                reason=r.reason,
+            )
+            for r in reports
+        ],
+    )
+
+
+@router.post("/ledger/anchor", response_model=AnchorOut)
+async def anchor_ledger(
+    session: Session, user: CurrentUser, workspace_id: uuid.UUID
+) -> AnchorOut:
+    """Writes this workspace's chain head to the external anchor sink now.
+
+    Any workspace member may take an anchor (it only adds evidence). A sink
+    failure is reported in the body (``ok: false``), never as a 5xx.
+    """
+    await _require_member(session, user, workspace_id)
+    chain = ledger.chain_for(workspace_id)
+    res = await ledger.anchor_head(session, chain, reason="manual")
+    if res is None:
+        return AnchorOut(ok=False, chain=chain, error="chain is empty")
+    return AnchorOut(
+        ok=res.ok,
+        chain=chain,
+        sink=res.sink,
+        location=res.location,
+        position=res.anchor.position,
+        hash=res.anchor.hash,
+        anchored_at=res.anchor.anchored_at,
+        error=res.error,
     )
 
 
 @router.get("/learnings", response_model=list[LearningOut])
-async def list_learnings(session: Session, _: CurrentUser) -> list[Learning]:
-    """All learnings, newest first."""
+async def list_learnings(session: Session, user: CurrentUser) -> list[Learning]:
+    """Learnings attached to projects the caller may access."""
     return list(
         (
-            await session.scalars(select(Learning).order_by(Learning.created_at.desc()))
+            await session.scalars(
+                select(Learning)
+                .join(Project, Project.id == Learning.project_id)
+                .where(access.visible_projects(user))
+                .order_by(Learning.created_at.desc())
+            )
         ).all()
     )
 
@@ -173,11 +278,24 @@ async def list_learnings(session: Session, _: CurrentUser) -> list[Learning]:
 async def verify_learning(
     learning_id: uuid.UUID,
     session: Session,
-    user: Annotated[User, Depends(require_role(Role.LEAD, Role.DIRECTOR))],
+    user: CurrentUser,
     decision: Annotated[str, Query(pattern="^(verified|rejected)$")] = "verified",
 ) -> Learning:
-    """A lead verifies (or rejects) a learning. Only verified ones are reused."""
+    """A lead verifies (or rejects) a learning. Only verified ones are reused.
+
+    The caller must be a lead or director in the learning's project workspace.
+    """
     lr = await get_or_404(session, Learning, learning_id)
+    project = await session.get(Project, lr.project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning not found")
+    role = await access.effective_role(session, user, project.workspace_id)
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning not found")
+    if role not in {"lead", "director"}:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only a lead or director verifies learnings"
+        )
     if lr.status != "unverified":
         raise HTTPException(
             status.HTTP_409_CONFLICT, f"Learning is already {lr.status}"

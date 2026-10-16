@@ -127,6 +127,14 @@ make_secret() {  # name value: adds a new version
 }
 secret_access() { retry gcloud secrets add-iam-policy-binding "$1" --member="serviceAccount:$2" --role=roles/secretmanager.secretAccessor >/dev/null; }
 gcloud secrets describe run-hmac-secret >/dev/null 2>&1 || make_secret run-hmac-secret "$(openssl rand -hex 32)"
+gcloud secrets describe session-jwt-secret >/dev/null 2>&1 || make_secret session-jwt-secret "$(openssl rand -hex 32)"
+# Fernet key(s) that encrypt stored GitHub OAuth tokens (app/crypto.py): 32
+# random bytes, url-safe base64. Comma-separated; the first encrypts, all
+# decrypt. To rotate, add a version "NEW,OLD", deploy, run
+# app.scripts.reencrypt_tokens, then add a version "NEW". Created once only.
+# TODO(kms): wrap this data key with Cloud KMS (see app/crypto.py).
+gcloud secrets describe token-encryption-keys >/dev/null 2>&1 || \
+  make_secret token-encryption-keys "$(openssl rand -base64 32 | tr '+/' '-_')"
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then make_secret github-token "$GITHUB_TOKEN"
 else gcloud secrets describe github-token >/dev/null 2>&1 || make_secret github-token "unset"; fi
 # The Firebase web key is public by design (it ships to the browser); it is in
@@ -135,7 +143,7 @@ else gcloud secrets describe github-token >/dev/null 2>&1 || make_secret github-
 ensure_secret firebase-web-api-key
 if [[ -n "${FIREBASE_WEB_API_KEY:-}" ]]; then make_secret firebase-web-api-key "$FIREBASE_WEB_API_KEY"; fi
 secret_access db-owner-password "$MIGRATE_SA"
-for s in run-hmac-secret github-token; do secret_access "$s" "$RUN_SA"; done
+for s in run-hmac-secret session-jwt-secret github-token token-encryption-keys; do secret_access "$s" "$RUN_SA"; done
 secret_access firebase-web-api-key "$BUILD_SA"
 # The worker gets no secrets at all: it runs untrusted repository code. If an
 # earlier bootstrap granted it the GitHub token, remove that grant.
@@ -162,6 +170,25 @@ BUILD_SRC="gs://$PROJECT_ID-karkhana-build"
 ensure_bucket "$BUILD_SRC" 7
 retry gcloud storage buckets add-iam-policy-binding "$BUILD_SRC" --member="serviceAccount:$BUILD_SA" \
   --role=roles/storage.objectViewer >/dev/null
+# Ledger anchors: chain heads written outside the database, so a rewrite by a
+# DB owner is detectable (app/ledger.py, docs/LEDGER.md). No lifecycle delete:
+# a retention policy keeps every object for LEDGER_RETENTION (default 400d,
+# above DPDP's one-year log retention). The API may create and read objects,
+# never delete or overwrite them (uploads are create-only).
+ANCHORS="gs://$PROJECT_ID-karkhana-ledger-anchors"
+LEDGER_RETENTION="${LEDGER_RETENTION:-400d}"
+gcloud storage buckets describe "$ANCHORS" >/dev/null 2>&1 || \
+  gcloud storage buckets create "$ANCHORS" --location="$REGION" --uniform-bucket-level-access \
+    --public-access-prevention --retention-period="$LEDGER_RETENTION"
+gcloud storage buckets update "$ANCHORS" --retention-period="$LEDGER_RETENTION" >/dev/null
+for r in roles/storage.objectCreator roles/storage.objectViewer; do
+  retry gcloud storage buckets add-iam-policy-binding "$ANCHORS" --member="serviceAccount:$RUN_SA" \
+    --role="$r" >/dev/null
+done
+# WARNING: locking is IRREVERSIBLE. Once locked, the retention period can never
+# be shortened or removed and the bucket cannot be deleted until every object
+# has aged out. Lock only for production, after checking the period above:
+#   gcloud storage buckets update "$ANCHORS" --lock-retention-period
 
 cat <<EOF
 

@@ -92,6 +92,7 @@ Seeded users are placed in a default org so they can sign in immediately.
 - [ ] A non-director gets 403 from approve: open devtools and
       `fetch('/api/projects/<id>/approve',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:'{"decision":"approved"}'})`.
 - [ ] Ledger at the bottom → **Verify chain** says verified.
+- [ ] `python -m app.scripts.anchor_ledger` writes one object per chain to `gs://<project>-karkhana-ledger-anchors`, and `--verify` passes (see `docs/LEDGER.md`).
 - [ ] Director approves; Developer clicks **Assign to agent**; a real PR appears on GitHub with a `karkhana/tests` status.
 - [ ] `GET /api/providers/health` returns Gemini `configured=true`, `runner_status` is honest (shows `ax_available: false` if no cluster).
 - [ ] `GET /api/nav` returns only the pages for the signed-in role.
@@ -102,6 +103,7 @@ Seeded users are placed in a default org so they can sign in immediately.
 |---|---|
 | Deploy step `migrate` fails on `CREATE EXTENSION vector` | `karkhana_owner` must be created with `gcloud sql users create` (it gets `cloudsqlsuperuser`). Re-run bootstrap. |
 | `gcloud builds submit` fails with `karkhana-build ... does not exist` or a bucket error | Bootstrap predates the build service account. Re-run `infra/bootstrap.sh`. |
+| API fails to start: `TOKEN_ENCRYPTION_KEYS must come from Secret Manager` | Bootstrap predates token encryption. Re-run `infra/bootstrap.sh` (creates `token-encryption-keys`), then deploy. Then run `python -m app.scripts.reencrypt_tokens` once as `karkhana_owner` to encrypt any older plaintext rows. |
 | Build fails at `preflight` | `GITHUB_REPO` was empty. Pass `GITHUB_REPO=owner/invoicekit`. |
 | Deploy warns `firebase-web-api-key has no value yet` | Step 4, then deploy again. |
 | `remaining connection slots are reserved` in logs | Too many API instances for `db-g1-small`. Keep `_MAX_INSTANCES` at 3, or bootstrap with `SQL_TIER=db-custom-1-3840`. |

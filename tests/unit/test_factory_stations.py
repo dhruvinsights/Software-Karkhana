@@ -14,38 +14,38 @@
 
 """Unit tests for Factory Station routers: Gemini AI, Products/Ideas, Architecture, QA, Security, DevOps."""
 
-import pytest
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
+
+import pytest
+from fastapi import HTTPException
 
 from app.models import User
 from app.routers.gemini import (
     EvaluateIdeaRequest,
-    GenerateIdeasRequest,
     GenerateAdrsRequest,
+    GenerateIdeasRequest,
     evaluate_idea,
-    generate_ideas,
     generate_adrs,
-)
-from app.routers.products import (
-    ProductCreatePayload,
-    IdeaCreatePayload,
-    create_product,
-    create_idea,
-    list_products,
-    list_ideas,
+    generate_ideas,
 )
 from app.routers.operations import (
-    list_adrs,
-    create_adr,
     ADRCreatePayload,
-    get_swarm_status,
-    list_qa_scenarios,
+    create_adr,
     execute_qa_test_suite,
-    list_security_findings,
-    trigger_security_scan,
+    get_swarm_status,
+    list_adrs,
     list_pipelines,
+    list_qa_scenarios,
+    list_security_findings,
     trigger_deployment,
+    trigger_security_scan,
+)
+from app.routers.products import (
+    IdeaCreatePayload,
+    ProductCreatePayload,
+    create_idea,
+    create_product,
 )
 
 
@@ -98,12 +98,18 @@ async def test_products_and_ideas_endpoints(mock_user):
     assert prod["name"] == "Enterprise Engine"
     assert prod["code"] == "ENTERP"
 
-    # Create idea
+    # Create idea: refused outside any workspace, filed in the primary one otherwise.
     idea_req = IdeaCreatePayload(
         title="Automated Rollback Engine",
         problem_statement="Deployments can fail",
         expected_value="Zero downtime auto rollback",
     )
+    with pytest.raises(HTTPException) as exc:
+        await create_idea(idea_req, mock_session, mock_user)
+    assert exc.value.status_code == 422
+    ws_id = uuid.uuid4()  # the caller's primary workspace; later lookups find nothing
+    replies = iter([ws_id])
+    mock_session.scalar.side_effect = lambda *a, **k: next(replies, None)
     idea = await create_idea(idea_req, mock_session, mock_user)
     assert idea["title"] == "Automated Rollback Engine"
     assert idea["status"] == "draft"

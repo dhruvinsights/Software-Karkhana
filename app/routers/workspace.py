@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import access
 from app.ai.providers import gemini, ollama
 from app.auth import CurrentUser
 from app.config import get_settings
@@ -120,9 +121,9 @@ async def dev_users(session: Session) -> list[dict[str, str]]:
 
 
 @router.get("/nav")
-async def nav(user: CurrentUser) -> dict[str, Any]:
-    """The pages this role may open."""
-    role = Role(user.role)
+async def nav(user: CurrentUser, session: Session) -> dict[str, Any]:
+    """The pages this role may open (UI only; the API checks every action)."""
+    role = _display(await access.display_role(session, user))
     return {
         "role": role.value,
         "pages": [
@@ -133,6 +134,13 @@ async def nav(user: CurrentUser) -> dict[str, Any]:
     }
 
 
+def _display(role: str) -> Role:
+    try:
+        return Role(role)
+    except ValueError:
+        return Role(access.DEFAULT_ACCOUNT_ROLE)
+
+
 async def _count(session: AsyncSession, query: Select[tuple[int]]) -> int:
     return int(await session.scalar(query) or 0)
 
@@ -140,7 +148,7 @@ async def _count(session: AsyncSession, query: Select[tuple[int]]) -> int:
 @router.get("/dashboard")
 async def dashboard(session: Session, user: CurrentUser) -> dict[str, Any]:
     """Counts and work queues for the caller's role. Nothing else leaks in."""
-    role = Role(user.role)
+    role = _display(await access.display_role(session, user))
     projects = select(func.count()).select_from(Project)
     out: dict[str, Any] = {
         "role": role.value,

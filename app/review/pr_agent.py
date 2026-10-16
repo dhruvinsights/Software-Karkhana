@@ -119,6 +119,26 @@ def parse_review(data: dict[str, Any]) -> tuple[list[ReviewCommentDraft], str]:
     return comments, summary
 
 
+# PR-Agent sees the change under review and the model credentials it needs,
+# never the API's own secrets (session/run keys, DB, OAuth, encryption keys).
+_PASSTHROUGH = frozenset({
+    "PATH", "HOME", "USER", "LANG", "TZ", "TMPDIR", "TEMP", "TMP",
+    "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "WINDIR", "USERPROFILE",
+    "APPDATA", "LOCALAPPDATA", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_CLOUD_PROJECT", "VIRTUAL_ENV",
+})
+
+
+def _passthrough_env() -> dict[str, str]:
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k in _PASSTHROUGH or k.startswith("LC_")
+    }
+
+
 async def review_diff(diff: str, *, title: str = "") -> ReviewResult:
     """Runs PR-Agent ``review`` on a unified diff and returns normalised comments."""
     settings = get_settings()
@@ -133,7 +153,7 @@ async def review_diff(diff: str, *, title: str = "") -> ReviewResult:
             "--json-output", str(out_file),
             "review",
         ]  # fmt: skip
-        env = {**os.environ, **model_env}
+        env = {**_passthrough_env(), **model_env}
         proc = await asyncio.create_subprocess_exec(
             *argv,
             env=env,
