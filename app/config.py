@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     github_repo: str | None = None  # "owner/name" of the demo repo
     github_base_branch: str = "main"
     github_api_url: str = "https://api.github.com"
+    # Comma-separated Fernet keys for encrypting stored OAuth tokens; the first
+    # encrypts, all decrypt (rotation). Required outside AUTH_MODE=dev. See
+    # app/crypto.py.
+    token_encryption_keys: str | None = Field(default=None, repr=False)
     # Optional local clone source for tests and offline demos.
     demo_repo_url: str | None = None
 
@@ -162,6 +166,11 @@ class Settings(BaseSettings):
         if on_cloud_run and self.run_hmac_secret == "dev-only-change-me":  # noqa: S105
             raise ValueError(
                 "RUN_HMAC_SECRET must come from Secret Manager on Cloud Run."
+            )
+        # The API service stores OAuth tokens; jobs (worker, migrate) do not.
+        if os.environ.get("K_SERVICE") and not self.token_encryption_keys:
+            raise ValueError(
+                "TOKEN_ENCRYPTION_KEYS must come from Secret Manager on Cloud Run."
             )
         return self
 
