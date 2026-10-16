@@ -35,6 +35,7 @@ from google.genai import types
 
 from app.agents.ollama_llm import OllamaLlm
 from app.agents.tools import Workspace, make_tools
+from app.ai import compression
 from app.config import get_settings
 from app.schemas import ReviewOutput
 
@@ -99,6 +100,11 @@ def build_coder(ws: Workspace) -> LlmAgent:
         instruction=CODER_INSTRUCTION,
         tools=make_tools(ws),
         generate_content_config=types.GenerateContentConfig(temperature=0.2),
+        # File reads feed replace_in_file, so tool outputs must stay
+        # byte-exact: always Headroom's verified-lossless regime.
+        before_model_callback=compression.adk_before_model_callback(
+            kind="coder", lossless=True
+        ),
     )
 
 
@@ -112,6 +118,9 @@ def build_reviewer() -> LlmAgent:
         output_schema=ReviewOutput,
         output_key="review",
         generate_content_config=types.GenerateContentConfig(temperature=0.2),
+        before_model_callback=compression.adk_before_model_callback(
+            kind="reviewer", lossless=None
+        ),
     )
 
 
