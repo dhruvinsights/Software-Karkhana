@@ -156,14 +156,14 @@ async def test_other_workspace_cannot_list_create_or_update(client):
 
     # DIR is a director, but not in this workspace.
     for path in ("adrs", "test-scenarios", "security-findings"):
-        assert (await client.get(f"/api/projects/{pid}/{path}", headers=as_(DIR))).status_code == 403
+        assert (await client.get(f"/api/projects/{pid}/{path}", headers=as_(DIR))).status_code == 404
         r = await client.post(f"/api/projects/{pid}/{path}", headers=as_(DIR), json={"title": "Sneaky write"})
-        assert r.status_code == 403
-    assert (await client.patch(f"/api/adrs/{adr['id']}", headers=as_(DIR), json={"title": "Hijack"})).status_code == 403
+        assert r.status_code == 404
+    assert (await client.patch(f"/api/adrs/{adr['id']}", headers=as_(DIR), json={"title": "Hijack"})).status_code == 404
     r = await client.patch(f"/api/test-scenarios/{tc['id']}", headers=as_(DIR), json={"status": "passed"})
-    assert r.status_code == 403
+    assert r.status_code == 404
     r = await client.patch(f"/api/security-findings/{fnd['id']}", headers=as_(DIR), json={"status": "verified_fixed"})
-    assert r.status_code == 403
+    assert r.status_code == 404
 
     # Nothing was written by the outsider.
     assert len(await _events(adr["id"])) == 1

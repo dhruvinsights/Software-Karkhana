@@ -99,7 +99,7 @@ async def test_dev_header_with_a_bad_token_is_401_in_firebase_mode(monkeypatch):
 
 
 async def test_dev_header_still_works_in_dev_mode(monkeypatch):
-    user = SimpleNamespace(email="someone@x.com")
+    user = SimpleNamespace(id=uuid.uuid4(), email="someone@x.com")
     app, _ = _app(monkeypatch, _settings(auth_mode="dev"), user=user)
     r = await _get(app, {"X-Dev-User": "someone@x.com"})
     assert r.status_code == 200 and r.json()["email"] == "someone@x.com"

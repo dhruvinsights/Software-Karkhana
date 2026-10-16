@@ -20,8 +20,10 @@ app connects as a role that has no UPDATE or DELETE on the evidence ledger.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
 
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -29,7 +31,30 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
+
+# Row-level security (db/migrations/017): the signed-in user is bound to the
+# request's session and re-applied as a transaction-local setting at the start
+# of every transaction, so a mid-request commit never drops it and a pooled
+# connection never carries it into the next request.
+_RLS_USER_KEY = "karkhana_rls_user_id"
+_SET_RLS_USER = text("SELECT set_config('karkhana.user_id', :uid, true)")
+
+
+@event.listens_for(Session, "after_begin")
+def _apply_rls_user(session: Session, transaction, connection) -> None:
+    uid = session.info.get(_RLS_USER_KEY)
+    if uid:
+        connection.execute(_SET_RLS_USER, {"uid": uid})
+
+
+async def bind_rls_user(session: AsyncSession, user_id: uuid.UUID) -> None:
+    """Scopes this session's queries to ``user_id``'s workspaces under RLS."""
+    session.info[_RLS_USER_KEY] = str(user_id)
+    if session.in_transaction():
+        await session.execute(_SET_RLS_USER, {"uid": str(user_id)})
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None

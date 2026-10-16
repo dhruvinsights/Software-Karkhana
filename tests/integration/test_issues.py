@@ -123,10 +123,10 @@ async def test_cannot_assign_to_someone_outside_the_project(client):
 
 async def test_outsiders_cannot_see_or_raise_issues_and_bad_values_are_rejected(client):
     _, pid = await _team_project(client)
-    assert (await client.get(f"/api/projects/{pid}/issues", headers=as_(DIR))).status_code == 403
+    assert (await client.get(f"/api/projects/{pid}/issues", headers=as_(DIR))).status_code == 404
     assert (
         await client.post(f"/api/projects/{pid}/issues", headers=as_(DIR), json={"title": "Sneaky issue"})
-    ).status_code == 403
+    ).status_code == 404
     r = await client.post(
         f"/api/projects/{pid}/issues", headers=as_(PM), json={"title": "Bad type", "type": "epic"}
     )

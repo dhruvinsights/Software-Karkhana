@@ -128,7 +128,7 @@ async def test_memory_ledger_and_learnings_never_cross_tenants(client):
     assert not seen & a_seqs
     assert (
         await client.get(f"/api/ledger?project_id={pid_a}", headers=as_(DIR))
-    ).status_code == 403
+    ).status_code == 404
     own = (await client.get(f"/api/ledger?project_id={pid_a}", headers=as_(PM))).json()
     assert own and all(e["seq"] in a_seqs for e in own)
 

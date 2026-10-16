@@ -52,12 +52,13 @@ async def _join(client, ws, who, pid, role, stations):
 
 async def test_other_workspaces_cannot_see_or_open_a_project(client):
     _, pid = await _project(client)
-    # Not in the workspace: hidden from lists and refused on direct access,
+    # Not in the workspace: hidden from lists and, under row-level security,
+    # not found on direct access (existence is not revealed),
     # even for a manager role elsewhere.
     listed = (await client.get("/api/projects", headers=as_(DIR))).json()
     assert pid not in {p["id"] for p in listed}
-    assert (await client.get(f"/api/projects/{pid}", headers=as_(DIR))).status_code == 403
-    assert (await client.get(f"/api/projects/{pid}/board", headers=as_(DIR))).status_code == 403
+    assert (await client.get(f"/api/projects/{pid}", headers=as_(DIR))).status_code == 404
+    assert (await client.get(f"/api/projects/{pid}/board", headers=as_(DIR))).status_code == 404
     # The creator still sees it.
     assert (await client.get(f"/api/projects/{pid}", headers=as_(PM))).status_code == 200
 

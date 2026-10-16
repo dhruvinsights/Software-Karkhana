@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import DEV_SESSION_JWT_SECRET, get_settings
-from app.db import get_session
+from app.db import bind_rls_user, get_session
 from app.models import User
 
 logger = logging.getLogger(__name__)
@@ -257,6 +257,9 @@ async def current_user(
             status.HTTP_403_FORBIDDEN,
             "This account is not registered. Please sign up or contact an administrator.",
         )
+    # Second line of tenant isolation: Postgres RLS sees only this user's
+    # workspaces for the rest of the request.
+    await bind_rls_user(session, user.id)
     return user
 
 

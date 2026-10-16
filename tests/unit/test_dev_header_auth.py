@@ -13,6 +13,7 @@
 # limitations under the License.
 """The X-Dev-User header must only sign anyone in when AUTH_MODE=dev."""
 
+import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -37,7 +38,7 @@ async def test_dev_header_is_ignored_outside_dev_mode(monkeypatch):
 @pytest.mark.asyncio
 async def test_dev_header_signs_in_only_in_dev_mode(monkeypatch):
     monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(auth_mode="dev"))
-    user = SimpleNamespace(email="dev@example.com")
+    user = SimpleNamespace(id=uuid.uuid4(), email="dev@example.com")
     session = AsyncMock()
     session.scalar.return_value = user
     got = await auth.current_user(
