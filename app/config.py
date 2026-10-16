@@ -131,6 +131,16 @@ class Settings(BaseSettings):
     google_chat_webhook_url: str | None = Field(default=None, repr=False)
     artifacts_bucket: str | None = None
 
+    # --- Ledger anchoring ------------------------------------------------
+    # Every N entries in a chain (0 = never), and on demand, the chain head
+    # is written outside the database so a rewrite by a DB owner is caught.
+    # Production: a bucket with a locked retention policy (infra/bootstrap.sh).
+    # Unset bucket: a local JSONL file (dev and tests only; ephemeral on Cloud Run).
+    ledger_anchor_every: int = 50
+    ledger_anchor_bucket: str | None = None
+    ledger_anchor_prefix: str = "ledger-anchors"
+    ledger_anchor_path: str = ".ledger-anchors.jsonl"
+
     # --- Email (Resend) --------------------------------------------------
     # Used for transactional email (invites, notifications, magic links).
     # Set RESEND_API_KEY in .env locally or via Secret Manager on Cloud Run.

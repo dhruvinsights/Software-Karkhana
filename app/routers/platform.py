@@ -37,10 +37,20 @@ from app.models import (
     Run,
     Task,
     User,
+    WorkspaceMember,
 )
 from app.process import STAGE_INDEX, STAGES
 from app.routers.common import get_or_404
-from app.schemas import ChainOut, LearningOut, LedgerOut, StageOut, TaskOut, UserOut
+from app.schemas import (
+    AnchorOut,
+    ChainOut,
+    ChainReportOut,
+    LearningOut,
+    LedgerOut,
+    StageOut,
+    TaskOut,
+    UserOut,
+)
 
 router = APIRouter(prefix="/api", tags=["platform"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -153,16 +163,93 @@ async def list_ledger(
     return list((await session.scalars(q)).all())
 
 
+def _my_workspaces(user: User):
+    """Subquery: ids of the workspaces ``user`` is a member of."""
+    return select(WorkspaceMember.workspace_id).where(
+        WorkspaceMember.user_id == user.id
+    )
+
+
+async def _require_member(
+    session: AsyncSession, user: User, workspace_id: uuid.UUID
+) -> None:
+    member = await session.scalar(
+        select(WorkspaceMember.id).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user.id,
+        )
+    )
+    if member is None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You are not a member of this workspace."
+        )
+
+
 @router.get("/ledger/verify", response_model=ChainOut)
-async def verify_ledger(session: Session, _: CurrentUser) -> ChainOut:
-    """Recomputes the whole hash chain from genesis."""
-    r = await ledger.verify_chain(session)
+async def verify_ledger(
+    session: Session, user: CurrentUser, workspace_id: uuid.UUID | None = None
+) -> ChainOut:
+    """Recomputes the caller's chains from genesis.
+
+    With ``workspace_id``, only that workspace's chain (members only). Without
+    it, every workspace the caller belongs to plus the shared ``platform``
+    chain (rows with no workspace). Other tenants' rows are never read. The
+    pre-014 ``legacy`` chain mixes tenants and is verified by operators with
+    ``python -m app.scripts.anchor_ledger --verify``.
+    """
+    if workspace_id is not None:
+        await _require_member(session, user, workspace_id)
+        chains = [ledger.chain_for(workspace_id)]
+    else:
+        mine = (await session.scalars(_my_workspaces(user))).all()
+        chains = [ledger.chain_for(w) for w in sorted(set(mine), key=str)]
+        chains.append(ledger.PLATFORM_CHAIN)
+    reports = [await ledger.verify_chain(session, c) for c in chains]
+    first_bad = next((r for r in reports if not r.ok), None)
     return ChainOut(
-        ok=r.ok,
-        entries=r.entries,
-        head=r.head,
-        first_bad_seq=r.first_bad_seq,
-        reason=r.reason,
+        ok=first_bad is None,
+        entries=sum(r.entries for r in reports),
+        head=reports[0].head if len(reports) == 1 else "",
+        first_bad_seq=first_bad.first_bad_seq if first_bad else None,
+        reason=f"{first_bad.chain}: {first_bad.reason}" if first_bad else None,
+        chains=[
+            ChainReportOut(
+                chain=r.chain,
+                workspace_id=None if r.chain == ledger.PLATFORM_CHAIN else r.chain,
+                ok=r.ok,
+                entries=r.entries,
+                head=r.head,
+                first_bad_seq=r.first_bad_seq,
+                reason=r.reason,
+            )
+            for r in reports
+        ],
+    )
+
+
+@router.post("/ledger/anchor", response_model=AnchorOut)
+async def anchor_ledger(
+    session: Session, user: CurrentUser, workspace_id: uuid.UUID
+) -> AnchorOut:
+    """Writes this workspace's chain head to the external anchor sink now.
+
+    Any workspace member may take an anchor (it only adds evidence). A sink
+    failure is reported in the body (``ok: false``), never as a 5xx.
+    """
+    await _require_member(session, user, workspace_id)
+    chain = ledger.chain_for(workspace_id)
+    res = await ledger.anchor_head(session, chain, reason="manual")
+    if res is None:
+        return AnchorOut(ok=False, chain=chain, error="chain is empty")
+    return AnchorOut(
+        ok=res.ok,
+        chain=chain,
+        sink=res.sink,
+        location=res.location,
+        position=res.anchor.position,
+        hash=res.anchor.hash,
+        anchored_at=res.anchor.anchored_at,
+        error=res.error,
     )
 
 

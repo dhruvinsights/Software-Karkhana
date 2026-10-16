@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 
 import pytest
 
@@ -43,6 +44,10 @@ os.environ.update(
         "STATIC_DIR": "/nonexistent",
         "GOOGLE_CLOUD_PROJECT": "test-project",
         "MAX_ACTIVE_RUNS_PER_PROJECT": "3",  # Exercise the concurrent-run paths.
+        # Keep auto-anchors out of the working tree.
+        "LEDGER_ANCHOR_PATH": os.path.join(
+            tempfile.gettempdir(), f"karkhana-anchors-{os.getpid()}.jsonl"
+        ),
         "TOKEN_ENCRYPTION_KEYS": "-JsbozYcTYyyJPINYfJFEVTr_eqUZaz7FLIC6zP_8Y8=",  # Test-only Fernet key.
     }
 )

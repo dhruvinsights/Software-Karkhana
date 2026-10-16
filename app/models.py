@@ -385,6 +385,11 @@ class LedgerEntry(Base):
     __tablename__ = "ledger"
     seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id"))
+    # Tenant chain (migration 014): "<workspace id>", "platform" or "legacy".
+    # No FK on workspace_id: evidence outlives the workspace it describes.
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    chain: Mapped[str] = mapped_column(String, default="legacy")
+    chain_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     actor_label: Mapped[str] = mapped_column(String)
     actor_kind: Mapped[str] = mapped_column(String)
