@@ -22,6 +22,7 @@ import { GlassSurface } from '../reactbits/GlassSurface';
 import { ShinyText } from '../reactbits/ShinyText';
 import { Terminal } from '../reactbits/Terminal';
 import { SpecularButton } from '../reactbits/SpecularButton';
+import { authJsonHeaders } from '../../lib/authHeaders';
 
 interface IdeaValidationViewProps {
   state: FactoryState;
@@ -49,7 +50,7 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
     try {
       const res = await fetch('/api/gemini/evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           title: selectedIdea.title,
           problem: selectedIdea.problemStatement,
@@ -74,7 +75,7 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
     try {
       const res = await fetch('/api/gemini/ideas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify({
           prompt: brainstormPrompt || 'Scalable enterprise cloud systems and automated workflows',
           productContext: activeProduct?.description || 'Autonomous Cloud Software Factory',
@@ -407,7 +408,7 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
                   try {
                     const res = await fetch('/api/gemini/ideas', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: authJsonHeaders(),
                       body: JSON.stringify({
                         prompt: cmd || 'Scalable enterprise cloud systems and automated workflows',
                         productContext: activeProduct?.description || 'Autonomous Cloud Software Factory',

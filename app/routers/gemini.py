@@ -24,13 +24,17 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.ai import llm
+from app.auth import current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/gemini", tags=["gemini"])
+# Every model call costs money and may carry customer content: sign-in required.
+router = APIRouter(
+    prefix="/api/gemini", tags=["gemini"], dependencies=[Depends(current_user)]
+)
 
 
 class EvaluateIdeaRequest(BaseModel):

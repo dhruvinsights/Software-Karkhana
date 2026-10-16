@@ -289,3 +289,23 @@ async def test_local_runner_passes_no_secrets_to_the_worker(monkeypatch):
     assert env["GEMINI_API_KEY"] == "model-key"
     assert env["PATH"] and env["LC_ALL"] == "C.UTF-8"
     assert captured["argv"][1:] == ("-m", "app.worker.main")
+
+
+def test_pr_agent_review_env_carries_no_platform_secrets(monkeypatch):
+    from app.review import pr_agent
+
+    for k in ("SESSION_JWT_SECRET", "RUN_HMAC_SECRET", "TOKEN_ENCRYPTION_KEYS", "GITHUB_TOKEN", "DATABASE_URL"):
+        monkeypatch.setenv(k, "leak")
+    env = pr_agent._passthrough_env()
+    assert not {"SESSION_JWT_SECRET", "RUN_HMAC_SECRET", "TOKEN_ENCRYPTION_KEYS", "GITHUB_TOKEN", "DATABASE_URL"} & set(env)
+    assert "PATH" in env
+
+
+async def test_gemini_endpoints_require_sign_in():
+    from httpx import ASGITransport, AsyncClient
+
+    from app.fast_api_app import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.post("/api/gemini/ideas", json={})
+    assert r.status_code in (401, 403)
