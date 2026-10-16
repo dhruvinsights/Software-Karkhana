@@ -102,6 +102,7 @@ Seeded users are placed in a default org so they can sign in immediately.
 |---|---|
 | Deploy step `migrate` fails on `CREATE EXTENSION vector` | `karkhana_owner` must be created with `gcloud sql users create` (it gets `cloudsqlsuperuser`). Re-run bootstrap. |
 | `gcloud builds submit` fails with `karkhana-build ... does not exist` or a bucket error | Bootstrap predates the build service account. Re-run `infra/bootstrap.sh`. |
+| API fails to start: `TOKEN_ENCRYPTION_KEYS must come from Secret Manager` | Bootstrap predates token encryption. Re-run `infra/bootstrap.sh` (creates `token-encryption-keys`), then deploy. Then run `python -m app.scripts.reencrypt_tokens` once as `karkhana_owner` to encrypt any older plaintext rows. |
 | Build fails at `preflight` | `GITHUB_REPO` was empty. Pass `GITHUB_REPO=owner/invoicekit`. |
 | Deploy warns `firebase-web-api-key has no value yet` | Step 4, then deploy again. |
 | `remaining connection slots are reserved` in logs | Too many API instances for `db-g1-small`. Keep `_MAX_INSTANCES` at 3, or bootstrap with `SQL_TIER=db-custom-1-3840`. |

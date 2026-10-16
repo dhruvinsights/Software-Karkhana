@@ -22,7 +22,8 @@ as real PRs.
 ## Authentication
 If no ``GITHUB_TOKEN`` is configured, the OAuth Device Flow is available via
 :func:`start_device_flow` / :func:`poll_device_token`. Persisted tokens are
-stored in the ``github_tokens`` table (migration 009).
+stored encrypted in the ``github_tokens`` table (migrations 009, 013; see
+``app/integrations/github_tokens.py``).
 
 ## Review strategy
 ``post_inline_review`` uses the GitHub Pull Request Reviews API
@@ -415,11 +416,16 @@ def git_auth_header(token: str) -> str:
     return f"AUTHORIZATION: basic {basic}"
 
 
-def client() -> GitHub | None:
-    """Returns a GitHub client if a repo and token are configured."""
+def client(token: str | None = None) -> GitHub | None:
+    """Returns a GitHub client if a repo and token are configured.
+
+    ``token`` (a user's decrypted OAuth token, see ``github_tokens``) takes
+    precedence over the server's ``GITHUB_TOKEN``.
+    """
     s = get_settings()
-    if s.github_token and s.github_repo:
-        return GitHub(s.github_token, s.github_repo, s.github_api_url)
+    token = token or s.github_token
+    if token and s.github_repo:
+        return GitHub(token, s.github_repo, s.github_api_url)
     return None
 
 

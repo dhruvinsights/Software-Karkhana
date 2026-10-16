@@ -496,6 +496,24 @@ class Issue(Base):
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class GitHubToken(Base):
+    """A user's GitHub OAuth token, encrypted at rest (migrations 009, 013).
+
+    ``token`` is ciphertext from :mod:`app.crypto`; read and write it only via
+    :mod:`app.integrations.github_tokens`.
+    """
+
+    __tablename__ = "github_tokens"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    token: Mapped[str] = mapped_column(Text)
+    scopes: Mapped[str] = mapped_column(Text, default="repo,read:org")
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+
+
 # ── Lifecycle stations (016_stations.sql) ─────────────────────────────────────
 from sqlalchemy import Date, Numeric  # noqa: E402 - appended block, kept self-contained
 

@@ -16,7 +16,7 @@ import logging
 import uuid
 from typing import Annotated, Any, AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -79,7 +79,7 @@ def _get_vectorstore():
             docs = [
                 Document(
                     page_content=d["content"],
-                    metadata={"doc_id": d["id"], "title": d["title"]},
+                    metadata={"doc_id": d["id"], "title": d["title"], "workspace_id": d["workspace_id"]},
                 )
                 for d in _DOCUMENT_STORE
             ]
@@ -130,7 +130,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     message: str
-    workspace_id: str | None = None
+    workspace_id: str
     stream: bool = False
 
 
@@ -144,7 +144,7 @@ class ChatResponse(BaseModel):
 class IngestRequest(BaseModel):
     title: str
     content: str
-    workspace_id: str | None = None
+    workspace_id: str
     tags: list[str] = Field(default_factory=list)
 
 
@@ -156,17 +156,35 @@ class DocumentOut(BaseModel):
     chunk_count: int
 
 
+async def _require_workspace_member(
+    session: AsyncSession, user: User, workspace_id: str
+) -> None:
+    """Refuses RAG operations outside a workspace the caller belongs to."""
+    try:
+        workspace_uuid = uuid.UUID(workspace_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Workspace not found") from exc
+    member = await session.scalar(
+        select(WorkspaceMember.id).where(
+            WorkspaceMember.workspace_id == workspace_uuid,
+            WorkspaceMember.user_id == user.id,
+        )
+    )
+    if member is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Workspace not found")
+
+
 # ---------------------------------------------------------------------------
 # Chat endpoint
 # ---------------------------------------------------------------------------
 
-def _retrieve_context(query: str, k: int = 4) -> tuple[str, list[str]]:
+def _retrieve_context(query: str, workspace_id: str, k: int = 4) -> tuple[str, list[str]]:
     """Retrieve top-k relevant chunks from the vector store."""
     vs = _get_vectorstore()
     if vs is None:
         return "", []
     try:
-        docs = vs.similarity_search(query, k=k)
+        docs = vs.similarity_search(query, k=k, filter={"workspace_id": workspace_id})
         sources = list({d.metadata.get("title", "unknown") for d in docs})
         context_text = "\n\n---\n\n".join(d.page_content for d in docs)
         return context_text, sources
@@ -193,13 +211,15 @@ def _build_rag_prompt(user_message: str, retrieved_context: str) -> str:
 
 
 @router.post("/api/rag/chat", response_model=ChatResponse)
-async def rag_chat(payload: ChatRequest, user: CurrentUser) -> ChatResponse:
+async def rag_chat(payload: ChatRequest, user: CurrentUser, session: Session) -> ChatResponse:
     """Non-streaming RAG chat with Ollama / Gemini and vector-backed context."""
+    await _require_workspace_member(session, user, payload.workspace_id)
     session_id = payload.session_id
-    history = _CHAT_HISTORY.setdefault(session_id, [])
+    history_key = f"{user.id}:{payload.workspace_id}:{session_id}"
+    history = _CHAT_HISTORY.setdefault(history_key, [])
 
     # Retrieve relevant context
-    context_text, sources = _retrieve_context(payload.message)
+    context_text, sources = _retrieve_context(payload.message, payload.workspace_id)
     prompt_text = _build_rag_prompt(payload.message, context_text)
 
     llm = _build_llm()
@@ -237,16 +257,28 @@ async def rag_chat(payload: ChatRequest, user: CurrentUser) -> ChatResponse:
 
 
 @router.get("/api/rag/history/{session_id}")
-async def get_chat_history(session_id: str, user: CurrentUser) -> list[ChatMessage]:
+async def get_chat_history(
+    session_id: str,
+    user: CurrentUser,
+    session: Session,
+    workspace_id: str = Query(...),
+) -> list[ChatMessage]:
     """Returns full chat history for a session."""
-    history = _CHAT_HISTORY.get(session_id, [])
+    await _require_workspace_member(session, user, workspace_id)
+    history = _CHAT_HISTORY.get(f"{user.id}:{workspace_id}:{session_id}", [])
     return [ChatMessage(role=h["role"], content=h["content"]) for h in history]
 
 
 @router.delete("/api/rag/history/{session_id}", status_code=204)
-async def clear_chat_history(session_id: str, user: CurrentUser) -> None:
+async def clear_chat_history(
+    session_id: str,
+    user: CurrentUser,
+    session: Session,
+    workspace_id: str = Query(...),
+) -> None:
     """Clears chat history for a session."""
-    _CHAT_HISTORY.pop(session_id, None)
+    await _require_workspace_member(session, user, workspace_id)
+    _CHAT_HISTORY.pop(f"{user.id}:{workspace_id}:{session_id}", None)
 
 
 # ---------------------------------------------------------------------------
@@ -254,8 +286,11 @@ async def clear_chat_history(session_id: str, user: CurrentUser) -> None:
 # ---------------------------------------------------------------------------
 
 @router.post("/api/rag/ingest", status_code=status.HTTP_201_CREATED, response_model=DocumentOut)
-async def ingest_document(payload: IngestRequest, user: CurrentUser) -> DocumentOut:
+async def ingest_document(
+    payload: IngestRequest, user: CurrentUser, session: Session
+) -> DocumentOut:
     """Ingest a document into the RAG knowledge base. Chunks it and rebuilds the index."""
+    await _require_workspace_member(session, user, payload.workspace_id)
     from langchain.text_splitter import RecursiveCharacterTextSplitter  # type: ignore
 
     doc_id = str(uuid.uuid4())
@@ -287,10 +322,15 @@ async def ingest_document(payload: IngestRequest, user: CurrentUser) -> Document
 
 
 @router.get("/api/rag/documents", response_model=list[DocumentOut])
-async def list_documents(user: CurrentUser) -> list[DocumentOut]:
+async def list_documents(
+    user: CurrentUser, session: Session, workspace_id: str = Query(...)
+) -> list[DocumentOut]:
     """Lists all ingested documents (deduplicated by parent_id)."""
+    await _require_workspace_member(session, user, workspace_id)
     seen: dict[str, DocumentOut] = {}
     for d in _DOCUMENT_STORE:
+        if d.get("workspace_id") != workspace_id:
+            continue
         pid = d.get("parent_id", d["id"])
         if pid not in seen:
             seen[pid] = DocumentOut(
@@ -298,16 +338,25 @@ async def list_documents(user: CurrentUser) -> list[DocumentOut]:
                 title=d["title"],
                 tags=d.get("tags", []),
                 created_at=d["created_at"],
-                chunk_count=sum(1 for x in _DOCUMENT_STORE if x.get("parent_id") == pid),
+                chunk_count=sum(1 for x in _DOCUMENT_STORE if x.get("parent_id") == pid and x.get("workspace_id") == workspace_id),
             )
     return list(seen.values())
 
 
 @router.delete("/api/rag/documents/{doc_id}", status_code=204)
-async def delete_document(doc_id: str, user: CurrentUser) -> None:
+async def delete_document(
+    doc_id: str,
+    user: CurrentUser,
+    session: Session,
+    workspace_id: str = Query(...),
+) -> None:
     """Removes a document and all its chunks from the store."""
     global _DOCUMENT_STORE
-    _DOCUMENT_STORE = [d for d in _DOCUMENT_STORE if d.get("parent_id") != doc_id and d["id"] != doc_id]
+    await _require_workspace_member(session, user, workspace_id)
+    _DOCUMENT_STORE = [
+        d for d in _DOCUMENT_STORE
+        if not (d.get("workspace_id") == workspace_id and (d.get("parent_id") == doc_id or d["id"] == doc_id))
+    ]
     _reset_vectorstore()
 
 
@@ -322,6 +371,7 @@ async def list_workspace_members(
     user: CurrentUser,
 ) -> list[dict[str, Any]]:
     """Returns all members of a workspace with their roles and avatars."""
+    await _require_workspace_member(session, user, workspace_id)
     try:
         members = (
             await session.scalars(
