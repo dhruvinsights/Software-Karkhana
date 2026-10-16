@@ -15,6 +15,7 @@
 """Unit tests for Factory Station routers: Gemini AI, Products/Ideas, Architecture, QA, Security, DevOps."""
 
 import pytest
+from fastapi import HTTPException
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -98,12 +99,18 @@ async def test_products_and_ideas_endpoints(mock_user):
     assert prod["name"] == "Enterprise Engine"
     assert prod["code"] == "ENTERP"
 
-    # Create idea
+    # Create idea: refused outside any workspace, filed in the primary one otherwise.
     idea_req = IdeaCreatePayload(
         title="Automated Rollback Engine",
         problem_statement="Deployments can fail",
         expected_value="Zero downtime auto rollback",
     )
+    with pytest.raises(HTTPException) as exc:
+        await create_idea(idea_req, mock_session, mock_user)
+    assert exc.value.status_code == 422
+    ws_id = uuid.uuid4()  # the caller's primary workspace; later lookups find nothing
+    replies = iter([ws_id])
+    mock_session.scalar.side_effect = lambda *a, **k: next(replies, None)
     idea = await create_idea(idea_req, mock_session, mock_user)
     assert idea["title"] == "Automated Rollback Engine"
     assert idea["status"] == "draft"

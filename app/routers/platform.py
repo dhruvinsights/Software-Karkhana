@@ -116,9 +116,15 @@ async def list_prs(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> User:
-    """The signed-in user and their server-side role."""
-    return user
+async def me(user: CurrentUser, session: Session) -> UserOut:
+    """The signed-in user, with the role they hold in their primary workspace.
+
+    The role is a label for the UI; every server-side check uses the role in
+    the workspace of the resource being acted on.
+    """
+    out = UserOut.model_validate(user)
+    out.role = await access.display_role(session, user)
+    return out
 
 
 @router.get("/stages", response_model=list[StageOut])
@@ -275,7 +281,10 @@ async def verify_learning(
     user: CurrentUser,
     decision: Annotated[str, Query(pattern="^(verified|rejected)$")] = "verified",
 ) -> Learning:
-    """A lead verifies (or rejects) a learning. Only verified ones are reused."""
+    """A lead verifies (or rejects) a learning. Only verified ones are reused.
+
+    The caller must be a lead or director in the learning's project workspace.
+    """
     lr = await get_or_404(session, Learning, learning_id)
     project = await session.get(Project, lr.project_id)
     if project is None:

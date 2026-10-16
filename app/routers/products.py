@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import db, ledger
+from app import access, db, ledger
 import logging
 from app.ai import llm
 from app.ai.errors import ModelError
@@ -201,7 +201,10 @@ async def create_idea(
 ) -> dict[str, Any]:
     """Creates a new feature idea for validation."""
     prod_uuid = uuid.UUID(payload.product_id) if payload.product_id else None
-    ws_uuid = uuid.UUID(payload.workspace_id) if payload.workspace_id else None
+    ws_requested = uuid.UUID(payload.workspace_id) if payload.workspace_id else None
+    # Ideas live in a workspace the author belongs to, so approvals and
+    # promotion are governed by that workspace's roles.
+    ws_uuid = await access.resolve_workspace(session, user, ws_requested)
 
     idea = Idea(
         id=uuid.uuid4(),

@@ -21,13 +21,13 @@ import re
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 
-from app import db, ledger
+from app import access, db, ledger
 from app.auth import CurrentUser
 from app.models import Product, User, Workspace, WorkspaceMember
 from app.schemas import (
@@ -102,7 +102,8 @@ async def onboard_workspace(
         )
         session.add(product)
 
-    # Update user state
+    # The requested role lives on the membership only. ``User.role`` is never
+    # written from a request: it is an account label that grants nothing.
     user.onboarded_at = dt.datetime.now(dt.timezone.utc)
     session.add(user)
     await session.flush()
@@ -215,6 +216,8 @@ async def create_workspace(
     user.onboarded_at = dt.datetime.now(dt.timezone.utc)
     session.add(user)
 
+    # The creator owns the new workspace with the role they asked for, in this
+    # workspace only. Their account label (User.role) is left untouched.
     member = WorkspaceMember(
         id=uuid.uuid4(),
         workspace_id=workspace.id,
@@ -256,7 +259,9 @@ async def list_workspace_members(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(db.get_session)],
 ) -> list[dict]:
-    """Lists all team members enrolled in the workspace."""
+    """Lists all team members enrolled in the workspace (members only)."""
+    if await access.workspace_member(session, user, workspace_id) is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this workspace.")
     stmt = (
         select(WorkspaceMember, User)
         .join(User, User.id == WorkspaceMember.user_id)

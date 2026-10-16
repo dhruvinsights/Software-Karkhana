@@ -27,7 +27,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, ledger, process, publisher
-from app.auth import require_role
+from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
 from app.integrations import github
@@ -38,7 +38,6 @@ from app.models import (
     ReviewComment,
     Run,
     Task,
-    User,
 )
 from app.process import Event, Role
 from app.review.diff import anchor_comments
@@ -68,11 +67,17 @@ REVIEWER = ledger.Actor.ai("reviewer-agent")
 async def start_run(
     task_id: uuid.UUID,
     session: Session,
-    user: Annotated[User, Depends(require_role(Role.DEVELOPER, Role.LEAD))],
+    user: CurrentUser,
 ) -> Run:
-    """Developer clicks "Assign to agent". The process engine decides if it may run."""
+    """Developer clicks "Assign to agent". The process engine decides if it may run.
+
+    The caller must be a developer or lead *in the project's workspace*.
+    """
     task = await get_or_404(session, Task, task_id)
     project = await lock_project(session, task.project_id)  # Serializes admission.
+    my_role = await access.require_project_role(
+        session, user, project, Role.DEVELOPER, Role.LEAD
+    )
     await access.ensure_station(session, user, project, "developer")
     if task.status != "ready":
         raise HTTPException(
@@ -96,7 +101,7 @@ async def start_run(
         project,
         Event.RUN_STARTED,
         actor=actor,
-        role=Role(user.role),
+        role=Role(my_role),
         payload={"task": task.key},
     )
     process.move_task(task, "in_progress")
@@ -167,10 +172,11 @@ async def start_run(
 async def get_run(
     run_id: uuid.UUID,
     session: Session,
-    _: Annotated[User, Depends(require_role(*Role))],
+    user: CurrentUser,
 ) -> Run:
     """Polled by the browser. Marks silent runs as timed out (ADR-001 reliability rules)."""
     run = await get_or_404(session, Run, run_id)
+    await access.get_visible_project(session, user, run.project_id)
     timeout = dt.timedelta(seconds=get_settings().run_heartbeat_timeout_sec)
     if (
         run.status == "running"
@@ -192,9 +198,11 @@ async def get_run(
 async def list_task_runs(
     task_id: uuid.UUID,
     session: Session,
-    _: Annotated[User, Depends(require_role(*Role))],
+    user: CurrentUser,
 ) -> list[Run]:
     """Run history for a task."""
+    task = await get_or_404(session, Task, task_id)
+    await access.get_visible_project(session, user, task.project_id)
     return list(
         (
             await session.scalars(
@@ -241,7 +249,9 @@ async def run_spec(
         repo=s.github_repo,
         repo_url=s.demo_repo_url,
         base_branch=s.github_base_branch,
-        context=context_notes.as_notes(await context_notes.recent(session, run.project_id)),
+        context=context_notes.as_notes(
+            await context_notes.recent(session, run.project_id)
+        ),
     )
 
 

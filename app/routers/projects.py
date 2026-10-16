@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, ledger, process
-from app.auth import CurrentUser, require_role
+from app.auth import CurrentUser
 from app.db import get_session
 from app.models import (
     Approval,
@@ -40,7 +40,6 @@ from app.models import (
 )
 from app.process import Event, Role
 from app.routers.common import advance_or_http, get_or_404
-from app.services.evaluation import run_evaluation
 from app.schemas import (
     ApprovalOut,
     BatchApprovalOut,
@@ -54,6 +53,7 @@ from app.schemas import (
     ProjectOut,
     TaskOut,
 )
+from app.services.evaluation import run_evaluation
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -99,10 +99,13 @@ async def create_project(
     if body.target_release_date:
         settings_dict["target_release_date"] = body.target_release_date
 
+    # Projects always live in a workspace the creator belongs to.
+    workspace_id = await access.resolve_workspace(session, user, body.workspace_id)
+    my_role = await access.effective_role(session, user, workspace_id)
     project = Project(
         id=uuid.uuid4(),
         product_id=body.product_id,
-        workspace_id=body.workspace_id,
+        workspace_id=workspace_id,
         lead_id=user.id,
         name=body.name.strip(),
         idea_text=idea_text,
@@ -118,7 +121,7 @@ async def create_project(
         id=uuid.uuid4(),
         project_id=project.id,
         user_id=user.id,
-        role=user.role or "lead",
+        role=my_role or "lead",
         stations=["product", "architecture", "developer", "qa", "devops", "security", "release"],
     )
     session.add(creator_member)
@@ -130,7 +133,7 @@ async def create_project(
         subject_type="project",
         subject_id=project.id,
         project_id=project.id,
-        payload={"name": project.name, "created_by": str(user.id), "role": user.role},
+        payload={"name": project.name, "created_by": str(user.id), "role": my_role},
     )
     await session.commit()
     background.add_task(run_evaluation, project.id)
@@ -296,10 +299,11 @@ async def reevaluate(
     project_id: uuid.UUID,
     background: BackgroundTasks,
     session: Session,
-    user: Annotated[User, Depends(require_role(Role.PM))],
+    user: CurrentUser,
 ) -> dict[str, str]:
-    """Re-runs the evaluation (e.g. after a rejection)."""
+    """Re-runs the evaluation (e.g. after a rejection). PMs of the project's workspace only."""
     project = await get_or_404(session, Project, project_id)
+    await access.require_project_role(session, user, project, Role.PM, Role.PRODUCT_MANAGER)
     if project.stage_status == "rejected":
         await advance_or_http(
             session,
@@ -403,10 +407,15 @@ async def decide(
     project_id: uuid.UUID,
     body: Decision,
     session: Session,
-    user: Annotated[User, Depends(require_role(Role.DIRECTOR))],
+    user: CurrentUser,
 ) -> Approval:
-    """Director gate. Non-directors get 403 here, whatever the UI shows."""
+    """Director gate. Only a director *of this project's workspace* may decide.
+
+    Non-directors get 403 here, whatever the UI shows, and so does a director
+    of some other workspace.
+    """
     project = await get_or_404(session, Project, project_id)
+    await access.require_project_role(session, user, project, Role.DIRECTOR)
     event = Event.APPROVE if body.decision == "approved" else Event.REJECT
     actor = ledger.Actor.human(user)
     await advance_or_http(
@@ -461,9 +470,13 @@ async def decide(
 async def batch_decide(
     body: BatchDecision,
     session: Session,
-    user: Annotated[User, Depends(require_role(Role.DIRECTOR))],
+    user: CurrentUser,
 ) -> BatchApprovalOut:
-    """Director batch multi-sig gate. Approves/rejects multiple pending project gates at once."""
+    """Director batch multi-sig gate. Approves/rejects multiple pending project gates at once.
+
+    Each project is checked on its own: projects in workspaces where the
+    caller is not a director are skipped, exactly like ones not awaiting a gate.
+    """
     approvals_out: list[ApprovalOut] = []
     actor = ledger.Actor.human(user)
     event = Event.APPROVE if body.decision == "approved" else Event.REJECT
@@ -471,6 +484,8 @@ async def batch_decide(
     for pid in body.project_ids:
         project = await session.get(Project, pid)
         if not project:
+            continue
+        if await access.effective_role(session, user, project.workspace_id) != Role.DIRECTOR:
             continue
         try:
             await advance_or_http(

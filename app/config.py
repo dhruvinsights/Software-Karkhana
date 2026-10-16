@@ -27,11 +27,19 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEV_SESSION_JWT_SECRET = "dev-session-secret-change-me"  # noqa: S105 - dev default
+
 
 class Settings(BaseSettings):
     """Process-wide settings. Use :func:`get_settings` to read them."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # The local runner sets KARKHANA_NO_DOTENV=1 for the worker subprocess so
+    # it cannot pick up the API's secrets from .env; it gets only what the
+    # runner passes explicitly (see app.runner.local).
+    model_config = SettingsConfigDict(
+        env_file=None if os.environ.get("KARKHANA_NO_DOTENV") else ".env",
+        extra="ignore",
+    )
 
     # --- Model providers -----------------------------------------------
     # Two providers only: Gemini (hosted) and Ollama (local). Chat and
@@ -98,8 +106,13 @@ class Settings(BaseSettings):
     ax_model_secret: str = "gemini-api-secret"  # noqa: S105 - a Secret *name*
     worker_job_name: str = "karkhana-worker"
     public_base_url: str = "http://localhost:8080"
+    # Signs per-run worker callback tokens ONLY. Never used for user sessions.
     run_hmac_secret: str = Field(default="dev-only-change-me", repr=False)
-    session_jwt_secret: str = Field(default="dev-session-secret-change-me", repr=False)
+    # Signs user session JWTs (OTP / password / OAuth sign-in) only. A separate
+    # key from RUN_HMAC_SECRET, so a worker run token can never become a
+    # session. The default works only in AUTH_MODE=dev (app.auth refuses it in
+    # any other mode) and is refused outright on Cloud Run.
+    session_jwt_secret: str = Field(default=DEV_SESSION_JWT_SECRET, repr=False)
     # One run at a time keeps the shared project stage simple for the demo. The
     # multi-run transitions are still tested with MAX_ACTIVE_RUNS_PER_PROJECT=3.
     max_active_runs_per_project: int = 1
@@ -163,27 +176,33 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _refuse_unsafe_production(self) -> Settings:
-        on_cloud_run = bool(
-            os.environ.get("K_SERVICE") or os.environ.get("CLOUD_RUN_JOB")
-        )
+        # Only the API *service* (K_SERVICE) authenticates people. The worker and
+        # migrate Jobs (CLOUD_RUN_JOB) hold no session or run-signing secret.
+        on_cloud_run_service = bool(os.environ.get("K_SERVICE"))
         if (
-            on_cloud_run
+            on_cloud_run_service
             and self.auth_mode == "dev"
             and not self.allow_dev_auth_on_cloud_run
         ):
             raise ValueError(
                 "AUTH_MODE=dev is not allowed on Cloud Run. Set AUTH_MODE=firebase."
             )
-        if on_cloud_run and self.run_hmac_secret == "dev-only-change-me":  # noqa: S105
+        if on_cloud_run_service and self.run_hmac_secret == "dev-only-change-me":  # noqa: S105
             raise ValueError(
                 "RUN_HMAC_SECRET must come from Secret Manager on Cloud Run."
             )
-        if on_cloud_run and not self.session_jwt_secret:
-            raise ValueError("SESSION_JWT_SECRET must come from Secret Manager on Cloud Run.")
-        if on_cloud_run and self.session_jwt_secret == "dev-session-secret-change-me":  # noqa: S105
-            raise ValueError("SESSION_JWT_SECRET must not use the development default.")
+        if on_cloud_run_service and (
+            not self.session_jwt_secret
+            or self.session_jwt_secret == DEV_SESSION_JWT_SECRET
+        ):
+            raise ValueError(
+                "SESSION_JWT_SECRET must come from Secret Manager on Cloud Run "
+                "(and must not use the development default)."
+            )
+        if self.session_jwt_secret and self.session_jwt_secret == self.run_hmac_secret:
+            raise ValueError("SESSION_JWT_SECRET must differ from RUN_HMAC_SECRET.")
         # The API service stores OAuth tokens; jobs (worker, migrate) do not.
-        if os.environ.get("K_SERVICE") and not self.token_encryption_keys:
+        if on_cloud_run_service and not self.token_encryption_keys:
             raise ValueError(
                 "TOKEN_ENCRYPTION_KEYS must come from Secret Manager on Cloud Run."
             )

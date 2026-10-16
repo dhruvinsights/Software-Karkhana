@@ -32,22 +32,32 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import CurrentUser, require_role
+from app import access
+from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
 from app.integrations import github as gh_module
 from app.integrations import github_tokens
-from app.models import PullRequest, Run, Task, User
+from app.models import PullRequest, Task, User
 from app.process import Role
 from app.routers.common import get_or_404
 
 router = APIRouter(prefix="/api/github", tags=["github"])
 Session = Annotated[AsyncSession, Depends(get_session)]
-AnyRole = Annotated[User, Depends(require_role(*Role))]
-Dev = Annotated[User, Depends(require_role(Role.DEVELOPER, Role.LEAD))]
+# Any signed-in user; per-PR authority is checked against the PR's project.
+AnyRole = CurrentUser
+Dev = CurrentUser
+
+
+async def _guard_pr(session: AsyncSession, user: User, pr: PullRequest, *roles: str) -> None:
+    """The caller must reach the PR's project (and hold ``roles`` in its workspace)."""
+    task = await get_or_404(session, Task, pr.task_id)
+    project = await access.get_visible_project(session, user, task.project_id)
+    if roles:
+        await access.require_project_role(session, user, project, *roles)
+    await access.ensure_station(session, user, project, "developer", "qa")
 
 
 # ── Schema ────────────────────────────────────────────────────────────────────
@@ -177,9 +187,11 @@ async def pr_github_status(
 ) -> PRStatusOut:
     """Returns live CI / check-run status from GitHub for a stored PR."""
     from sqlalchemy import func, select
+
     from app.models import ReviewComment
 
     pr = await get_or_404(session, PullRequest, pr_id)
+    await _guard_pr(session, user, pr)
 
     open_c = await session.scalar(
         select(func.count())
@@ -262,6 +274,7 @@ async def trigger_ci_check(
     blocking check-run entry in the GitHub PR checks UI.
     """
     pr = await get_or_404(session, PullRequest, pr_id)
+    await _guard_pr(session, user, pr, Role.DEVELOPER, Role.LEAD)
     if pr.url.startswith("local://"):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,

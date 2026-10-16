@@ -16,18 +16,25 @@ from app.config import get_settings
 from app.models import Learning, LedgerEntry, User
 from tests.fakes import fake_vector
 from tests.integration.test_golden_path import (  # noqa: F401
-    DIR,
     PM,
     as_,
     client,
     fakes,
 )
 
+# Tenant B gets its own account: making a seeded demo user own a workspace
+# would change that user's primary workspace (and role) for later tests.
+DIR = "globex-owner@karkhana.dev"
+
 ROUNDING = "Store money in minor units and round half-even at the edge."
 
 
 @pytest.fixture(autouse=True)
 async def _leave_users_not_onboarded(client):
+    async with db.sessionmaker()() as s:
+        if await s.scalar(select(User).where(User.email == DIR)) is None:
+            s.add(User(id=uuid.uuid4(), email=DIR, display_name="Globex owner", role="developer"))
+            await s.commit()
     yield
     async with db.sessionmaker()() as s:
         await s.execute(update(User).values(onboarded_at=None))
