@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Gemini AI endpoints for idea validation, brainstorming, architecture generation, and QA."""
+"""Gemini AI endpoints for idea validation, brainstorming, architecture generation, and QA.
+
+Every model call goes through ``llm.generate_text``, which picks the configured
+provider (Gemini or Ollama) and compresses the context with Headroom.
+"""
 
 from __future__ import annotations
 
@@ -23,8 +27,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.ai.providers import gemini
-from app.config import get_settings
+from app.ai import llm
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/gemini", tags=["gemini"])
@@ -58,6 +61,24 @@ class GenerateTestsRequest(BaseModel):
     acceptanceCriteria: list[str] = Field(default_factory=list)
 
 
+_SYSTEM = "You are a precise assistant that answers with a single JSON object."
+
+
+async def _ask(prompt: str, *, kind: str) -> str:
+    """One-turn model call through the provider layer (compressed by Headroom)."""
+    return await llm.generate_text(
+        messages=[{"role": "user", "content": prompt}], system=_SYSTEM, kind=kind
+    )
+
+
+def _json_reply(text: str) -> dict[str, Any]:
+    """Parses a JSON reply, tolerating a Markdown code fence."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.strip("`").replace("json\n", "", 1).strip()
+    return json.loads(text)
+
+
 @router.post("/evaluate")
 async def evaluate_idea(payload: EvaluateIdeaRequest) -> dict[str, Any]:
     """Evaluates idea feasibility, ROI, engineering risk, and recommendations."""
@@ -81,17 +102,9 @@ async def evaluate_idea(payload: EvaluateIdeaRequest) -> dict[str, Any]:
         "}"
     )
 
-    if gemini.configured():
+    if llm.text_configured():
         try:
-            client = gemini.client()
-            res = client.models.generate_content(
-                model=get_settings().gemini_model,
-                contents=prompt,
-            )
-            text = res.text.strip()
-            if text.startswith("```"):
-                text = text.strip("`").replace("json\n", "", 1).strip()
-            data = json.loads(text)
+            data = _json_reply(await _ask(prompt, kind="gemini:evaluate"))
             return {"assessment": data}
         except Exception as e:
             logger.warning("Gemini evaluation error, using heuristic model: %s", e)
@@ -138,17 +151,9 @@ async def generate_ideas(payload: GenerateIdeasRequest) -> dict[str, Any]:
         "Return a JSON object: { \"ideas\": [ { \"title\": \"...\", \"problemStatement\": \"...\", \"targetUser\": \"...\", \"expectedValue\": \"...\", \"complexity\": \"Low\"|\"Medium\"|\"High\", \"tags\": [\"...\"] } ] }"
     )
 
-    if gemini.configured():
+    if llm.text_configured():
         try:
-            client = gemini.client()
-            res = client.models.generate_content(
-                model=get_settings().gemini_model,
-                contents=prompt,
-            )
-            text = res.text.strip()
-            if text.startswith("```"):
-                text = text.strip("`").replace("json\n", "", 1).strip()
-            data = json.loads(text)
+            data = _json_reply(await _ask(prompt, kind="gemini:ideas"))
             if "ideas" in data:
                 return data
         except Exception as e:
@@ -251,44 +256,25 @@ class CompanionRequest(BaseModel):
 @router.post("/companion")
 async def ai_companion(payload: CompanionRequest) -> dict[str, Any]:
     """Context-aware AI companion chat using Gemini / Ollama."""
-    from app.ai.providers import ollama  # local import to avoid circular dep
-
     system_prompt = (
         f"You are the Software Karkhana Factory AI Companion — an expert senior engineer.\n"
         f"Current context: role={payload.context.role}, screen={payload.context.screen}, "
         f"entity={payload.context.entityTitle}.\n"
         "Be concise, precise, and grounded. No hallucinations."
     )
-
-    conversation = "\n".join(
-        f"{m.role.upper()}: {m.content}" for m in payload.messages[-10:]
-    )
-    full_prompt = f"{system_prompt}\n\n{conversation}\nASSISTANT:"
-
-    if gemini.configured():
+    turns = [
+        {"role": "assistant" if m.role == "assistant" else "user", "content": m.content}
+        for m in payload.messages[-10:]
+        if m.content
+    ]
+    if turns and llm.text_configured():
         try:
-            client = gemini.client()
-            res = client.models.generate_content(
-                model=get_settings().gemini_model,
-                contents=full_prompt,
+            reply = await llm.generate_text(
+                messages=turns, system=system_prompt, kind="gemini:companion", timeout_s=30
             )
-            return {"reply": res.text.strip()}
+            return {"reply": reply}
         except Exception as e:
-            logger.warning("Gemini companion error: %s", e)
-
-    # Try Ollama
-    try:
-        import httpx
-        s = get_settings()
-        r = httpx.post(
-            f"{s.ollama_base_url or 'http://localhost:11434'}/api/generate",
-            json={"model": s.ollama_model or "llama3.1", "prompt": full_prompt, "stream": False},
-            timeout=30,
-        )
-        if r.status_code == 200:
-            return {"reply": r.json().get("response", "").strip()}
-    except Exception as e:
-        logger.warning("Ollama companion error: %s", e)
+            logger.warning("Companion model error: %s", e)
 
     # Deterministic fallback
     last_user = next((m.content for m in reversed(payload.messages) if m.role == "user"), "")

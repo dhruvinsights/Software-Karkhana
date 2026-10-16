@@ -375,6 +375,7 @@ async def run_complete(
         body.test_output,
         body.artifacts_uri,
     )
+    run.context_compression = body.context_compression
     await ledger.append(
         session,
         actor=CODER,
@@ -493,6 +494,7 @@ async def _finish_failed(
             body.test_output,
             body.test_command,
         )
+        run.context_compression = body.context_compression
     if task.status == "in_progress":
         process.move_task(task, "ready")
     await advance_if_legal(session, project, Event.RUN_FAILED, actor=ledger.SYSTEM)

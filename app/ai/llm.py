@@ -24,6 +24,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from app.ai import compression
 from app.ai.errors import ModelError
 from app.ai.providers import gemini, ollama
 from app.config import get_settings
@@ -34,6 +35,8 @@ __all__ = [
     "embed",
     "embed_model_name",
     "generate_structured",
+    "generate_text",
+    "text_configured",
 ]
 
 T = TypeVar("T", bound=BaseModel)
@@ -62,11 +65,53 @@ async def generate_structured(
     temperature: float = 0.3,
     timeout_s: float = 90.0,
 ) -> T:
-    """Returns a validated ``schema`` instance from the configured chat provider."""
+    """Returns a validated ``schema`` instance from the configured chat provider.
+
+    The prompt is compressed with Headroom first (``app.ai.compression``); the
+    system instruction is sent verbatim.
+    """
     provider = ollama if get_settings().llm_provider == "ollama" else gemini
+    prompt, _ = await compression.acompress_prompt(
+        prompt, kind=f"structured:{schema.__name__}", model=model or chat_model_name()
+    )
     return await provider.generate_structured(
         prompt=prompt,
         schema=schema,
+        system=system,
+        model=model,
+        temperature=temperature,
+        timeout_s=timeout_s,
+    )
+
+
+def text_configured() -> bool:
+    """True when the chat provider is worth calling (Ollama, or Gemini with credentials)."""
+    return get_settings().llm_provider == "ollama" or gemini.configured()
+
+
+async def generate_text(
+    *,
+    messages: list[dict[str, str]],
+    system: str,
+    kind: str,
+    model: str | None = None,
+    temperature: float = 0.3,
+    timeout_s: float = 60.0,
+) -> str:
+    """Returns free text from the configured chat provider.
+
+    ``messages`` are ``{"role": "user"|"assistant", "content": str}`` turns.
+    They are compressed with Headroom before the call; ``system`` is not.
+
+    Raises:
+        ModelError: On timeout, API error or an empty reply.
+    """
+    provider = ollama if get_settings().llm_provider == "ollama" else gemini
+    messages, _ = await compression.acompress_messages(
+        messages, kind=kind, model=model or chat_model_name()
+    )
+    return await provider.generate_text(
+        messages=messages,
         system=system,
         model=model,
         temperature=temperature,

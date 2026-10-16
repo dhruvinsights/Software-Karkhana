@@ -137,6 +137,23 @@ class Settings(BaseSettings):
     pr_agent_python: str | None = None  # Python of the isolated pr-agent venv.
     review_timeout_s: float = 300.0
 
+    # --- Context compression (Headroom) ----------------------------------
+    # Every prompt, tool output and document we send to a model goes through
+    # app/ai/compression.py. "lossless" (default) only applies Headroom's
+    # verified, reversible-in-text densification: the model sees every byte
+    # of information. "aggressive" also lets Headroom drop low-value content,
+    # but never with CCR (originals parked in a store for later retrieval), so
+    # nothing tenant-owned outlives the call. See app/ai/compression.py.
+    headroom_enabled: bool = True
+    headroom_mode: Literal["lossless", "aggressive"] = "lossless"
+    # Content shorter than this is sent as-is (not worth the CPU).
+    headroom_min_chars: int = 1200
+    # Headroom's master no-egress switch: no telemetry, no model downloads.
+    headroom_offline: bool = True
+    # Aggressive mode only: allow the Kompress ML text compressor if its model
+    # is already cached locally (offline mode never downloads it).
+    headroom_kompress: bool = False
+
     # --- Shared context --------------------------------------------------
     # Directory of Markdown context files kept in Git (TeamContext-style).
     context_dir: str = ".karkhana/context"

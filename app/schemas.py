@@ -434,6 +434,7 @@ class RunOut(ORM):
     error: str | None
     created_at: dt.datetime
     finished_at: dt.datetime | None
+    context_compression: dict[str, Any] | None = None
 
 
 class CommentOut(ORM):
@@ -628,3 +629,5 @@ class RunResult(BaseModel):
     review_summary: str | None = None
     summary: str | None = None  # What the Coder says it did; becomes a handoff.
     artifacts_uri: str | None = None
+    # Headroom token accounting for every model call in the run.
+    context_compression: dict[str, Any] | None = None

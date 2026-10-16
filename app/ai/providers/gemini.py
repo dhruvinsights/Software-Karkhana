@@ -105,6 +105,47 @@ async def generate_structured(
         ) from exc
 
 
+async def generate_text(
+    *,
+    messages: list[dict[str, str]],
+    system: str,
+    model: str | None = None,
+    temperature: float = 0.3,
+    timeout_s: float = 60.0,
+) -> str:
+    """Calls Gemini for free text over a short conversation.
+
+    Raises:
+        ModelError: On timeout, API error or an empty reply.
+    """
+    model = model or get_settings().gemini_model
+    contents = [
+        types.Content(
+            role="model" if m["role"] == "assistant" else "user",
+            parts=[types.Part(text=m["content"])],
+        )
+        for m in messages
+    ]
+    config = types.GenerateContentConfig(
+        system_instruction=system, temperature=temperature
+    )
+    try:
+        response = await asyncio.wait_for(
+            client().aio.models.generate_content(
+                model=model, contents=contents, config=config
+            ),
+            timeout=timeout_s,
+        )
+    except TimeoutError as exc:
+        raise ModelError(f"{model} timed out after {timeout_s:.0f}s") from exc
+    except Exception as exc:
+        raise ModelError(f"{model} call failed: {exc}") from exc
+    text = (response.text or "").strip()
+    if not text:
+        raise ModelError(f"{model} returned an empty reply")
+    return text
+
+
 async def embed(text: str, *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
     """Embeds text with the configured Gemini embedding model."""
     s = get_settings()

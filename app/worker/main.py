@@ -120,6 +120,18 @@ async def build(spec: RunSpec, cp: ControlPlane) -> RunResult:
     lets the Coder edit files, runs the tests, and returns the diff. The
     control plane applies that diff and does every GitHub write.
     """
+    from app.ai import compression
+
+    with compression.track() as totals:
+        result = await _build(spec, cp)
+    if totals.calls:
+        result.context_compression = totals.as_dict()
+        logger.info("Context compression for run: %s", result.context_compression)
+    return result
+
+
+async def _build(spec: RunSpec, cp: ControlPlane) -> RunResult:
+    """The body of :func:`build`, inside one compression-accounting scope."""
     from app.agents.coder import run_coder
     from app.review import engine as review_engine
 

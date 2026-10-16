@@ -307,6 +307,8 @@ class Run(Base):
     validation_status: Mapped[str] = mapped_column(String, default="not_run")
     error: Mapped[str | None] = mapped_column(Text)
     artifacts_uri: Mapped[str | None] = mapped_column(String)
+    # Headroom token accounting reported by the worker (migration 015).
+    context_compression: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class PullRequest(Base):
@@ -594,3 +596,46 @@ class SecurityFinding(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
+
+class RagDocument(Base):
+    """A document in a workspace's RAG knowledge base (migration 015)."""
+
+    __tablename__ = "rag_documents"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String)
+    tags: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    content_chars: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class RagChunk(Base):
+    """One embedded chunk of a RAG document; carries its workspace for SQL filtering."""
+
+    __tablename__ = "rag_chunks"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768))
+    embedding_model: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class RagChatMessage(Base):
+    """A RAG chat turn, private to one user in one workspace."""
+
+    __tablename__ = "rag_chat_messages"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    session_id: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String)
+    content: Mapped[str] = mapped_column(Text)
+    sources: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp()
+    )
