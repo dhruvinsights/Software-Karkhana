@@ -249,6 +249,7 @@ class ProjectOut(ORM):
     product_id: uuid.UUID | None = None
     workspace_id: uuid.UUID | None = None
     lead_id: uuid.UUID | None = None
+    created_by: uuid.UUID | None = None
     name: str
     idea_text: str
     stage: str
@@ -315,6 +316,7 @@ class ExtractedProductSpec(BaseModel):
     domain: str = "Cloud & Core Infrastructure"
     description: str = ""
     value_proposition: str = ""
+    repository_url: str = ""
     target_personas: list[str] = Field(default_factory=list)
     key_features: list[str] = Field(default_factory=list)
     tech_stack: list[str] = Field(default_factory=list)

@@ -36,14 +36,17 @@ from app import access, db, ledger
 from app import idea_flow as rules
 from app.auth import CurrentUser
 from app.models import (
+    ActivityEvent,
     Idea,
     IdeaApproval,
+    Product,
     Project,
     ProjectMember,
     User,
     WorkspaceMember,
 )
 from app.process import Role
+from app.routers.chat import notify_activity
 from app.services.evaluation import run_evaluation
 
 router = APIRouter(prefix="/api", tags=["idea_flow"])
@@ -229,6 +232,22 @@ async def request_approval(
             "note": note,
         },
     )
+    if idea.workspace_id:
+        # Each reviewer sees it in their Activity feed and on their bell, live.
+        for rid in reviewer_ids:
+            session.add(
+                ActivityEvent(
+                    workspace_id=idea.workspace_id,
+                    actor_id=user.id,
+                    recipient_id=rid,
+                    type="review_requested",
+                    summary=f"{user.display_name} asked you to review the idea \"{idea.title}\"",
+                    target_type="idea",
+                    target_id=str(idea.id),
+                )
+            )
+        await session.commit()
+        await notify_activity(idea.workspace_id, reviewer_ids)
     return await _view(session, idea)
 
 
@@ -288,23 +307,48 @@ async def decide(
             subject_id=idea.id,
             payload={"title": idea.title, "reviewers": len(statuses)},
         )
+    if idea.workspace_id:
+        asked = {
+            a.requested_by
+            for a in (await session.scalars(select(IdeaApproval).where(IdeaApproval.idea_id == idea.id))).all()
+        }
+        recipients = ({idea.author_id} | asked) - {user.id, None}
+        verdict = "approved" if mine.status == rules.APPROVED else "rejected"
+        for rid in recipients:
+            session.add(
+                ActivityEvent(
+                    workspace_id=idea.workspace_id,
+                    actor_id=user.id,
+                    recipient_id=rid,
+                    type="review_decided",
+                    summary=f"{user.display_name} {verdict} the idea \"{idea.title}\"",
+                    target_type="idea",
+                    target_id=str(idea.id),
+                )
+            )
+        await session.commit()
+        await notify_activity(idea.workspace_id, recipients)
     return await _view(session, idea)
 
 
 @router.get("/idea-approvals/inbox")
-async def inbox(session: Session, user: CurrentUser) -> list[dict[str, Any]]:
-    """Ideas waiting for the signed-in user's decision, newest first."""
-    rows = (
-        await session.execute(
-            select(IdeaApproval, Idea)
-            .join(Idea, Idea.id == IdeaApproval.idea_id)
-            .where(
-                IdeaApproval.reviewer_id == user.id,
-                IdeaApproval.status == rules.PENDING,
-            )
-            .order_by(IdeaApproval.requested_at.desc())
-        )
-    ).all()
+async def inbox(
+    session: Session, user: CurrentUser, scope: Literal["pending", "all"] = "pending"
+) -> list[dict[str, Any]]:
+    """Ideas waiting for the signed-in user's decision, newest first.
+
+    ``scope=all`` also returns the ones they already decided (the reviewer
+    space's history tab). The default is only what is still waiting.
+    """
+    stmt = (
+        select(IdeaApproval, Idea)
+        .join(Idea, Idea.id == IdeaApproval.idea_id)
+        .where(IdeaApproval.reviewer_id == user.id)
+        .order_by(IdeaApproval.requested_at.desc())
+    )
+    if scope == "pending":
+        stmt = stmt.where(IdeaApproval.status == rules.PENDING)
+    rows = (await session.execute(stmt)).all()
     requester_ids = {a.requested_by for a, _ in rows}
     names = (
         {
@@ -314,6 +358,17 @@ async def inbox(session: Session, user: CurrentUser) -> list[dict[str, Any]]:
             ).all()
         }
         if requester_ids
+        else {}
+    )
+    product_ids = {i.product_id for _, i in rows if i.product_id}
+    products = (
+        {
+            p.id: p.name
+            for p in (
+                await session.scalars(select(Product).where(Product.id.in_(product_ids)))
+            ).all()
+        }
+        if product_ids
         else {}
     )
     return [
@@ -326,6 +381,17 @@ async def inbox(session: Session, user: CurrentUser) -> list[dict[str, Any]]:
             "requestedBy": names.get(a.requested_by, "Unknown"),
             "note": a.note,
             "requestedAt": _iso(a.requested_at),
+            # Added for the reviewer space.
+            "decision": a.status,
+            "reason": a.reason,
+            "decidedAt": _iso(a.decided_at),
+            "productId": str(i.product_id) if i.product_id else None,
+            "productName": products.get(i.product_id, "") if i.product_id else "",
+            "complexity": i.complexity,
+            "tags": i.tags or [],
+            "evidence": i.evidence or [],
+            "reviewReport": i.review_report,
+            "ideaStatus": i.status,
         }
         for a, i in rows
     ]

@@ -19,6 +19,7 @@ import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
+import { ProductIdeaLab } from './ProductIdeaLab';
 
 interface ProductWorkspaceViewProps {
   state: FactoryState;
@@ -26,7 +27,7 @@ interface ProductWorkspaceViewProps {
 
 export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ state }) => {
   const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'projects' | 'ideas' | 'docs'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'ideas' | 'docs'>('ideas');
 
   const activeProduct = state.products.find((p) => p.id === state.selectedProductId) || state.products[0];
 
@@ -83,10 +84,14 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
 
           <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={() => factoryStore.setScreen('ideas')}
-              className="px-4 py-2.5 bg-[#101016] border border-white/[0.1] hover:border-white/20 text-[#F6F5FA] font-medium text-xs rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+              onClick={() => setActiveTab('ideas')}
+              className={`px-4 py-2.5 border text-[#F6F5FA] font-medium text-xs rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
+                activeTab === 'ideas'
+                  ? 'bg-[#075BFF] text-white border-[#075BFF] shadow-lg shadow-[#075BFF]/25'
+                  : 'bg-[#101016] border-white/[0.1] hover:border-white/20'
+              }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#075BFF]" />
+              <Sparkles className="w-3.5 h-3.5 text-blue-300" />
               <span>Idea Lab</span>
             </button>
             <button
@@ -216,36 +221,14 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
         </div>
       )}
 
-      {/* TAB 2: IDEAS */}
+      {/* TAB 2: IDEAS (Autonomous Idea Lab inside Product) */}
       {activeTab === 'ideas' && (
-        <div className="space-y-4">
-          {enrolledIdeas.length === 0 ? (
-            <GlassCard className="p-10 text-center space-y-4">
-              <Sparkles className="w-8 h-8 text-[#075BFF] mx-auto" />
-              <h3 className="text-base font-semibold text-white">No ideas proposed yet</h3>
-              <p className="text-xs text-[#827D8E] font-light max-w-sm mx-auto">
-                Formulate new feature proposals in the Idea Lab.
-              </p>
-              <button
-                onClick={() => factoryStore.setScreen('ideas')}
-                className="px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold cursor-pointer"
-              >
-                Go to Idea Lab
-              </button>
-            </GlassCard>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {enrolledIdeas.map((idea) => (
-                <GlassCard key={idea.id} className="p-5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-white">{idea.title}</h4>
-                    <span className="text-[10px] font-mono uppercase text-[#075BFF]">{idea.status}</span>
-                  </div>
-                  <p className="text-xs text-[#827D8E] font-light">{idea.problemStatement}</p>
-                </GlassCard>
-              ))}
-            </div>
-          )}
+        <div className="pt-2">
+          <ProductIdeaLab
+            state={state}
+            productId={activeProduct.id}
+            onOpenProjectCreate={() => setCreateProjectModalOpen(true)}
+          />
         </div>
       )}
 

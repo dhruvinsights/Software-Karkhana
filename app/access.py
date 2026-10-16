@@ -99,8 +99,9 @@ def _member_role(member: WorkspaceMember | None) -> str:
     if member is None:
         return ""
     role = member.role or ""
-    # The owner always counts as at least a manager of their own workspace.
-    if member.is_owner and role not in MANAGER_ROLES:
+    # The owner, and anyone the owner made a workspace admin, always count as at
+    # least a manager (see app/workspace_access.py for the access levels).
+    if (member.is_owner or getattr(member, "access", "") in ("owner", "admin")) and role not in MANAGER_ROLES:
         return "pm"
     return role
 

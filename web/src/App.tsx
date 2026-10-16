@@ -28,6 +28,8 @@ const FeedbackIncidentsView = lazy(() => import('./components/views/FeedbackInci
 const KnowledgeLearningView = lazy(() => import('./components/views/KnowledgeLearningView').then((m) => ({ default: m.KnowledgeLearningView })));
 const WorkflowAdminView = lazy(() => import('./components/views/WorkflowAdminView').then((m) => ({ default: m.WorkflowAdminView })));
 const ProductWorkspaceView = lazy(() => import('./components/views/ProductWorkspaceView').then((m) => ({ default: m.ProductWorkspaceView })));
+const ProductSetupView = lazy(() => import('./components/views/ProductSetupView').then((m) => ({ default: m.ProductSetupView })));
+const ReviewerSpaceView = lazy(() => import('./components/views/ReviewerSpaceView').then((m) => ({ default: m.ReviewerSpaceView })));
 
 const ScreenFallback: React.FC = () => (
   <div role="status" aria-live="polite" className="min-h-screen w-full flex items-center justify-center bg-[#07070B] text-xs font-mono text-slate-400">
@@ -178,9 +180,11 @@ export default function App() {
     switch (state.currentScreen) {
       case 'workspace_home':
       case 'products':
-      case 'product_create':
       case 'product_settings':
         return <WorkspaceHomeView state={state} />;
+
+      case 'product_create':
+        return <ProductSetupView state={state} />;
 
       case 'product_detail':
         return <ProductWorkspaceView state={state} />;
@@ -195,6 +199,8 @@ export default function App() {
 
       case 'approvals':
       case 'approval_detail':
+        return <ReviewerSpaceView state={state} />;
+
       case 'portfolio':
       case 'project_health':
       case 'approval_policy':

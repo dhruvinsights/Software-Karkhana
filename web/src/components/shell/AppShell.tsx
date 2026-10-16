@@ -28,18 +28,19 @@ import {
   MessageSquare,
   Bell,
   UserPlus,
+  ShieldCheck,
 } from 'lucide-react';
-import { factoryStore, FactoryState, ROLE_CONFIGS } from '../../store/factoryStore';
+import { ACCESS_LABEL, factoryStore, FactoryState, ROLE_CONFIGS } from '../../store/factoryStore';
 import { FactoryRole, ScreenId } from '../../types/factory';
 import { AICompanion } from './AICompanion';
 import { CommandPalette } from './CommandPalette';
 import { ChatPanel } from './ChatPanel';
 import { ActivityFeedPanel } from './ActivityFeedPanel';
-import { CreateProductModal } from '../workspace/CreateProductModal';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { WorkspaceInviteModal } from '../workspace/WorkspaceInviteModal';
+import { WorkspaceAdminPanel } from '../workspace/WorkspaceAdminPanel';
 import { LiquidEther } from '../reactbits/LiquidEther';
-import { chatSocket } from '../../lib/chatSocket';
+import { chatSocket, fetchUnreadCounts } from '../../lib/chatSocket';
 import { ComingSoonBadge } from '../views/StationBanners';
 
 interface AppShellProps {
@@ -54,7 +55,6 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [createProductOpen, setCreateProductOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -81,14 +81,56 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
     };
   }, [state.selectedProjectId, state.token]);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const isWorkspaceAdmin = state.myAccess === 'owner' || state.myAccess === 'admin';
+  // Guides and reviewers are read-only on project work.
+  const isGuide = state.myAccess === 'guide' || state.myAccess === 'reviewer';
 
-  // Connect WebSocket when authenticated
+  // Connect WebSocket for the active workspace when authenticated
+  const wsIsReal = state.activeWorkspaceId.length === 36 && state.activeWorkspaceId.includes('-');
   useEffect(() => {
     if (state.token) {
-      chatSocket.connect(state.token);
+      chatSocket.connect(state.token, wsIsReal ? state.activeWorkspaceId : undefined);
       factoryStore.ensureGeneralChannel();
     }
-  }, [state.token]);
+  }, [state.token, state.activeWorkspaceId, wsIsReal]);
+
+  // Header badges come from the server, refreshed whenever something arrives live
+  // (a message, a mention or review request, a new channel) or the socket reconnects.
+  useEffect(() => {
+    if (!state.token || !wsIsReal) return;
+    const token = state.token;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        fetchUnreadCounts(token).then(factoryStore.setUnreadCounts).catch(() => {});
+      }, 300);
+    };
+    refresh();
+    const unsubscribe = chatSocket.subscribe((frame) => {
+      if (['activity', 'message', 'channel_created', 'reconnected', 'project_comment'].includes(frame.type)) refresh();
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [state.token, state.activeWorkspaceId, wsIsReal, chatOpen, activityOpen]);
+
+  // When anyone in the workspace creates/deletes a project or product, or changes
+  // someone's access, the server tells every open tab to re-sync from it.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = chatSocket.subscribe((frame) => {
+      if (frame.type !== 'workspace_sync' && frame.type !== 'reconnected') return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => factoryStore.syncSessionFromServer(), 250);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, []);
 
   const chatUnread = state.chatUnreadTotal ?? 0;
   const activityUnread = state.activityUnreadTotal ?? 0;
@@ -99,10 +141,10 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
   // Map screenId → display label for the breadcrumb
   const SCREEN_LABELS: Partial<Record<ScreenId, string>> = {
-    workspace_home: 'Overview', products: 'Products', product_detail: 'Product Detail',
+    workspace_home: 'Overview', products: 'Products', product_detail: 'Product Detail', product_create: 'Create Product',
     ideas: 'Idea Lab', idea_detail: 'Idea Detail', idea_generate: 'AI Brainstorm',
     projects: 'Project Hub', project_detail: 'Project Detail',
-    approvals: 'Approvals', portfolio: 'Portfolio',
+    approvals: 'Reviewer Space', portfolio: 'Portfolio',
     roadmap: 'Roadmap', epics: 'Epics', issues: 'Issues', board: 'Sprint Board',
     developer_dashboard: 'Engineering & Agents', pull_requests: 'Pull Requests',
     system_design: 'System Architecture', adrs: 'ADRs', prototype_studio: 'Design System',
@@ -121,7 +163,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
         { id: 'workspace_home' as ScreenId, label: 'Overview', icon: LayoutGrid },
         { id: 'products' as ScreenId, label: 'Products', icon: Layers, count: state.products.length },
         { id: 'projects' as ScreenId, label: 'Project Hub', icon: FolderGit2, count: state.projects.length },
-        { id: 'ideas' as ScreenId, label: 'Idea Lab', icon: Sparkles, count: state.ideas.length },
+        { id: 'approvals' as ScreenId, label: 'Reviews', icon: ShieldCheck },
       ],
     },
     {
@@ -173,7 +215,6 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
         lightMode={false}
       />
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <CreateProductModal isOpen={createProductOpen} onClose={() => setCreateProductOpen(false)} />
       <CreateProjectModal isOpen={createProjectOpen} onClose={() => setCreateProjectOpen(false)} state={state} />
       {state.inviteNotice && (
         <div
@@ -185,6 +226,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
         </div>
       )}
       <WorkspaceInviteModal isOpen={inviteModalOpen} onClose={() => setInviteModalOpen(false)} state={state} />
+      <WorkspaceAdminPanel isOpen={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} state={state} />
 
       {/* Dark Editorial Sidebar */}
       <aside className="w-64 bg-[#0A0A0F]/75 backdrop-blur-md text-[#B5B1C0] flex flex-col shrink-0 border-r border-white/[0.08] z-20">
@@ -316,10 +358,37 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
                 {state.currentUser?.display_name || state.members[0]?.name || 'Dhruv Chaturvedi'}
               </div>
               <div className="text-[10px] text-[#075BFF] font-mono truncate mt-0.5">
-                {state.currentUser?.role ? state.currentUser.role.replace('_', ' ').toUpperCase() : activeRole.label}
+                {(state.workspaceMembers.find((m) => m.id === state.currentUser?.id)?.role ?? state.currentUser?.role)
+                  ? (state.workspaceMembers.find((m) => m.id === state.currentUser?.id)?.role ?? state.currentUser!.role).replace(/_/g, ' ').toUpperCase()
+                  : activeRole.label}
               </div>
+              {state.myAccess && state.myAccess !== 'member' && (
+                <span
+                  className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider border ${
+                    state.myAccess === 'guide'
+                      ? 'text-[#9b6dff] bg-[#9b6dff]/10 border-[#9b6dff]/30'
+                      : state.myAccess === 'reviewer'
+                      ? 'text-[#00d9a6] bg-[#00d9a6]/10 border-[#00d9a6]/30'
+                      : 'text-[#f0a500] bg-[#f0a500]/10 border-[#f0a500]/30'
+                  }`}
+                  title={ACCESS_LABEL[state.myAccess]}
+                >
+                  <ShieldCheck className="w-2.5 h-2.5" />
+                  {state.myAccess === 'owner' ? 'Workspace Admin' : ACCESS_LABEL[state.myAccess]}
+                </span>
+              )}
             </div>
           </div>
+
+          {isWorkspaceAdmin && (
+            <button
+              onClick={() => setAdminPanelOpen(true)}
+              className="w-full py-1.5 px-2 bg-[#f0a500]/10 hover:bg-[#f0a500]/20 text-[#f0a500] border border-[#f0a500]/30 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Admin Panel</span>
+            </button>
+          )}
 
           <button
             onClick={() => setInviteModalOpen(true)}
@@ -421,9 +490,10 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
               {createMenuOpen && (
                 <div className="absolute right-0 mt-2 w-52 bg-[#101016] rounded-xl shadow-2xl border border-white/[0.12] p-1.5 z-50 text-xs space-y-0.5">
+                  {isWorkspaceAdmin && (
                   <button
                     onClick={() => {
-                      setCreateProductOpen(true);
+                      factoryStore.setScreen('product_create');
                       setCreateMenuOpen(false);
                     }}
                     className="w-full text-left px-3 py-2 rounded-lg text-[#B5B1C0] hover:text-white hover:bg-white/[0.06] flex items-center gap-2"
@@ -431,6 +501,8 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
                     <Layers className="w-3.5 h-3.5 text-[#075BFF]" />
                     <span>New Product</span>
                   </button>
+                  )}
+                  {!isGuide && (
                   <button
                     onClick={() => {
                       setCreateProjectOpen(true);
@@ -441,6 +513,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
                     <FolderGit2 className="w-3.5 h-3.5 text-[#075BFF]" />
                     <span>New Project</span>
                   </button>
+                  )}
                   <button
                     onClick={() => {
                       factoryStore.setScreen('idea_generate');

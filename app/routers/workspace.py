@@ -149,7 +149,7 @@ async def _count(session: AsyncSession, query: Select[tuple[int]]) -> int:
 async def dashboard(session: Session, user: CurrentUser) -> dict[str, Any]:
     """Counts and work queues for the caller's role. Nothing else leaks in."""
     role = _display(await access.display_role(session, user))
-    projects = select(func.count()).select_from(Project)
+    projects = select(func.count()).select_from(Project).where(Project.archived_at.is_(None))
     out: dict[str, Any] = {
         "role": role.value,
         "user": user.display_name,
@@ -197,7 +197,7 @@ async def dashboard(session: Session, user: CurrentUser) -> dict[str, Any]:
             (
                 await session.scalars(
                     select(Project)
-                    .where(mine, Project.stage_status == "rejected")
+                    .where(mine, Project.stage_status == "rejected", Project.archived_at.is_(None))
                     .order_by(Project.updated_at.desc())
                     .limit(8)
                 )
@@ -207,7 +207,7 @@ async def dashboard(session: Session, user: CurrentUser) -> dict[str, Any]:
             (
                 await session.scalars(
                     select(Project)
-                    .where(mine)
+                    .where(mine, Project.archived_at.is_(None))
                     .order_by(Project.created_at.desc())
                     .limit(8)
                 )
@@ -241,7 +241,7 @@ async def dashboard(session: Session, user: CurrentUser) -> dict[str, Any]:
             (
                 await session.scalars(
                     select(Project)
-                    .where(Project.stage_status == "evaluated")
+                    .where(Project.stage_status == "evaluated", Project.archived_at.is_(None))
                     .order_by(Project.updated_at.desc())
                     .limit(10)
                 )
@@ -296,7 +296,7 @@ async def dashboard(session: Session, user: CurrentUser) -> dict[str, Any]:
         ready = (
             await session.execute(
                 select(Task, Project)
-                .join(Project, Project.id == Task.project_id)
+                .join(Project, (Project.id == Task.project_id) & (Project.archived_at.is_(None)))
                 .where(Task.status == "ready")
                 .order_by(Task.created_at)
                 .limit(10)
@@ -321,7 +321,7 @@ async def work(session: Session, _: CurrentUser) -> list[dict[str, Any]]:
     rows = (
         await session.execute(
             select(Task, Project)
-            .join(Project, Project.id == Task.project_id)
+            .join(Project, (Project.id == Task.project_id) & (Project.archived_at.is_(None)))
             .where(Task.status.in_(["ready", "in_progress", "review"]))
             .order_by(Project.created_at.desc(), Task.key)
             .limit(200)
@@ -361,7 +361,7 @@ async def pull_requests(
     query = (
         select(PullRequest, Task, Project, open_comments, total_comments)
         .join(Task, Task.id == PullRequest.task_id)
-        .join(Project, Project.id == Task.project_id)
+        .join(Project, (Project.id == Task.project_id) & (Project.archived_at.is_(None)))
         .join(Run, Run.id == PullRequest.run_id)
         .order_by(Run.created_at.desc())
         .limit(100)

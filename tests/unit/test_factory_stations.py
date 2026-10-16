@@ -15,7 +15,7 @@
 """Unit tests for Factory Station routers: Gemini AI, Products/Ideas, Architecture, QA, Security, DevOps."""
 
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -47,6 +47,7 @@ from app.routers.products import (
     create_idea,
     create_product,
 )
+from app.workspace_access import WorkspaceAccess
 
 
 @pytest.fixture
@@ -91,10 +92,23 @@ async def test_products_and_ideas_endpoints(mock_user):
     mock_session = AsyncMock()
     mock_session.scalar.return_value = None
     mock_session.scalars.return_value.all.return_value = []
+    ws_id = uuid.uuid4()
 
-    # Create product
-    prod_req = ProductCreatePayload(name="Enterprise Engine", domain="Cloud Services")
-    prod = await create_product(prod_req, mock_session, mock_user)
+    def level(access, owner=False):
+        return AsyncMock(return_value=WorkspaceAccess(ws_id, mock_user, "product_manager", owner, access))
+
+    # Create product: only the workspace owner or an admin may.
+    prod_req = ProductCreatePayload(name="Enterprise Engine", domain="Cloud Services", workspace_id=str(ws_id))
+    with patch("app.access.workspace_member", AsyncMock(return_value=object())):
+        with patch("app.workspace_access.workspace_access", level("member")), pytest.raises(HTTPException) as denied:
+            await create_product(prod_req, mock_session, mock_user)
+        assert denied.value.status_code == 403
+        with (
+            patch("app.workspace_access.workspace_access", level("owner", owner=True)),
+            patch("app.routers.products.notify_workspace", AsyncMock()),
+            patch("app.routers.products.notify_activity", AsyncMock()),
+        ):
+            prod = await create_product(prod_req, mock_session, mock_user)
     assert prod["name"] == "Enterprise Engine"
     assert prod["code"] == "ENTERP"
 
@@ -107,8 +121,16 @@ async def test_products_and_ideas_endpoints(mock_user):
     with pytest.raises(HTTPException) as exc:
         await create_idea(idea_req, mock_session, mock_user)
     assert exc.value.status_code == 422
-    ws_id = uuid.uuid4()  # the caller's primary workspace; later lookups find nothing
-    replies = iter([ws_id])
+
+    # Guides and reviewers are read-only, so they cannot file ideas.
+    for readonly in ("guide", "reviewer"):
+        mock_session.scalar.side_effect = None
+        mock_session.scalar.return_value = ws_id
+        with patch("app.workspace_access.workspace_access", level(readonly)), pytest.raises(HTTPException) as ro:
+            await create_idea(idea_req, mock_session, mock_user)
+        assert ro.value.status_code == 403
+
+    replies = iter([ws_id])  # the caller's primary workspace; later lookups find nothing
     mock_session.scalar.side_effect = lambda *a, **k: next(replies, None)
     idea = await create_idea(idea_req, mock_session, mock_user)
     assert idea["title"] == "Automated Rollback Engine"

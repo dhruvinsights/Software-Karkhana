@@ -16,15 +16,17 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, ledger, process
+from app import workspace_access as wa
 from app.auth import CurrentUser
 from app.db import get_session
 from app.models import (
@@ -32,6 +34,7 @@ from app.models import (
     Epic,
     Evaluation,
     Learning,
+    Product,
     Project,
     PullRequest,
     Task,
@@ -39,6 +42,7 @@ from app.models import (
     WorkspaceMember,
 )
 from app.process import Event, Role
+from app.routers.chat import notify_workspace
 from app.routers.common import advance_or_http, get_or_404
 from app.schemas import (
     ApprovalOut,
@@ -66,17 +70,33 @@ async def list_projects(
     user: CurrentUser,
     product_id: uuid.UUID | None = None,
     workspace_id: uuid.UUID | None = None,
+    x_workspace_id: Annotated[str | None, Header()] = None,
 ) -> list[Project]:
-    """Projects the caller may see, newest first, optionally by product or workspace."""
+    """Projects the caller may see, newest first, in the workspace on screen.
+
+    The workspace comes from the query or the ``X-Workspace-Id`` header. Archived
+    (deleted) projects are never listed. Guides and reviewers see every project
+    in the workspace; everyone else only what ``access.visible_projects`` allows.
+    """
     stmt = (
         select(Project)
-        .where(access.visible_projects(user))
+        .where(Project.archived_at.is_(None))
         .order_by(Project.created_at.desc())
     )
+    if x_workspace_id and workspace_id is None:
+        try:
+            workspace_id = uuid.UUID(x_workspace_id)
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid X-Workspace-Id") from None
+    wide = False
+    if workspace_id is not None:
+        ws = await wa.workspace_access(session, user, workspace_id)
+        wide = ws.sees_all_projects
+        stmt = stmt.where(Project.workspace_id == workspace_id)
+    if not wide:
+        stmt = stmt.where(access.visible_projects(user))
     if product_id:
         stmt = stmt.where(Project.product_id == product_id)
-    if workspace_id:
-        stmt = stmt.where(Project.workspace_id == workspace_id)
     return list((await session.scalars(stmt)).all())
 
 
@@ -101,6 +121,12 @@ async def create_project(
 
     # Projects always live in a workspace the creator belongs to.
     workspace_id = await access.resolve_workspace(session, user, body.workspace_id)
+    await wa.forbid_read_only(session, user, workspace_id)
+    # A project may name a product, but only a live one of its own workspace.
+    if body.product_id is not None:
+        product = await session.get(Product, body.product_id)
+        if product is None or product.workspace_id != workspace_id or product.archived_at is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "That product is not in this workspace.")
     my_role = await access.effective_role(session, user, workspace_id)
     project = Project(
         id=uuid.uuid4(),
@@ -137,7 +163,39 @@ async def create_project(
     )
     await session.commit()
     background.add_task(run_evaluation, project.id)
+    await notify_workspace(workspace_id, "projects")
     return project
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(project_id: uuid.UUID, session: Session, user: CurrentUser) -> None:
+    """Removes a project for everyone in the workspace.
+
+    The project's lead or creator and workspace managers (owner, admins, PMs) may
+    delete it. The row is archived rather than deleted because the append-only
+    ledger references it.
+    """
+    project = await get_or_404(session, Project, project_id)
+    if project.archived_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    await wa.forbid_read_only(session, user, project.workspace_id)
+    mine = await access.my_access(session, user, project)
+    if not mine["canManage"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the project lead or a workspace manager can delete it.")
+    project.archived_at = dt.datetime.now(dt.UTC)
+    project.archived_by = user.id
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="project.archived",
+        subject_type="project",
+        subject_id=project.id,
+        project_id=project.id,
+        payload={"name": project.name},
+    )
+    await session.commit()
+    if project.workspace_id:
+        await notify_workspace(project.workspace_id, "projects")
 
 
 @router.get("/{project_id}/members")
@@ -283,6 +341,9 @@ async def add_project_member(
         session.add(member)
 
     await session.commit()
+    if project.workspace_id:
+        # The new member's open tabs re-sync so the project appears for them live.
+        await notify_workspace(project.workspace_id, "projects")
     return {
         "status": "ok",
         "memberId": str(member.id),
@@ -304,6 +365,7 @@ async def reevaluate(
     """Re-runs the evaluation (e.g. after a rejection). PMs of the project's workspace only."""
     project = await get_or_404(session, Project, project_id)
     await access.require_project_role(session, user, project, Role.PM, Role.PRODUCT_MANAGER)
+    await wa.forbid_read_only(session, user, project.workspace_id)
     if project.stage_status == "rejected":
         await advance_or_http(
             session,
@@ -416,6 +478,7 @@ async def decide(
     """
     project = await get_or_404(session, Project, project_id)
     await access.require_project_role(session, user, project, Role.DIRECTOR)
+    await wa.forbid_read_only(session, user, project.workspace_id)
     event = Event.APPROVE if body.decision == "approved" else Event.REJECT
     actor = ledger.Actor.human(user)
     await advance_or_http(

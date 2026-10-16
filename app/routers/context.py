@@ -31,10 +31,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import ledger
 from app.auth import CurrentUser
 from app.db import get_session
-from app.models import ContextEntry, Project
-from app.routers.common import get_or_404
+from app.models import ContextEntry
 from app.schemas import ContextIn, ContextOut
 from app.services.context_notes import recent
+from app.workspace_access import project_access
 
 router = APIRouter(prefix="/api/projects/{project_id}/context", tags=["context"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -42,10 +42,10 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 @router.get("", response_model=list[ContextOut])
 async def list_context(
-    project_id: uuid.UUID, session: Session, _: CurrentUser
+    project_id: uuid.UUID, session: Session, user: CurrentUser
 ) -> list[ContextEntry]:
     """Shared context for a project, newest first."""
-    await get_or_404(session, Project, project_id)
+    await project_access(session, user, project_id)
     return await recent(session, project_id, limit=100)
 
 
@@ -54,7 +54,7 @@ async def add_context(
     project_id: uuid.UUID, body: ContextIn, session: Session, user: CurrentUser
 ) -> ContextEntry:
     """Adds a decision, note or handoff on behalf of the signed-in person."""
-    await get_or_404(session, Project, project_id)
+    (await project_access(session, user, project_id)).require_write()
     entry = ContextEntry(
         id=uuid.uuid4(),
         project_id=project_id,
@@ -81,10 +81,10 @@ async def add_context(
 
 @router.get("/export.md", response_class=PlainTextResponse)
 async def export_markdown(
-    project_id: uuid.UUID, session: Session, _: CurrentUser
+    project_id: uuid.UUID, session: Session, user: CurrentUser
 ) -> str:
     """The same context as Markdown, ready to commit next to the code."""
-    project = await get_or_404(session, Project, project_id)
+    project = (await project_access(session, user, project_id)).project
     lines = [f"# {project.name}: shared context", ""]
     for e in reversed(await recent(session, project_id, limit=500)):
         stamp = e.created_at.strftime("%Y-%m-%d %H:%M UTC")

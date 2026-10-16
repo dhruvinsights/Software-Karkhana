@@ -19,19 +19,22 @@ from __future__ import annotations
 import datetime as dt
 import re
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, db, ledger
 from app.auth import CurrentUser
-from app.models import Product, User, Workspace, WorkspaceMember
+from app.models import ActivityEvent, Product, User, Workspace, WorkspaceMember
+from app.routers.chat import notify_activity, notify_workspace
 from app.schemas import (
     WorkspaceOnboard,
     WorkspaceOut,
 )
+from app.workspace_access import workspace_access
 
 _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -274,8 +277,74 @@ async def list_workspace_members(
             "email": u.email,
             "role": wm.role,
             "isOwner": wm.is_owner,
+            "access": "owner" if wm.is_owner else wm.access,
             "avatar": u.avatar_url or "",
             "joinedAt": wm.joined_at.isoformat(),
         }
         for wm, u in rows
     ]
+
+
+class MemberAccessUpdate(BaseModel):
+    """New access level for a workspace member."""
+
+    access: Literal["admin", "reviewer", "guide", "member"]
+
+
+@router.put("/api/workspaces/{workspace_id}/members/{member_user_id}/access")
+async def set_member_access(
+    workspace_id: uuid.UUID,
+    member_user_id: uuid.UUID,
+    body: MemberAccessUpdate,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(db.get_session)],
+) -> dict:
+    """Makes a member an admin, reviewer, guide (read-only advisor) or regular member.
+
+    Owners and admins may change access. Only the owner grants or removes
+    admin, and nobody can change the owner's access.
+    """
+    caller = await workspace_access(session, user, workspace_id)
+    caller.require_admin()
+    target = await session.scalar(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id, WorkspaceMember.user_id == member_user_id
+        )
+    )
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not a member of this workspace")
+    if target.is_owner:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The workspace owner's access cannot be changed")
+    if (body.access == "admin" or target.access == "admin") and not caller.is_owner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the workspace owner can add or remove admins")
+
+    previous = target.access
+    target.access = body.access
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="workspace.member_access_changed",
+        subject_type="workspace",
+        subject_id=workspace_id,
+        payload={"user_id": str(member_user_id), "from": previous, "to": body.access},
+    )
+    member_user = await session.get(User, member_user_id)
+    label = {
+        "admin": "a workspace admin",
+        "reviewer": "a reviewer (decides ideas, read-only project overview)",
+        "guide": "a guide (read-only advisor)",
+        "member": "a member",
+    }[body.access]
+    session.add(
+        ActivityEvent(
+            workspace_id=workspace_id,
+            actor_id=user.id,
+            recipient_id=member_user_id,
+            type="access_changed",
+            summary=f"{user.display_name} made you {label}",
+        )
+    )
+    await session.commit()
+    await notify_workspace(workspace_id, "members")
+    await notify_activity(workspace_id, [member_user_id])
+    return {"userId": str(member_user_id), "name": member_user.display_name if member_user else "", "access": body.access}

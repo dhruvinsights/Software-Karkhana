@@ -35,6 +35,8 @@ async def get_or_404(session: AsyncSession, model: type[M], obj_id: uuid.UUID) -
     obj = await session.get(model, obj_id)
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{model.__name__} not found")
+    if hasattr(obj, "archived_at") and obj.archived_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"{model.__name__} not found")
     return obj
 
 

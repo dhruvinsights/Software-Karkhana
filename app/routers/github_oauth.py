@@ -30,8 +30,9 @@ import datetime as dt
 import uuid
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access
@@ -172,6 +173,36 @@ async def github_auth_status(session: Session, user: AnyRole) -> AuthStatusOut:
         connected_at=row.updated_at if row else None,
         server_token=bool(get_settings().github_token),
     )
+
+
+class PersonalTokenIn(BaseModel):
+    """A GitHub personal access token pasted by the user."""
+
+    token: str = Field(min_length=10, max_length=400)
+
+
+@router.post("/token")
+async def github_save_personal_token(
+    body: PersonalTokenIn, session: Session, user: AnyRole
+) -> dict[str, object]:
+    """Stores a personal access token (encrypted) once GitHub accepts it.
+
+    The alternative to the device flow, for private repositories when no OAuth
+    app is configured. The token is never returned.
+    """
+    token = body.token.strip()
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            r = await http.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"Bearer {token}", "User-Agent": "Software-Karkhana"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not reach GitHub to check the token.") from exc
+    if r.status_code != status.HTTP_200_OK:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "GitHub rejected that token.")
+    await github_tokens.save_token(session, user.id, token, "personal-access-token")
+    return {"connected": True, "login": r.json().get("login")}
 
 
 @router.delete("/auth", status_code=status.HTTP_204_NO_CONTENT)

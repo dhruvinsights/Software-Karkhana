@@ -35,6 +35,7 @@ import {
   ActivityEvent,
   ProjectComment,
 } from '../types/factory';
+import { chatSocket } from '../lib/chatSocket';
 
 export const ROLE_CONFIGS: Record<FactoryRole, { label: string; badge: string; desc: string }> = {
   executive: { label: 'Executive / Director', badge: 'Leadership', desc: 'Portfolio oversight, capital allocation, and multi-signature approval gates.' },
@@ -157,7 +158,68 @@ export interface FactoryState {
   projectComments: ProjectComment[];
   chatUnreadTotal: number;
   activityUnreadTotal: number;
+  /** The signed-in user's access in the active workspace (server-decided). */
+  myAccess: WorkspaceAccessLevel | null;
+  /** Members of the active workspace as the server reports them. */
+  workspaceMembers: WorkspaceMemberRecord[];
 }
+
+export type WorkspaceAccessLevel = 'owner' | 'admin' | 'reviewer' | 'guide' | 'member';
+
+export interface WorkspaceMemberRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  access: WorkspaceAccessLevel;
+  isOwner: boolean;
+  avatar: string;
+}
+
+export const ACCESS_LABEL: Record<WorkspaceAccessLevel, string> = {
+  owner: 'Workspace Admin · Owner',
+  admin: 'Workspace Admin',
+  reviewer: 'Reviewer',
+  guide: 'Guide',
+  member: 'Member',
+};
+
+const isServerId = (id: string | undefined): id is string => !!id && id.length === 36 && id.includes('-');
+
+/** Auth plus the active workspace, so the server scopes every list to it. */
+function apiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('karkhana_jwt_token') : null);
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (isServerId(state.activeWorkspaceId)) headers['X-Workspace-Id'] = state.activeWorkspaceId;
+  return headers;
+}
+
+async function apiError(res: Response): Promise<Error> {
+  try {
+    const body = await res.json();
+    return new Error(typeof body.detail === 'string' ? body.detail : res.statusText);
+  } catch {
+    return new Error(res.statusText);
+  }
+}
+
+/** Stations a new project member gets from their workspace title (mirrors ROLE_STATIONS in app/idea_flow.py). */
+const ALL_STATION_IDS = ['product', 'design', 'architecture', 'developer', 'qa', 'devops', 'security', 'release'];
+const DEFAULT_STATIONS: Record<string, string[]> = {
+  pm: ALL_STATION_IDS,
+  product_manager: ALL_STATION_IDS,
+  lead: ALL_STATION_IDS,
+  director: ALL_STATION_IDS,
+  executive: ALL_STATION_IDS,
+  developer: ['product', 'architecture', 'developer', 'qa'],
+  designer: ['product', 'design', 'architecture'],
+  architect: ['product', 'design', 'architecture', 'developer', 'security'],
+  qa: ['product', 'developer', 'qa'],
+  security: ['architecture', 'developer', 'security'],
+  devops: ['architecture', 'developer', 'devops', 'release'],
+  release_manager: ['product', 'qa', 'devops', 'security', 'release'],
+};
 
 const STORAGE_KEY = 'software_karkhana_clean_v4';
 
@@ -235,6 +297,8 @@ function freshDefaults(): FactoryState {
     projectComments: [],
     chatUnreadTotal: 0,
     activityUnreadTotal: 0,
+    myAccess: null,
+    workspaceMembers: [],
   };
 }
 
@@ -244,8 +308,19 @@ function loadInitialState(): FactoryState {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        // Merge stored state over defaults so newly-added fields are never undefined.
-        return { ...defaults, ...JSON.parse(stored) };
+        const parsed = JSON.parse(stored);
+        const liveProducts = (parsed.products || []).filter((p: Product) => isServerId(p.id));
+        const liveProductIds = new Set(liveProducts.map((p: Product) => p.id));
+        const liveProjects = (parsed.projects || []).filter(
+          (p: Project) => isServerId(p.id) && p.productId && liveProductIds.has(p.productId)
+        );
+        return {
+          ...defaults,
+          ...parsed,
+          products: liveProducts,
+          projects: liveProjects,
+          ideas: (parsed.ideas || []).filter((i: Idea) => i.productId && liveProductIds.has(i.productId)),
+        };
       }
     } catch (e) {
       console.warn('Failed to parse stored state, using clean defaults', e);
@@ -326,17 +401,43 @@ export const factoryStore = {
             securityPosture: 'STANDARD',
             isDemo: false,
           }));
-          if (!state.workspaces.find((w) => w.id === state.activeWorkspaceId)) {
-            state.activeWorkspaceId = state.workspaces[0].id;
-            state.workspace = state.workspaces[0];
-          }
+          const active = state.workspaces.find((w) => w.id === state.activeWorkspaceId) ?? state.workspaces[0];
+          state.activeWorkspaceId = active.id;
+          // Always take the server's copy so the name shown is the real one.
+          state.workspace = active;
         }
       }
 
-      // 3. Fetch Products
-      const prodRes = await fetch('/api/products', { headers: authHeader });
-      if (prodRes.ok) {
-        const prods = await prodRes.json();
+      // Everything below is scoped to the active workspace. Fetch it all first, then
+      // apply only if the user is still in that workspace: a sync that finishes after a
+      // workspace switch must not write the old workspace's data into the new one.
+      const scoped = apiHeaders();
+      const syncedWs = state.activeWorkspaceId;
+      const [prodRes, projRes, ideasRes, memRes] = await Promise.all([
+        fetch(isServerId(syncedWs) ? `/api/products?workspace_id=${syncedWs}` : '/api/products', { headers: scoped }),
+        fetch('/api/projects', { headers: scoped }),
+        fetch('/api/ideas', { headers: scoped }),
+        isServerId(syncedWs) ? fetch(`/api/workspaces/${syncedWs}/members`, { headers: scoped }) : Promise.resolve(null),
+      ]);
+      const [prods, projs, ideas, memberRows] = await Promise.all([
+        prodRes.ok ? prodRes.json() : null,
+        projRes.ok ? projRes.json() : null,
+        ideasRes.ok ? ideasRes.json() : null,
+        memRes?.ok ? memRes.json() : null,
+      ]);
+      if (state.activeWorkspaceId !== syncedWs) return;
+      // Refused (403/400): the user lost access, so drop the stale copy instead of keeping it.
+      const refused = (r: Response | null) => !!r && (r.status === 403 || r.status === 400);
+      if (refused(prodRes)) state.products = [];
+      if (refused(projRes)) state.projects = [];
+      if (refused(ideasRes)) state.ideas = [];
+      if (refused(memRes)) {
+        state.workspaceMembers = [];
+        state.myAccess = null;
+      }
+
+      // 3. Products
+      {
         if (prods) {
           state.products = prods.map((p: any) => ({
             id: p.id,
@@ -347,51 +448,61 @@ export const factoryStore = {
             description: p.description,
             ownerId: state.currentUser?.id || 'usr-lead',
             status: p.status || 'active',
-            techStack: ['TypeScript', 'Python', 'PostgreSQL'],
+            techStack: p.techStack?.length ? p.techStack : [],
             activeIdeaCount: 0,
             activeProjectCount: 0,
-            repositories: [],
+            repositories: p.repositoryUrl ? [p.repositoryUrl] : [],
             lastActivity: p.createdAt || 'Active',
+            problemStatement: p.problemStatement || '',
+            targetUsers: p.targetUsers || '',
+            keyFeatures: p.keyFeatures || [],
+            constraints: p.constraints || [],
+            teamSpaces: p.teamSpaces || [],
+            reviewerIds: p.reviewerIds || [],
+            settings: {
+              repositoryUrl: p.repositoryUrl || '',
+              reviewerIds: p.reviewerIds || [],
+            },
           }));
-          if (!state.selectedProductId && state.products.length > 0) {
-            state.selectedProductId = state.products[0].id;
+          if (!state.products.some((p) => p.id === state.selectedProductId)) {
+            state.selectedProductId = state.products[0]?.id;
           }
         }
       }
 
-      // 4. Fetch Projects
-      const projRes = await fetch('/api/projects', { headers: authHeader });
-      if (projRes.ok) {
-        const projs = await projRes.json();
+      // 4. Projects
+      {
         if (projs) {
-          state.projects = projs.map((pr: any) => ({
-            id: pr.id,
-            productId: pr.product_id || state.selectedProductId || state.products[0]?.id || '',
-            name: pr.name,
-            code: pr.settings?.code || `PRJ-${pr.id.substring(0, 4).toUpperCase()}`,
-            description: pr.settings?.description || pr.idea_text || 'Active engineering project deliverable.',
-            status: pr.stage_status === 'submitted' ? 'planning' : 'development',
-            phase: 'Sprint 1',
-            health: 'healthy',
-            leadId: pr.lead_id || state.currentUser?.id || 'usr-lead',
-            teamsAssigned: ['tm-core'],
-            targetReleaseDate: pr.settings?.target_release_date || '2026-12-31',
-            repositoryUrl: pr.settings?.repository_url || 'github.com/org/repo',
-            milestonesCount: 1,
-            completedTasks: 0,
-            totalTasks: 0,
-            createdAt: pr.created_at || new Date().toISOString(),
-          }));
-          if (!state.selectedProjectId && state.projects.length > 0) {
-            state.selectedProjectId = state.projects[0].id;
+          const liveProductIds = new Set(state.products.map((p) => p.id));
+          state.projects = projs
+            .filter((pr: any) => pr.product_id && liveProductIds.has(pr.product_id))
+            .map((pr: any) => ({
+              id: pr.id,
+              productId: pr.product_id,
+              name: pr.name,
+              code: pr.settings?.code || `PRJ-${pr.id.substring(0, 4).toUpperCase()}`,
+              description: pr.settings?.description || pr.idea_text || 'Active engineering project deliverable.',
+              status: pr.stage_status === 'submitted' ? 'planning' : 'development',
+              phase: 'Sprint 1',
+              health: 'healthy',
+              leadId: pr.lead_id || state.currentUser?.id || 'usr-lead',
+              teamsAssigned: ['tm-core'],
+              targetReleaseDate: pr.settings?.target_release_date || '2026-12-31',
+              repositoryUrl: pr.settings?.repository_url || 'github.com/org/repo',
+              milestonesCount: 1,
+              completedTasks: 0,
+              totalTasks: 0,
+              createdAt: pr.created_at || new Date().toISOString(),
+              createdBy: pr.created_by || undefined,
+            }));
+          if (!state.projects.some((p) => p.id === state.selectedProjectId)) {
+            state.selectedProjectId = state.projects[0]?.id;
           }
         }
       }
 
-      // 5. Fetch Ideas
-      const ideasRes = await fetch('/api/ideas', { headers: authHeader });
-      if (ideasRes.ok) {
-        const ideas = await ideasRes.json();
+      // 5. Ideas
+      {
         if (ideas) {
           state.ideas = ideas.map((i: any) => ({
             id: i.id,
@@ -411,6 +522,15 @@ export const factoryStore = {
         }
       }
 
+      // 6. Members and my access level in this workspace
+      if (memberRows) {
+        const rows: WorkspaceMemberRecord[] = memberRows;
+        state.workspaceMembers = rows.map((m) => ({ ...m, access: m.isOwner ? 'owner' : m.access || 'member' }));
+        state.myAccess = state.workspaceMembers.find((m) => m.id === state.currentUser?.id)?.access ?? null;
+      }
+
+      // Fields above were mutated in place; a new object makes subscribers re-render.
+      state = { ...state };
       notify();
     } catch (e) {
       console.warn('Session sync from server skipped / offline:', e);
@@ -443,16 +563,13 @@ export const factoryStore = {
   },
 
   signOut: () => {
+    // Close the previous user's live connection so the next person can't receive its frames.
+    chatSocket.disconnect();
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('karkhana_jwt_token');
+      localStorage.removeItem(STORAGE_KEY);
     }
-    state = {
-      ...state,
-      authStatus: 'guest',
-      token: null,
-      currentUser: null,
-      currentScreen: 'landing',
-    };
+    state = freshDefaults();
     notify();
   },
 
@@ -496,101 +613,179 @@ export const factoryStore = {
   switchWorkspace: (workspaceId: string) => {
     const ws = state.workspaces.find((w) => w.id === workspaceId);
     if (!ws) return;
+    const changed = ws.id !== state.activeWorkspaceId;
     state = {
       ...state,
       activeWorkspaceId: ws.id,
       workspace: ws,
       currentScreen: 'workspace_home',
+      ...(changed ? { products: [], projects: [], ideas: [], workspaceMembers: [], myAccess: null } : {}),
     };
     factoryStore.logAudit('Switched Workspace', `Switched active workspace to "${ws.name}".`);
     notify();
+    if (changed) factoryStore.syncSessionFromServer();
   },
 
-  createProduct: (product: Partial<Product>) => {
-    const newProdId = `prod-${Date.now()}`;
-    const newProduct: Product = {
-      id: newProdId,
-      workspaceId: state.workspace.id,
-      name: product.name || 'New Product',
-      code: product.code || (product.name ? product.name.slice(0, 4).toUpperCase() : 'PROD'),
-      description: product.description || 'Enterprise software product.',
-      ownerId: state.members[0]?.id || 'usr-lead',
-      status: 'active',
-      domain: product.domain || 'Cloud & Core Infrastructure',
-      techStack: product.techStack || ['TypeScript', 'Node.js', 'PostgreSQL'],
-      activeIdeaCount: 0,
-      activeProjectCount: 0,
-      repositories: product.repositories || [],
-      lastActivity: 'Just created',
-    };
-    state = {
-      ...state,
-      products: [newProduct, ...state.products],
-      selectedProductId: newProdId,
-      currentScreen: 'product_detail',
-    };
-    factoryStore.logAudit('Created Product', `Product "${newProduct.name}" created.`);
+  /** Creates the product on the server (owner/admin only), then re-syncs. Returns its id. */
+  createProduct: async (product: Partial<Product>): Promise<string> => {
+    const res = await fetch('/api/products', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        name: product.name || 'New Product',
+        code: product.code || (product.name ? product.name.slice(0, 4).toUpperCase() : undefined),
+        domain: product.domain || 'Cloud Services',
+        description: product.description || '',
+        workspace_id: isServerId(state.activeWorkspaceId) ? state.activeWorkspaceId : undefined,
+        problem_statement: product.problemStatement || '',
+        target_users: product.targetUsers || '',
+        tech_stack: product.techStack || [],
+        repository_url: product.repositories?.[0] || '',
+        key_features: product.keyFeatures || [],
+        constraints: product.constraints || [],
+        team_spaces: product.teamSpaces || [],
+        reviewer_ids: product.reviewerIds || [],
+      }),
+    });
+    if (!res.ok) throw await apiError(res);
+    const created = await res.json();
+    await factoryStore.syncSessionFromServer();
+    state = { ...state, selectedProductId: created.id, currentScreen: 'product_detail' };
+    factoryStore.logAudit('Created Product', `Product "${created.name}" created.`);
     notify();
+    return created.id as string;
   },
 
-  deleteProduct: (productId: string) => {
+  /** Owner/admin only: archives the product and its projects for every member. */
+  deleteProduct: async (productId: string): Promise<void> => {
+    if (isServerId(productId)) {
+      const res = await fetch(`/api/products/${productId}`, { method: 'DELETE', headers: apiHeaders() });
+      if (!res.ok && res.status !== 404) throw await apiError(res);
+    }
+    const remainingProducts = state.products.filter((p) => p.id !== productId);
+    const remainingProjects = state.projects.filter((p) => p.productId !== productId);
     state = {
       ...state,
-      products: state.products.filter((p) => p.id !== productId),
-      projects: state.projects.filter((p) => p.productId !== productId),
+      products: remainingProducts,
+      projects: remainingProjects,
       ideas: state.ideas.filter((i) => i.productId !== productId),
-      selectedProductId: state.selectedProductId === productId ? undefined : state.selectedProductId,
+      selectedProductId: state.selectedProductId === productId ? remainingProducts[0]?.id : state.selectedProductId,
+      selectedProjectId: state.selectedProjectId && !remainingProjects.some((p) => p.id === state.selectedProjectId) ? remainingProjects[0]?.id : state.selectedProjectId,
     };
     factoryStore.logAudit('Deleted Product', `Product ${productId} deleted.`);
     notify();
+    if (isServerId(productId)) {
+      await factoryStore.syncSessionFromServer();
+    }
   },
 
-  createProject: (project: Partial<Project>) => {
-    const newPrjId = `prj-${Date.now()}`;
-    const newProject: Project = {
-      id: newPrjId,
-      productId: project.productId || state.selectedProductId || state.products[0]?.id || '',
-      name: project.name || 'New Project',
-      code: project.code || `PRJ-${state.projects.length + 1}`,
-      description: project.description || 'Core engineering service deliverable.',
-      status: 'development',
-      phase: 'Sprint 1',
-      health: 'healthy',
-      leadId: state.members[0]?.id || 'usr-lead',
-      teamsAssigned: ['tm-core'],
-      targetReleaseDate: project.targetReleaseDate || '2026-12-31',
-      repositoryUrl: project.repositoryUrl || 'github.com/org/repo',
-      milestonesCount: 1,
-      completedTasks: 0,
-      totalTasks: 0,
-      createdAt: new Date().toISOString(),
-    };
-    state = {
-      ...state,
-      projects: [newProject, ...state.projects],
-      selectedProjectId: newPrjId,
-      currentScreen: 'project_detail',
-    };
-    // Update product active project count
-    if (newProject.productId) {
-      state.products = state.products.map((p) =>
-        p.id === newProject.productId ? { ...p, activeProjectCount: (p.activeProjectCount || 0) + 1 } : p
-      );
-    }
-    factoryStore.logAudit('Created Project', `Project "${newProject.name}" created.`);
+  /** Header badges, from the server's counts (see AppShell). */
+  setUnreadCounts: (counts: { activity: number; chat: number }) => {
+    if (state.activityUnreadTotal === counts.activity && state.chatUnreadTotal === counts.chat) return;
+    state = { ...state, activityUnreadTotal: counts.activity, chatUnreadTotal: counts.chat };
     notify();
   },
 
-  deleteProject: (projectId: string) => {
+  /** The workspace owner and admins manage the product and members. */
+  isWorkspaceAdmin: (): boolean => state.myAccess === 'owner' || state.myAccess === 'admin',
+
+  /**
+   * Creates the project on the server, adds the chosen teammates, then re-syncs
+   * so it carries the server id every member sees. Returns that id.
+   */
+  createProject: async (
+    project: Partial<Project> & {
+      memberIds?: string[];
+      /** People per team space: each person gets exactly the stations they were picked for. */
+      members?: { userId: string; stations: string[] }[];
+    },
+  ): Promise<string> => {
+    const productId = project.productId || state.selectedProductId || state.products[0]?.id;
+    const res = await fetch('/api/projects', {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        name: project.name || 'New Project',
+        idea_text: project.description || `Project ${project.name || ''} initialized.`,
+        product_id: isServerId(productId) ? productId : null,
+        workspace_id: isServerId(state.activeWorkspaceId) ? state.activeWorkspaceId : null,
+        code: project.code,
+        description: project.description,
+        repository_url: project.repositoryUrl,
+        target_release_date: project.targetReleaseDate,
+      }),
+    });
+    if (!res.ok) throw await apiError(res);
+    const created = await res.json();
+
+    const assignments =
+      project.members ??
+      (project.memberIds ?? []).map((userId) => {
+        const title = state.workspaceMembers.find((m) => m.id === userId)?.role ?? 'developer';
+        return { userId, stations: DEFAULT_STATIONS[title] ?? ['product'] };
+      });
+    const failed: string[] = [];
+    for (const { userId, stations } of assignments) {
+      if (userId === state.currentUser?.id || stations.length === 0) continue;
+      const person = state.workspaceMembers.find((m) => m.id === userId);
+      const res = await fetch(`/api/projects/${created.id}/members`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ user_id: userId, role: person?.role ?? 'developer', stations }),
+      }).catch(() => null);
+      if (!res || !res.ok) failed.push(`${person?.name ?? 'a teammate'} (${res ? (await apiError(res)).message : 'network error'})`);
+    }
+
+    await factoryStore.syncSessionFromServer();
+    state = { ...state, selectedProjectId: created.id, currentScreen: 'project_detail' };
+    factoryStore.logAudit('Created Project', `Project "${created.name}" created.`);
+    notify();
+    if (failed.length) {
+      // The project exists; say exactly who is missing instead of reporting success.
+      const err = new Error(
+        `Project "${created.name}" was created, but these teammates weren't added: ${failed.join(', ')}. Add them from the project's team settings.`,
+      );
+      (err as Error & { projectCreated?: boolean }).projectCreated = true;
+      throw err;
+    }
+    return created.id as string;
+  },
+
+  /** Owners/admins and the project's creator may delete; everyone in the workspace sees it go. */
+  canDeleteProject: (project: Project): boolean =>
+    state.myAccess === 'owner' || state.myAccess === 'admin' || (!!project.createdBy && project.createdBy === state.currentUser?.id),
+
+  deleteProject: async (projectId: string): Promise<void> => {
+    if (isServerId(projectId)) {
+      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE', headers: apiHeaders() });
+      if (!res.ok && res.status !== 404) throw await apiError(res);
+    }
+    const remainingProjects = state.projects.filter((p) => p.id !== projectId);
     state = {
       ...state,
-      projects: state.projects.filter((p) => p.id !== projectId),
+      projects: remainingProjects,
       issues: state.issues.filter((i) => i.projectId !== projectId),
       pullRequests: state.pullRequests.filter((pr) => pr.projectId !== projectId),
-      selectedProjectId: state.selectedProjectId === projectId ? undefined : state.selectedProjectId,
+      testScenarios: state.testScenarios.filter((ts) => ts.projectId !== projectId),
+      pipelines: state.pipelines.filter((pl) => pl.projectId !== projectId),
+      selectedProjectId: state.selectedProjectId === projectId ? remainingProjects[0]?.id : state.selectedProjectId,
     };
     factoryStore.logAudit('Deleted Project', `Project ${projectId} deleted.`);
     notify();
+    if (isServerId(projectId)) {
+      await factoryStore.syncSessionFromServer();
+    }
+  },
+
+  /** Owner/admin only: make a member an admin, a guide (read-only advisor) or a member. */
+  setMemberAccess: async (userId: string, access: Exclude<WorkspaceAccessLevel, 'owner'>): Promise<void> => {
+    const res = await fetch(`/api/workspaces/${state.activeWorkspaceId}/members/${userId}/access`, {
+      method: 'PUT',
+      headers: apiHeaders(),
+      body: JSON.stringify({ access }),
+    });
+    if (!res.ok) throw await apiError(res);
+    await factoryStore.syncSessionFromServer();
   },
 
   updateDashboardWidgets: (widgets: DashboardWidget[]) => {

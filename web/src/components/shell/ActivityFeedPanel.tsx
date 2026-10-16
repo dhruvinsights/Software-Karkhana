@@ -145,6 +145,10 @@ export const ActivityFeedPanel: React.FC<ActivityFeedPanelProps> = ({ onClose, o
 
   useEffect(() => { load(); }, [load]);
 
+  // The server signals new mentions, review requests and invites; refetch the real feed.
+  useChatFrames('activity', () => { load(); }, [load]);
+  useChatFrames('reconnected', () => { load(); }, [load]);
+
   // Live: push incoming project_comment / message mention frames into the feed
   useChatFrames('project_comment', (frame) => {
     const myId = state.currentUser?.id ?? state.members[0]?.id ?? '';

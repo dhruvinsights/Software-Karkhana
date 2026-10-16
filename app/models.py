@@ -77,6 +77,8 @@ class WorkspaceMember(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String)
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False)
+    # owner | admin | reviewer | guide | member: what they may do, independent of their title.
+    access: Mapped[str] = mapped_column(String, default="member")
     joined_at: Mapped[dt.datetime] = _now()
 
 
@@ -92,11 +94,34 @@ class Product(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String, default="active")
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Setup details: problemStatement, targetUsers, techStack, repositoryUrl,
+    # keyFeatures, constraints, teamSpaces (station ids used by its projects).
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()
 
 
+class IdeaScan(Base):
+    """A codebase scan job running multi-agent analysis on a product repository."""
+
+    __tablename__ = "idea_scans"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String, default="running")  # running | done | failed
+    provider: Mapped[str] = mapped_column(String, default="ollama")
+    model: Mapped[str] = mapped_column(String)
+    repo_url: Mapped[str] = mapped_column(String)
+    started_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    stats: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Idea(Base):
-    """A feature idea under validation with AI feasibility radar."""
+    """A feature idea under validation with AI feasibility radar and reviewer approval."""
 
     __tablename__ = "ideas"
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -114,6 +139,10 @@ class Idea(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
+    source: Mapped[str] = mapped_column(String, default="manual")  # manual | agent
+    scan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("idea_scans.id", ondelete="SET NULL"), nullable=True)
+    evidence: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    review_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -137,6 +166,36 @@ class IdeaApproval(Base):
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class IdeaChat(Base):
+    """Multi-turn brainstorm chat session attached to a product or idea."""
+
+    __tablename__ = "idea_chats"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    idea_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ideas.id", ondelete="SET NULL"), nullable=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String)
+    provider: Mapped[str] = mapped_column(String, default="ollama")
+    model: Mapped[str] = mapped_column(String)
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class IdeaChatMessage(Base):
+    """One message in an IdeaChat."""
+
+    __tablename__ = "idea_chat_messages"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    chat_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("idea_chats.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String)  # user | assistant
+    content: Mapped[str] = mapped_column(Text)
+    thinking: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
 class Project(Base):
     """One project record, from idea onward."""
 
@@ -154,6 +213,8 @@ class Project(Base):
     idea_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("ideas.id", ondelete="SET NULL"), nullable=True
     )
+    archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -414,13 +475,16 @@ class ChatChannel(Base):
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String)
     type: Mapped[str] = mapped_column(String, default="channel")  # 'channel' | 'dm'
+    # 'public': every workspace member; 'private': chat_channel_members only.
+    visibility: Mapped[str] = mapped_column(String, default="public")
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()
 
 
 class ChatChannelMember(Base):
-    """DM thread participants (only for type='dm')."""
+    """Participants of DMs and private channels."""
 
     __tablename__ = "chat_channel_members"
     channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_channels.id", ondelete="CASCADE"), primary_key=True)

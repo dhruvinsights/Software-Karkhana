@@ -20,7 +20,11 @@ Architecture
 * The ``ConnectionManager`` keeps an in-process registry keyed by
   (workspace_id, user_id).  When a message arrives it is:
     1. Persisted to PostgreSQL (chat_messages table).
-    2. Broadcast to every active connection in the same workspace.
+    2. Delivered to the connections allowed to read the channel: every
+       workspace member for public channels, participants only for private
+       channels and DMs.
+* The registry is per process. Running more than one API instance needs a
+  shared fan-out (Postgres LISTEN/NOTIFY, then Redis); see FACTORY_PLAN D4.
 * Typing indicators and presence are ephemeral JSON frames sent over the
   WebSocket and never written to the DB.
 * REST endpoints cover channel CRUD, message history, project comments,
@@ -57,8 +61,15 @@ from app.models import (
     ChatMessage,
     ChatReadCursor,
     ProjectComment,
+    ProjectMember,
     User,
     WorkspaceMember,
+)
+from app.workspace_access import (
+    CurrentWorkspace,
+    default_workspace_id,
+    project_access,
+    workspace_access,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,9 +124,24 @@ class ConnectionManager:
 
     async def send_to_user(self, workspace_id: str, user_id: str, frame: dict[str, Any]) -> None:
         """Send a frame to a specific user (all their tabs)."""
+        await self.send_to_users(workspace_id, {user_id}, frame)
+
+    async def send_to_users(
+        self, workspace_id: str, user_ids: set[str], frame: dict[str, Any], exclude_user: str | None = None
+    ) -> None:
+        """Send a frame to the listed users' open tabs in a workspace."""
         for conn in list(self._rooms.get(workspace_id, [])):
-            if conn.user_id == user_id:
+            if conn.user_id in user_ids and conn.user_id != exclude_user:
                 await conn.send(frame)
+
+    async def deliver(
+        self, workspace_id: str, audience: set[str] | None, frame: dict[str, Any], exclude_user: str | None = None
+    ) -> None:
+        """``audience`` None means every member of the workspace."""
+        if audience is None:
+            await self.broadcast(workspace_id, frame, exclude_user)
+        else:
+            await self.send_to_users(workspace_id, audience, frame, exclude_user)
 
     def online_users(self, workspace_id: str) -> list[str]:
         """Return the distinct user ids currently connected to a workspace."""
@@ -125,6 +151,25 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def notify_activity(workspace_id: uuid.UUID | str, user_ids: list[uuid.UUID] | set[str] | list[str]) -> None:
+    """Tells these users' open tabs that they have new activity (mention, review request...).
+
+    Call after the ActivityEvent rows are committed; clients refetch their feed.
+    """
+    ids = {str(u) for u in user_ids}
+    if ids:
+        await manager.send_to_users(str(workspace_id), ids, {"type": "activity"})
+
+
+async def notify_workspace(workspace_id: uuid.UUID | str, scope: str) -> None:
+    """Tells every open tab in the workspace that ``scope`` changed so it re-syncs.
+
+    Scopes: projects, products, members. The frame carries no data; clients
+    refetch through the normal access-checked endpoints.
+    """
+    await manager.broadcast(str(workspace_id), {"type": "workspace_sync", "scope": scope})
+
+
 # ── Pydantic payloads ─────────────────────────────────────────────────────────
 
 class ChannelCreate(BaseModel):
@@ -132,6 +177,16 @@ class ChannelCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=80)
     description: str | None = None
+    # Team channels are private: only the listed members (plus the creator) see them.
+    visibility: str = Field(default="private", pattern="^(public|private)$")
+    member_ids: list[uuid.UUID] = Field(default_factory=list)
+    project_id: uuid.UUID | None = None
+
+
+class ChannelMembersAdd(BaseModel):
+    """People to add to a private channel."""
+
+    user_ids: list[uuid.UUID] = Field(min_length=1)
 
 
 class DMCreate(BaseModel):
@@ -176,14 +231,18 @@ def _msg_dict(msg: ChatMessage, sender: User) -> dict[str, Any]:
     }
 
 
-async def _get_workspace_id(user: User, session: AsyncSession) -> str:
-    """Return the first workspace this user belongs to."""
-    row = await session.scalar(
-        select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id).limit(1)
-    )
-    if not row:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of any workspace")
-    return str(row)
+def _slug(name: str) -> str:
+    return "-".join(name.lower().split())
+
+
+async def _is_participant(session: AsyncSession, channel_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    return (
+        await session.scalar(
+            select(ChatChannelMember.user_id).where(
+                and_(ChatChannelMember.channel_id == channel_id, ChatChannelMember.user_id == user_id)
+            )
+        )
+    ) is not None
 
 
 async def _assert_channel_access(
@@ -192,16 +251,51 @@ async def _assert_channel_access(
     ch = await session.get(ChatChannel, channel_id)
     if not ch or str(ch.workspace_id) != workspace_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not found")
-    if ch.type == "dm":
-        # DM: user must be a participant
-        member = await session.scalar(
-            select(ChatChannelMember).where(
-                and_(ChatChannelMember.channel_id == channel_id, ChatChannelMember.user_id == user_id)
-            )
-        )
-        if not member:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a participant of this DM")
+    if ch.visibility != "public" and not await _is_participant(session, channel_id, user_id):
+        # 404, not 403: private channel names are not disclosed.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not found")
     return ch
+
+
+async def _audience(session: AsyncSession, ch: ChatChannel) -> set[str] | None:
+    """Who may receive frames for this channel; None means the whole workspace."""
+    if ch.visibility == "public":
+        return None
+    rows = await session.scalars(select(ChatChannelMember.user_id).where(ChatChannelMember.channel_id == ch.id))
+    return {str(u) for u in rows.all()}
+
+
+async def ensure_general_channel(session: AsyncSession, workspace_id: uuid.UUID) -> ChatChannel:
+    """The workspace's #general channel, created on first use."""
+    ch = await session.scalar(
+        select(ChatChannel).where(
+            ChatChannel.workspace_id == workspace_id, ChatChannel.type == "channel", ChatChannel.name == "general"
+        )
+    )
+    if ch is None:
+        ch = ChatChannel(
+            workspace_id=workspace_id,
+            name="general",
+            type="channel",
+            visibility="public",
+            description="Everyone in the workspace",
+        )
+        session.add(ch)
+        await session.commit()
+        await session.refresh(ch)
+    return ch
+
+
+async def _unread_count(session: AsyncSession, user_id: uuid.UUID, channel_id: uuid.UUID) -> int:
+    cursor = await session.get(ChatReadCursor, (user_id, channel_id))
+    q = select(func.count()).select_from(ChatMessage).where(
+        ChatMessage.channel_id == channel_id, ChatMessage.sender_id != user_id
+    )
+    if cursor and cursor.last_read_message_id:
+        cursor_msg = await session.get(ChatMessage, cursor.last_read_message_id)
+        if cursor_msg:
+            q = q.where(ChatMessage.created_at > cursor_msg.created_at)
+    return int(await session.scalar(q) or 0)
 
 
 async def _write_activity(
@@ -235,8 +329,9 @@ async def _write_activity(
 async def chat_ws(
     websocket: WebSocket,
     token: str = Query(...),
+    workspace_id: str | None = Query(default=None),
 ):
-    """Chat WebSocket endpoint; connect with ``?token=<jwt>``.
+    """Chat WebSocket endpoint; connect with ``?token=<jwt>&workspace_id=<uuid>``.
 
     Frames are JSON objects with a ``type`` field:
 
@@ -268,8 +363,13 @@ async def chat_ws(
         if not user:
             await websocket.close(code=4003)
             return
-
-        workspace_id = await _get_workspace_id(user, session)
+        try:
+            ws_uuid = uuid.UUID(workspace_id) if workspace_id else await default_workspace_id(session, user)
+            await workspace_access(session, user, ws_uuid)
+        except (ValueError, HTTPException):
+            await websocket.close(code=4003)
+            return
+        workspace_id = str(ws_uuid)
 
     conn = _Conn(websocket, str(user.id), workspace_id, user.display_name)
     manager.connect(conn)
@@ -314,10 +414,11 @@ async def chat_ws(
 
                 async with sessionmaker()() as session:
                     try:
-                        await _assert_channel_access(channel_id, workspace_id, user.id, session)
+                        ch = await _assert_channel_access(channel_id, workspace_id, user.id, session)
                     except HTTPException as exc:
                         await conn.send({"type": "error", "detail": exc.detail})
                         continue
+                    audience = await _audience(session, ch)
 
                     msg = ChatMessage(
                         channel_id=channel_id,
@@ -342,18 +443,24 @@ async def chat_ws(
 
                     await session.commit()
                     await session.refresh(msg)
+                await notify_activity(workspace_id, [str(m) for m in mention_ids])
 
                 out_frame = {
                     "type": "message",
                     **_msg_dict(msg, user),
                 }
-                # Broadcast to entire workspace (both sender and others)
-                await manager.broadcast(workspace_id, out_frame)
+                await manager.deliver(workspace_id, audience, out_frame)
 
             # ── typing indicator (ephemeral, never persisted) ─────────────────
             elif ftype == "typing":
                 channel_id_str = frame.get("channelId", "")
-                await manager.broadcast(workspace_id, {
+                try:
+                    async with sessionmaker()() as session:
+                        ch = await _assert_channel_access(uuid.UUID(channel_id_str), workspace_id, user.id, session)
+                        audience = await _audience(session, ch)
+                except (ValueError, HTTPException):
+                    continue
+                await manager.deliver(workspace_id, audience, {
                     "type": "typing",
                     "channelId": channel_id_str,
                     "userId": str(user.id),
@@ -371,6 +478,10 @@ async def chat_ws(
                     continue
 
                 async with sessionmaker()() as session:
+                    try:
+                        await _assert_channel_access(channel_id, workspace_id, user.id, session)
+                    except HTTPException:
+                        continue
                     cursor = await session.get(ChatReadCursor, (user.id, channel_id))
                     if cursor:
                         cursor.last_read_message_id = message_id
@@ -395,87 +506,149 @@ async def chat_ws(
 # ── REST: channels ────────────────────────────────────────────────────────────
 
 @router.get("/channels")
-async def list_channels(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
-    """All #channels the caller can see in their workspace."""
-    workspace_id = await _get_workspace_id(user, session)
-
+async def list_channels(ws: CurrentWorkspace, session: Session) -> list[dict[str, Any]]:
+    """Public channels plus the private channels the caller belongs to."""
+    await ensure_general_channel(session, ws.workspace_id)
+    mine = select(ChatChannelMember.channel_id).where(ChatChannelMember.user_id == ws.user.id)
     channels = (await session.scalars(
         select(ChatChannel).where(
-            and_(
-                ChatChannel.workspace_id == uuid.UUID(workspace_id),
-                ChatChannel.type == "channel",
-            )
+            ChatChannel.workspace_id == ws.workspace_id,
+            ChatChannel.type == "channel",
+            or_(ChatChannel.visibility == "public", ChatChannel.id.in_(mine)),
         ).order_by(ChatChannel.created_at)
     )).all()
 
     result = []
     for ch in channels:
-        # Count unread messages since cursor
-        cursor = await session.scalar(
-            select(ChatReadCursor).where(
-                and_(ChatReadCursor.user_id == user.id, ChatReadCursor.channel_id == ch.id)
-            )
-        )
-        if cursor and cursor.last_read_message_id:
-            cursor_msg = await session.get(ChatMessage, cursor.last_read_message_id)
-            cursor_ts = cursor_msg.created_at if cursor_msg else None
-        else:
-            cursor_ts = None
-
-        unread_q = select(func.count()).select_from(ChatMessage).where(
-            ChatMessage.channel_id == ch.id
-        )
-        if cursor_ts:
-            unread_q = unread_q.where(ChatMessage.created_at > cursor_ts)
-        unread = int(await session.scalar(unread_q) or 0)
-
-        last_msg_row = await session.scalar(
-            select(ChatMessage).where(ChatMessage.channel_id == ch.id)
-            .order_by(ChatMessage.created_at.desc()).limit(1)
+        last_msg_at = await session.scalar(
+            select(func.max(ChatMessage.created_at)).where(ChatMessage.channel_id == ch.id)
         )
         result.append({
             "id": str(ch.id),
             "name": ch.name,
             "type": ch.type,
+            "visibility": ch.visibility,
+            "projectId": str(ch.project_id) if ch.project_id else None,
             "description": ch.description,
-            "unreadCount": unread,
-            "lastMessageAt": last_msg_row.created_at.isoformat() if last_msg_row else None,
+            "unreadCount": await _unread_count(session, ws.user.id, ch.id),
+            "lastMessageAt": last_msg_at.isoformat() if last_msg_at else None,
         })
     return result
 
 
 @router.post("/channels", status_code=201)
-async def create_channel(body: ChannelCreate, user: CurrentUser, session: Session) -> dict[str, Any]:
+async def create_channel(body: ChannelCreate, ws: CurrentWorkspace, session: Session) -> dict[str, Any]:
     """Create a workspace chat channel, rejecting duplicate names."""
-    workspace_id = await _get_workspace_id(user, session)
-    # Prevent duplicate channel names
+    name = _slug(body.name)
+    if name == "general":
+        raise HTTPException(status.HTTP_409_CONFLICT, "#general already exists")
     existing = await session.scalar(
         select(ChatChannel).where(
-            and_(
-                ChatChannel.workspace_id == uuid.UUID(workspace_id),
-                ChatChannel.name == body.name.lower().replace(" ", "-"),
-                ChatChannel.type == "channel",
-            )
+            ChatChannel.workspace_id == ws.workspace_id,
+            ChatChannel.name == name,
+            ChatChannel.type == "channel",
         )
     )
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Channel already exists")
+    if body.project_id:
+        await project_access(session, ws.user, body.project_id)
+
+    member_ids = {ws.user.id, *body.member_ids}
+    valid = set((await session.scalars(
+        select(WorkspaceMember.user_id).where(
+            WorkspaceMember.workspace_id == ws.workspace_id, WorkspaceMember.user_id.in_(member_ids)
+        )
+    )).all())
+    if valid != member_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Every channel member must belong to the workspace")
+
     ch = ChatChannel(
-        workspace_id=uuid.UUID(workspace_id),
-        name=body.name.lower().replace(" ", "-"),
+        workspace_id=ws.workspace_id,
+        name=name,
         description=body.description,
-        created_by=user.id,
+        visibility=body.visibility,
+        project_id=body.project_id,
+        created_by=ws.user.id,
     )
     session.add(ch)
+    await session.flush()
+    if body.visibility == "private":
+        for uid in member_ids:
+            session.add(ChatChannelMember(channel_id=ch.id, user_id=uid))
+    invited = [uid for uid in member_ids if uid != ws.user.id]
+    for uid in invited:
+        await _write_activity(
+            session, str(ws.workspace_id), ws.user.id, uid,
+            event_type="channel_invite",
+            summary=f"{ws.user.display_name} added you to #{name}",
+            target_type="channel", target_id=str(ch.id),
+        )
     await session.commit()
     await session.refresh(ch)
-    return {"id": str(ch.id), "name": ch.name, "type": ch.type, "description": ch.description, "unreadCount": 0}
+    out = {
+        "id": str(ch.id), "name": ch.name, "type": ch.type, "visibility": ch.visibility,
+        "projectId": str(ch.project_id) if ch.project_id else None,
+        "description": ch.description, "unreadCount": 0,
+    }
+    audience = None if ch.visibility == "public" else {str(u) for u in member_ids}
+    await manager.deliver(str(ws.workspace_id), audience, {"type": "channel_created", "channel": out})
+    await notify_activity(ws.workspace_id, invited)
+    return out
+
+
+@router.post("/channels/{channel_id}/members", status_code=201)
+async def add_channel_members(
+    channel_id: uuid.UUID, body: ChannelMembersAdd, ws: CurrentWorkspace, session: Session
+) -> dict[str, Any]:
+    """Any member of a private channel can invite other workspace members."""
+    ch = await _assert_channel_access(channel_id, str(ws.workspace_id), ws.user.id, session)
+    if ch.type != "channel" or ch.visibility != "private":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only private channels have a member list")
+    allowed = set((await session.scalars(
+        select(WorkspaceMember.user_id).where(
+            WorkspaceMember.workspace_id == ws.workspace_id, WorkspaceMember.user_id.in_(body.user_ids)
+        )
+    )).all())
+    added = []
+    for uid in allowed:
+        if not await _is_participant(session, ch.id, uid):
+            session.add(ChatChannelMember(channel_id=ch.id, user_id=uid))
+            await _write_activity(
+                session, str(ws.workspace_id), ws.user.id, uid,
+                event_type="channel_invite",
+                summary=f"{ws.user.display_name} added you to #{ch.name}",
+                target_type="channel", target_id=str(ch.id),
+            )
+            added.append(str(uid))
+    await session.commit()
+    if added:
+        out = {
+            "id": str(ch.id), "name": ch.name, "type": ch.type, "visibility": ch.visibility,
+            "projectId": str(ch.project_id) if ch.project_id else None,
+            "description": ch.description, "unreadCount": 0,
+        }
+        await manager.send_to_users(str(ws.workspace_id), set(added), {"type": "channel_created", "channel": out})
+        await notify_activity(ws.workspace_id, added)
+    return {"added": added}
+
+
+@router.get("/channels/{channel_id}/members")
+async def list_channel_members(channel_id: uuid.UUID, ws: CurrentWorkspace, session: Session) -> list[dict[str, Any]]:
+    """Who can read this channel: every member for public ones, participants otherwise."""
+    ch = await _assert_channel_access(channel_id, str(ws.workspace_id), ws.user.id, session)
+    if ch.visibility == "public":
+        ids = select(WorkspaceMember.user_id).where(WorkspaceMember.workspace_id == ws.workspace_id)
+    else:
+        ids = select(ChatChannelMember.user_id).where(ChatChannelMember.channel_id == ch.id)
+    users = (await session.scalars(select(User).where(User.id.in_(ids)).order_by(User.display_name))).all()
+    return [{"id": str(u.id), "displayName": u.display_name, "email": u.email} for u in users]
 
 
 @router.get("/dms")
-async def list_dms(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
+async def list_dms(ws: CurrentWorkspace, session: Session) -> list[dict[str, Any]]:
     """DM threads the caller is a participant of."""
-    workspace_id = await _get_workspace_id(user, session)
+    user, workspace_id = ws.user, str(ws.workspace_id)
 
     my_channel_ids = select(ChatChannelMember.channel_id).where(
         ChatChannelMember.user_id == user.id
@@ -501,17 +674,10 @@ async def list_dms(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
         )
         other_user = await session.get(User, other_member.user_id) if other_member else None
 
-        unread_q = select(func.count()).select_from(ChatMessage).where(ChatMessage.channel_id == ch.id)
-        cursor = await session.scalar(
-            select(ChatReadCursor).where(
-                and_(ChatReadCursor.user_id == user.id, ChatReadCursor.channel_id == ch.id)
-            )
+        unread = await _unread_count(session, user.id, ch.id)
+        last_msg_at = await session.scalar(
+            select(func.max(ChatMessage.created_at)).where(ChatMessage.channel_id == ch.id)
         )
-        if cursor and cursor.last_read_message_id:
-            cursor_msg = await session.get(ChatMessage, cursor.last_read_message_id)
-            if cursor_msg:
-                unread_q = unread_q.where(ChatMessage.created_at > cursor_msg.created_at)
-        unread = int(await session.scalar(unread_q) or 0)
 
         result.append({
             "id": str(ch.id),
@@ -520,14 +686,18 @@ async def list_dms(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
             "otherUserId": str(other_user.id) if other_user else None,
             "otherUserAvatar": other_user.avatar_url if other_user else None,
             "unreadCount": unread,
+            "lastMessageAt": last_msg_at.isoformat() if last_msg_at else None,
         })
+    result.sort(key=lambda d: d["lastMessageAt"] or "", reverse=True)
     return result
 
 
 @router.post("/dms", status_code=201)
-async def open_dm(body: DMCreate, user: CurrentUser, session: Session) -> dict[str, Any]:
+async def open_dm(body: DMCreate, ws: CurrentWorkspace, session: Session) -> dict[str, Any]:
     """Open (or return existing) DM thread with target_user_id."""
-    workspace_id = await _get_workspace_id(user, session)
+    user, workspace_id = ws.user, str(ws.workspace_id)
+    if body.target_user_id == user.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot DM yourself")
 
     # Find existing DM between the two users in this workspace
     my_channels = select(ChatChannelMember.channel_id).where(ChatChannelMember.user_id == user.id)
@@ -547,13 +717,18 @@ async def open_dm(body: DMCreate, user: CurrentUser, session: Session) -> dict[s
         return {"id": str(existing.id), "type": "dm"}
 
     target = await session.get(User, body.target_user_id)
-    if not target:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target user not found")
+    try:
+        if not target:
+            raise HTTPException(status.HTTP_404_NOT_FOUND)
+        await workspace_access(session, target, ws.workspace_id)
+    except HTTPException:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person is not in this workspace") from None
 
     ch = ChatChannel(
         workspace_id=uuid.UUID(workspace_id),
         name=target.display_name,
         type="dm",
+        visibility="private",
         created_by=user.id,
     )
     session.add(ch)
@@ -562,7 +737,7 @@ async def open_dm(body: DMCreate, user: CurrentUser, session: Session) -> dict[s
     session.add(ChatChannelMember(channel_id=ch.id, user_id=body.target_user_id))
     await session.commit()
     await session.refresh(ch)
-    return {"id": str(ch.id), "type": "dm", "name": target.display_name}
+    return {"id": str(ch.id), "type": "dm", "name": target.display_name, "otherUserId": str(target.id)}
 
 
 # ── REST: messages ────────────────────────────────────────────────────────────
@@ -570,14 +745,13 @@ async def open_dm(body: DMCreate, user: CurrentUser, session: Session) -> dict[s
 @router.get("/channels/{channel_id}/messages")
 async def get_messages(
     channel_id: uuid.UUID,
-    user: CurrentUser,
+    ws: CurrentWorkspace,
     session: Session,
     before: str | None = Query(default=None),  # ISO timestamp for pagination
     limit: int = Query(default=50, le=100),
 ) -> list[dict[str, Any]]:
     """List a channel's messages, paginated backwards by timestamp."""
-    workspace_id = await _get_workspace_id(user, session)
-    await _assert_channel_access(channel_id, workspace_id, user.id, session)
+    await _assert_channel_access(channel_id, str(ws.workspace_id), ws.user.id, session)
 
     q = (
         select(ChatMessage)
@@ -611,12 +785,13 @@ async def get_messages(
 async def send_message(
     channel_id: uuid.UUID,
     body: MessageSend,
-    user: CurrentUser,
+    ws: CurrentWorkspace,
     session: Session,
 ) -> dict[str, Any]:
     """REST fallback for sending a message (WebSocket preferred)."""
-    workspace_id = await _get_workspace_id(user, session)
-    await _assert_channel_access(channel_id, workspace_id, user.id, session)
+    user, workspace_id = ws.user, str(ws.workspace_id)
+    ch = await _assert_channel_access(channel_id, workspace_id, user.id, session)
+    audience = await _audience(session, ch)
 
     msg = ChatMessage(
         channel_id=channel_id,
@@ -639,7 +814,8 @@ async def send_message(
     await session.refresh(msg)
 
     out = {"type": "message", **_msg_dict(msg, user)}
-    await manager.broadcast(workspace_id, out)
+    await manager.deliver(workspace_id, audience, out)
+    await notify_activity(workspace_id, body.mentions)
     return out
 
 
@@ -647,12 +823,12 @@ async def send_message(
 async def mark_read(
     channel_id: uuid.UUID,
     body: ReadCursorUpdate,
-    user: CurrentUser,
+    ws: CurrentWorkspace,
     session: Session,
 ) -> dict[str, str]:
     """Advance the caller's read cursor for a channel."""
-    workspace_id = await _get_workspace_id(user, session)
-    await _assert_channel_access(channel_id, workspace_id, user.id, session)
+    user = ws.user
+    await _assert_channel_access(channel_id, str(ws.workspace_id), user.id, session)
 
     cursor = await session.get(ChatReadCursor, (user.id, channel_id))
     if cursor:
@@ -672,6 +848,7 @@ async def get_project_comments(
     session: Session,
 ) -> list[dict[str, Any]]:
     """List a project's comments in creation order."""
+    await project_access(session, user, project_id)
     comments = (await session.scalars(
         select(ProjectComment)
         .where(ProjectComment.project_id == project_id)
@@ -708,7 +885,8 @@ async def add_project_comment(
     session: Session,
 ) -> dict[str, Any]:
     """Add a comment to a project and notify mentioned users."""
-    workspace_id = await _get_workspace_id(user, session)
+    access = await project_access(session, user, project_id)
+    workspace_id = str(access.project.workspace_id or await default_workspace_id(session, user))
 
     comment = ProjectComment(
         project_id=project_id,
@@ -744,8 +922,20 @@ async def add_project_comment(
         "editedAt": None,
     }
 
-    # Broadcast to WS clients so they see the comment live
-    await manager.broadcast(workspace_id, {"type": "project_comment", **out})
+    # Deliver live to the project's members only.
+    members = await session.scalars(select(ProjectMember.user_id).where(ProjectMember.project_id == project_id))
+    audience = {str(u) for u in members.all()} | {str(access.project.created_by)}
+    if access.project.workspace_id:
+        # Admins, guides and reviewers can open every project, so they get its comments too.
+        wide = await session.scalars(
+            select(WorkspaceMember.user_id).where(
+                WorkspaceMember.workspace_id == access.project.workspace_id,
+                or_(WorkspaceMember.is_owner, WorkspaceMember.access.in_(("owner", "admin", "guide", "reviewer"))),
+            )
+        )
+        audience |= {str(u) for u in wide.all()}
+    await manager.deliver(workspace_id, audience, {"type": "project_comment", **out})
+    await notify_activity(workspace_id, body.mentions)
     return out
 
 
@@ -753,12 +943,12 @@ async def add_project_comment(
 
 @router.get("/activity")
 async def get_activity(
-    user: CurrentUser,
+    ws: CurrentWorkspace,
     session: Session,
     limit: int = Query(default=50, le=100),
 ) -> list[dict[str, Any]]:
     """Activity events for the current user (mentions, approvals, PR merges)."""
-    workspace_id = await _get_workspace_id(user, session)
+    user, workspace_id = ws.user, str(ws.workspace_id)
 
     events = (await session.scalars(
         select(ActivityEvent).where(
@@ -808,9 +998,9 @@ async def mark_activity_read(event_id: uuid.UUID, user: CurrentUser, session: Se
 
 
 @router.post("/activity/read-all")
-async def mark_all_activity_read(user: CurrentUser, session: Session) -> dict[str, int]:
+async def mark_all_activity_read(ws: CurrentWorkspace, session: Session) -> dict[str, int]:
     """Mark all of the caller's unread activity events in the workspace as read."""
-    workspace_id = await _get_workspace_id(user, session)
+    user, workspace_id = ws.user, str(ws.workspace_id)
     events = (await session.scalars(
         select(ActivityEvent).where(
             and_(
@@ -829,15 +1019,15 @@ async def mark_all_activity_read(user: CurrentUser, session: Session) -> dict[st
 # ── REST: workspace members (for @mention picker) ─────────────────────────────
 
 @router.get("/members")
-async def workspace_members(user: CurrentUser, session: Session) -> list[dict[str, Any]]:
+async def workspace_members(ws: CurrentWorkspace, session: Session) -> list[dict[str, Any]]:
     """All users in the caller's workspace — used to populate @mention dropdown."""
-    workspace_id = await _get_workspace_id(user, session)
+    workspace_id = str(ws.workspace_id)
 
-    member_user_ids = select(WorkspaceMember.user_id).where(
-        WorkspaceMember.workspace_id == uuid.UUID(workspace_id)
-    )
-    users = (await session.scalars(
-        select(User).where(User.id.in_(member_user_ids)).order_by(User.display_name)
+    rows = (await session.execute(
+        select(User, WorkspaceMember.role)
+        .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+        .where(WorkspaceMember.workspace_id == ws.workspace_id)
+        .order_by(User.display_name)
     )).all()
 
     online = set(manager.online_users(workspace_id))
@@ -847,7 +1037,8 @@ async def workspace_members(user: CurrentUser, session: Session) -> list[dict[st
             "displayName": u.display_name,
             "email": u.email,
             "avatarUrl": u.avatar_url,
+            "title": title,
             "online": str(u.id) in online,
         }
-        for u in users
+        for u, title in rows
     ]

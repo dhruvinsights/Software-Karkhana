@@ -17,7 +17,6 @@ import {
   Radio,
 } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
-import { CreateProductModal } from '../workspace/CreateProductModal';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { ShinyText } from '../reactbits/ShinyText';
@@ -29,11 +28,19 @@ interface WorkspaceHomeViewProps {
 }
 
 export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) => {
-  const [createProductOpen, setCreateProductOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [quickProductName, setQuickProductName] = useState('');
   const [quickProjectName, setQuickProjectName] = useState('');
   const [activeTab, setActiveTab] = useState<'products' | 'projects' | 'activity'>('products');
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Server-decided: owners/admins manage the product; guides are read-only.
+  const isAdmin = state.myAccess === 'owner' || state.myAccess === 'admin';
+  // Guides and reviewers are read-only on project work.
+  const isGuide = state.myAccess === 'guide' || state.myAccess === 'reviewer';
+  const run = (action: Promise<unknown>) => {
+    setActionError(null);
+    action.catch((e: Error) => setActionError(e.message || 'Something went wrong.'));
+  };
 
   const workspaceProducts = state.products;
   const workspaceProjects = state.projects;
@@ -42,31 +49,33 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
   const handleQuickAddProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickProductName.trim()) return;
-    factoryStore.createProduct({
-      name: quickProductName.trim(),
-      domain: 'Cloud Services',
-      description: 'Production engineering product deliverable.',
-    });
-    setQuickProductName('');
+    run(
+      factoryStore
+        .createProduct({
+          name: quickProductName.trim(),
+          domain: 'Cloud Services',
+          description: 'Production engineering product deliverable.',
+        })
+        .then(() => setQuickProductName('')),
+    );
   };
 
   const handleQuickAddProject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickProjectName.trim()) return;
-    factoryStore.createProject({
-      name: quickProjectName.trim(),
-      productId: state.products[0]?.id || '',
-      description: 'Core engineering project microservice.',
-    });
-    setQuickProjectName('');
+    run(
+      factoryStore
+        .createProject({
+          name: quickProjectName.trim(),
+          productId: state.products[0]?.id || '',
+          description: 'Core engineering project microservice.',
+        })
+        .then(() => setQuickProjectName('')),
+    );
   };
 
   return (
     <div className="space-y-10 max-w-6xl mx-auto animate-fade-in pb-16">
-      <CreateProductModal
-        isOpen={createProductOpen}
-        onClose={() => setCreateProductOpen(false)}
-      />
       <CreateProjectModal
         isOpen={createProjectOpen}
         onClose={() => setCreateProjectOpen(false)}
@@ -91,13 +100,16 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
+          {isAdmin && (
           <button
-            onClick={() => setCreateProductOpen(true)}
+            onClick={() => factoryStore.setScreen('product_create')}
             className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#075BFF]/20 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>New Product</span>
           </button>
+          )}
+          {!isGuide && (
           <button
             onClick={() => setCreateProjectOpen(true)}
             disabled={state.products.length === 0}
@@ -106,8 +118,13 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
             <FolderGit2 className="w-4 h-4 text-[#075BFF]" />
             <span>New Project</span>
           </button>
+          )}
         </div>
       </div>
+
+      {actionError && (
+        <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5">{actionError}</div>
+      )}
 
       {/* React Bits Interactive Spotlight Metrics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -182,14 +199,15 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
           <form onSubmit={handleQuickAddProduct} className="flex gap-2">
             <input
               type="text"
-              placeholder="Add product name (e.g. Payment Gateway)..."
+              placeholder={isAdmin ? 'Add product name (e.g. Payment Gateway)...' : 'Only workspace admins can add products'}
               value={quickProductName}
+              disabled={!isAdmin}
               onChange={(e) => setQuickProductName(e.target.value)}
-              className="flex-1 px-3.5 py-2 rounded-xl border border-white/[0.08] text-xs text-white placeholder-[#827D8E] outline-none focus:border-[#075BFF] bg-[#07070B]"
+              className="flex-1 px-3.5 py-2 rounded-xl border border-white/[0.08] text-xs text-white placeholder-[#827D8E] outline-none focus:border-[#075BFF] bg-[#07070B] disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!quickProductName.trim()}
+              disabled={!isAdmin || !quickProductName.trim()}
               className="px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-40 text-white rounded-xl text-xs font-medium transition-colors shrink-0 cursor-pointer"
             >
               + Add Product
@@ -200,18 +218,20 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
             <input
               type="text"
               placeholder={
-                state.products.length > 0
+                isGuide
+                  ? `${state.myAccess === 'reviewer' ? 'Reviewers' : 'Guides'} have read-only access`
+                  : state.products.length > 0
                   ? "Add project name (e.g. Auth Microservice)..."
                   : "Create a product first to add projects"
               }
               value={quickProjectName}
-              disabled={state.products.length === 0}
+              disabled={isGuide || state.products.length === 0}
               onChange={(e) => setQuickProjectName(e.target.value)}
               className="flex-1 px-3.5 py-2 rounded-xl border border-white/[0.08] text-xs text-white placeholder-[#827D8E] outline-none focus:border-[#075BFF] bg-[#07070B] disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!quickProjectName.trim() || state.products.length === 0}
+              disabled={isGuide || !quickProjectName.trim() || state.products.length === 0}
               className="px-4 py-2 bg-[#17151D] hover:bg-[#211B2A] border border-white/[0.1] disabled:opacity-40 text-white rounded-xl text-xs font-medium transition-colors shrink-0 cursor-pointer"
             >
               + Add Project
@@ -269,13 +289,17 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                     Create your first product to anchor engineering projects, code review pipelines, and release gates.
                   </p>
                 </div>
+                {isAdmin ? (
                 <button
-                  onClick={() => setCreateProductOpen(true)}
+                  onClick={() => factoryStore.setScreen('product_create')}
                   className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#075BFF]/20"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create First Product</span>
                 </button>
+                ) : (
+                  <p className="text-xs text-[#827D8E] font-mono">The workspace admin sets up the product.</p>
+                )}
               </GlassCard>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -296,13 +320,15 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                           {prod.name}
                         </h3>
                       </div>
+                      {isAdmin && (
                       <button
-                        onClick={() => factoryStore.deleteProduct(prod.id)}
+                        onClick={() => run(factoryStore.deleteProduct(prod.id))}
                         className="text-[#827D8E] hover:text-rose-400 p-1 rounded-md transition-colors cursor-pointer"
-                        title="Delete product"
+                        title="Delete product (removes it for everyone)"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
+                      )}
                     </div>
 
                     <p className="text-xs text-[#B5B1C0] line-clamp-2 leading-relaxed font-light">
@@ -386,13 +412,15 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                             {proj.name}
                           </h3>
                         </div>
+                        {factoryStore.canDeleteProject(proj) && (
                         <button
-                          onClick={() => factoryStore.deleteProject(proj.id)}
+                          onClick={() => run(factoryStore.deleteProject(proj.id))}
                           className="text-[#827D8E] hover:text-rose-400 p-1 rounded-md transition-colors cursor-pointer"
-                          title="Delete project"
+                          title="Delete project (removes it for everyone)"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                        )}
                       </div>
 
                       <p className="text-xs text-[#B5B1C0] line-clamp-2 leading-relaxed font-light">
