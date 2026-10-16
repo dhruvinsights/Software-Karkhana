@@ -548,12 +548,9 @@ async def signup(
             detail="An account with this email address already exists.",
         )
 
-    # Allowed roles
-    role = payload.role if payload.role in (
-        "product_manager", "pm", "executive", "director", "developer", "lead",
-        "designer", "architect", "qa", "security", "devops", "release_manager",
-        "support", "admin"
-    ) else "product_manager"
+    # Signup never grants an authorization role. Workspace roles are assigned
+    # by an owner or through an accepted invitation.
+    role = "developer"
 
     user = User(
         id=uuid.uuid4(),

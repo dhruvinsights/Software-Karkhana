@@ -87,7 +87,9 @@ def _b64url_decode(data: str) -> bytes:
 def create_token(payload: dict[str, Any], expires_in_seconds: int = 86400 * 7) -> str:
     """Creates a cryptographically signed HMAC-SHA256 JWT."""
     settings = get_settings()
-    secret = (settings.run_hmac_secret or "karkhana-jwt-secret-default").encode("utf-8")
+    if not settings.session_jwt_secret:
+        raise RuntimeError("SESSION_JWT_SECRET must be configured to issue session tokens")
+    secret = settings.session_jwt_secret.encode("utf-8")
     
     header = {"alg": "HS256", "typ": "JWT"}
     body = {**payload, "exp": int(time.time()) + expires_in_seconds, "iat": int(time.time())}
@@ -104,7 +106,9 @@ def create_token(payload: dict[str, Any], expires_in_seconds: int = 86400 * 7) -
 def decode_token(token: str) -> dict[str, Any] | None:
     """Verifies and decodes a signed HMAC-SHA256 JWT."""
     settings = get_settings()
-    secret = (settings.run_hmac_secret or "karkhana-jwt-secret-default").encode("utf-8")
+    if not settings.session_jwt_secret:
+        return None
+    secret = settings.session_jwt_secret.encode("utf-8")
     
     try:
         parts = token.split(".")

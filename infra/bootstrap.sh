@@ -127,6 +127,7 @@ make_secret() {  # name value: adds a new version
 }
 secret_access() { retry gcloud secrets add-iam-policy-binding "$1" --member="serviceAccount:$2" --role=roles/secretmanager.secretAccessor >/dev/null; }
 gcloud secrets describe run-hmac-secret >/dev/null 2>&1 || make_secret run-hmac-secret "$(openssl rand -hex 32)"
+gcloud secrets describe session-jwt-secret >/dev/null 2>&1 || make_secret session-jwt-secret "$(openssl rand -hex 32)"
 # Fernet key(s) that encrypt stored GitHub OAuth tokens (app/crypto.py): 32
 # random bytes, url-safe base64. Comma-separated; the first encrypts, all
 # decrypt. To rotate, add a version "NEW,OLD", deploy, run
@@ -142,7 +143,7 @@ else gcloud secrets describe github-token >/dev/null 2>&1 || make_secret github-
 ensure_secret firebase-web-api-key
 if [[ -n "${FIREBASE_WEB_API_KEY:-}" ]]; then make_secret firebase-web-api-key "$FIREBASE_WEB_API_KEY"; fi
 secret_access db-owner-password "$MIGRATE_SA"
-for s in run-hmac-secret github-token token-encryption-keys; do secret_access "$s" "$RUN_SA"; done
+for s in run-hmac-secret session-jwt-secret github-token token-encryption-keys; do secret_access "$s" "$RUN_SA"; done
 secret_access firebase-web-api-key "$BUILD_SA"
 # The worker gets no secrets at all: it runs untrusted repository code. If an
 # earlier bootstrap granted it the GitHub token, remove that grant.

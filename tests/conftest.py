@@ -39,6 +39,7 @@ os.environ.update(
         "DATABASE_URL": f"postgresql+asyncpg://karkhana_app:karkhana_app@localhost:5432/{TEST_DB}",
         "RUNNER_BACKEND": "local",
         "RUN_HMAC_SECRET": "test-secret",
+        "SESSION_JWT_SECRET": "test-session-secret",
         "STATIC_DIR": "/nonexistent",
         "GOOGLE_CLOUD_PROJECT": "test-project",
         "MAX_ACTIVE_RUNS_PER_PROJECT": "3",  # Exercise the concurrent-run paths.
