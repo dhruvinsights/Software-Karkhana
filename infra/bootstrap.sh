@@ -170,6 +170,25 @@ BUILD_SRC="gs://$PROJECT_ID-karkhana-build"
 ensure_bucket "$BUILD_SRC" 7
 retry gcloud storage buckets add-iam-policy-binding "$BUILD_SRC" --member="serviceAccount:$BUILD_SA" \
   --role=roles/storage.objectViewer >/dev/null
+# Ledger anchors: chain heads written outside the database, so a rewrite by a
+# DB owner is detectable (app/ledger.py, docs/LEDGER.md). No lifecycle delete:
+# a retention policy keeps every object for LEDGER_RETENTION (default 400d,
+# above DPDP's one-year log retention). The API may create and read objects,
+# never delete or overwrite them (uploads are create-only).
+ANCHORS="gs://$PROJECT_ID-karkhana-ledger-anchors"
+LEDGER_RETENTION="${LEDGER_RETENTION:-400d}"
+gcloud storage buckets describe "$ANCHORS" >/dev/null 2>&1 || \
+  gcloud storage buckets create "$ANCHORS" --location="$REGION" --uniform-bucket-level-access \
+    --public-access-prevention --retention-period="$LEDGER_RETENTION"
+gcloud storage buckets update "$ANCHORS" --retention-period="$LEDGER_RETENTION" >/dev/null
+for r in roles/storage.objectCreator roles/storage.objectViewer; do
+  retry gcloud storage buckets add-iam-policy-binding "$ANCHORS" --member="serviceAccount:$RUN_SA" \
+    --role="$r" >/dev/null
+done
+# WARNING: locking is IRREVERSIBLE. Once locked, the retention period can never
+# be shortened or removed and the bucket cannot be deleted until every object
+# has aged out. Lock only for production, after checking the period above:
+#   gcloud storage buckets update "$ANCHORS" --lock-retention-period
 
 cat <<EOF
 

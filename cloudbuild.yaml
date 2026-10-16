@@ -96,7 +96,7 @@ steps:
           --service-account=karkhana-run@${PROJECT_ID}.iam.gserviceaccount.com \
           --allow-unauthenticated --memory=1Gi --cpu=1 --min-instances=1 --max-instances=${_MAX_INSTANCES} \
           --no-cpu-throttling --cpu-boost --concurrency=40 --timeout=300 \
-          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|REGION=${_REGION}|CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}|DB_IAM_USER=karkhana-run@${PROJECT_ID}.iam|AUTH_MODE=firebase|FIREBASE_PROJECT_ID=${PROJECT_ID}|FIREBASE_AUTH_DOMAIN=${PROJECT_ID}.firebaseapp.com|FIREBASE_WEB_API_KEY=$$FB_KEY|RUNNER_BACKEND=cloudrun_job|WORKER_JOB_NAME=karkhana-worker|PUBLIC_BASE_URL=$$URL|GITHUB_REPO=${_GITHUB_REPO}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts" \
+          "--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|REGION=${_REGION}|CLOUD_SQL_INSTANCE=${PROJECT_ID}:${_REGION}:${_SQL_INSTANCE}|DB_IAM_USER=karkhana-run@${PROJECT_ID}.iam|AUTH_MODE=firebase|FIREBASE_PROJECT_ID=${PROJECT_ID}|FIREBASE_AUTH_DOMAIN=${PROJECT_ID}.firebaseapp.com|FIREBASE_WEB_API_KEY=$$FB_KEY|RUNNER_BACKEND=cloudrun_job|WORKER_JOB_NAME=karkhana-worker|PUBLIC_BASE_URL=$$URL|GITHUB_REPO=${_GITHUB_REPO}|GEMINI_MODEL=${_GEMINI_MODEL}|GEMINI_CODER_MODEL=${_GEMINI_MODEL}|ARTIFACTS_BUCKET=${PROJECT_ID}-karkhana-artifacts|LEDGER_ANCHOR_BUCKET=${PROJECT_ID}-karkhana-ledger-anchors" \
           --set-secrets=RUN_HMAC_SECRET=run-hmac-secret:latest,SESSION_JWT_SECRET=session-jwt-secret:latest,GITHUB_TOKEN=github-token:latest,TOKEN_ENCRYPTION_KEYS=token-encryption-keys:latest \
           --labels=app=karkhana,role=api,build=${BUILD_ID}
         echo "Deployed $$URL"
