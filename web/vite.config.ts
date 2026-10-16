@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 const api = process.env.API_URL ?? 'http://localhost:8080';
 
 export default defineConfig({
+  envDir: '..',
   plugins: [react(), tailwindcss()],
   build: {
     rollupOptions: { output: { manualChunks: { motion: ['motion/react'] } } },

@@ -391,6 +391,15 @@ class GitHubAuthRequest(BaseModel):
     code: str
 
 
+@router.get("/api/auth/google/client-id")
+async def get_google_client_id() -> dict:
+    """Returns the configured Google OAuth client ID for frontend Google Identity Services."""
+    from app.config import get_settings
+    settings = get_settings()
+    client_id = settings.google_client_id or os.getenv("GOOGLE_CLIENT_ID", "") or GOOGLE_CLIENT_ID or ""
+    return {"client_id": client_id}
+
+
 @router.get("/api/auth/github/client-id")
 async def get_github_client_id() -> dict:
     """Returns the configured GitHub OAuth client ID for frontend redirect."""

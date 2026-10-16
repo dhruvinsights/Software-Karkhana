@@ -363,3 +363,79 @@ class LedgerEntry(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     prev_hash: Mapped[str] = mapped_column(String)
     hash: Mapped[str] = mapped_column(String, unique=True)
+
+
+# ── Chat & Activity models ────────────────────────────────────────────────────
+
+class ChatChannel(Base):
+    """A #channel or DM thread scoped to a workspace."""
+
+    __tablename__ = "chat_channels"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String)
+    type: Mapped[str] = mapped_column(String, default="channel")  # 'channel' | 'dm'
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class ChatChannelMember(Base):
+    """DM thread participants (only for type='dm')."""
+
+    __tablename__ = "chat_channel_members"
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_channels.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+
+class ChatMessage(Base):
+    """A single message in a channel or DM thread."""
+
+    __tablename__ = "chat_messages"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_channels.id", ondelete="CASCADE"))
+    sender_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    body: Mapped[str] = mapped_column(Text)
+    mentions: Mapped[list[Any]] = mapped_column(JSONB, default=list)  # list of user UUIDs
+    edited_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class ChatReadCursor(Base):
+    """Tracks the last message each user has seen per channel."""
+
+    __tablename__ = "chat_read_cursors"
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    channel_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_channels.id", ondelete="CASCADE"), primary_key=True)
+    last_read_message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ProjectComment(Base):
+    """A threaded comment on a project, supporting @mentions."""
+
+    __tablename__ = "project_comments"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    body: Mapped[str] = mapped_column(Text)
+    mentions: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    edited_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class ActivityEvent(Base):
+    """Workspace activity feed: mentions, comments, PR events, approvals."""
+
+    __tablename__ = "activity_events"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    recipient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    type: Mapped[str] = mapped_column(String)  # mention|comment|review|approval|run_complete|pr_merged
+    summary: Mapped[str] = mapped_column(Text)
+    target_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = _now()

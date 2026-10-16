@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FolderGit2,
   Plus,
@@ -24,9 +24,23 @@ import {
   Activity,
   Cpu,
   BookOpen,
+  MessageSquare,
+  AtSign,
+  Send,
+  Loader2,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { factoryStore, FactoryState, ROLE_CONFIGS } from '../../store/factoryStore';
-import { FactoryRole, ScreenId } from '../../types/factory';
+import { FactoryRole, ScreenId, ProjectComment } from '../../types/factory';
+import { PRReviewPanel } from './PRReviewPanel';
+import {
+  fetchProjectComments,
+  postProjectComment,
+  fetchWorkspaceMembers,
+  useChatFrames,
+  type WorkspaceMember,
+} from '../../lib/chatSocket';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
@@ -39,8 +53,20 @@ interface ProjectHubViewProps {
 export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
   const [activeStationTab, setActiveStationTab] = useState<
-    'overview' | 'product' | 'architecture' | 'developer' | 'qa' | 'devops' | 'security' | 'team_access'
+    'overview' | 'product' | 'architecture' | 'developer' | 'qa' | 'devops' | 'security' | 'team_access' | 'comments'
   >('overview');
+
+  // ── Comments state ────────────────────────────────────────────────────────
+  const [comments, setComments] = useState<ProjectComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [pendingMentions, setPendingMentions] = useState<string[]>([]);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const token = state.token ?? '';
 
   const [copiedProjectLink, setCopiedProjectLink] = useState(false);
   const [inviteRole, setInviteRole] = useState<FactoryRole>('developer');
@@ -49,6 +75,84 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   const activeProduct = selectedProject
     ? state.products.find((p) => p.id === selectedProject.productId)
     : state.products.find((p) => p.id === state.selectedProductId) || state.products[0];
+
+  // ── Load comments + members when switching to comments tab ───────────────
+  useEffect(() => {
+    if (activeStationTab !== 'comments' || !selectedProject) return;
+    setCommentsLoading(true);
+    Promise.all([
+      fetchProjectComments(selectedProject.id, token).catch(() => state.projectComments.filter((c: ProjectComment) => c.projectId === selectedProject.id)),
+      fetchWorkspaceMembers(token).catch(() => state.members.map((m) => ({ id: m.id, displayName: m.name, email: m.email, avatarUrl: m.avatar, online: m.availability === 'online' }))),
+    ]).then(([cmts, mems]) => {
+      setComments(cmts as ProjectComment[]);
+      setMembers(mems as WorkspaceMember[]);
+    }).finally(() => setCommentsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStationTab, selectedProject?.id]);
+
+  // Live: receive new project comments over WebSocket
+  useChatFrames('project_comment', (frame) => {
+    if (!selectedProject || frame.projectId !== selectedProject.id) return;
+    const newComment: ProjectComment = {
+      id: frame.id, projectId: frame.projectId, authorId: frame.authorId,
+      authorName: frame.authorName, authorAvatar: frame.authorAvatar,
+      body: frame.body, mentions: frame.mentions, createdAt: frame.createdAt,
+    };
+    setComments((prev) => prev.some((c) => c.id === newComment.id) ? prev : [...prev, newComment]);
+  }, [selectedProject?.id]);
+
+  const handleSendComment = async () => {
+    if (!commentText.trim() || !selectedProject) return;
+    const body = commentText.trim();
+    setCommentText(''); setPendingMentions([]); setMentionQuery(null);
+    try {
+      const result = await postProjectComment(selectedProject.id, body, pendingMentions, token) as ProjectComment;
+      setComments((prev) => prev.some((c) => c.id === result.id) ? prev : [...prev, result]);
+      factoryStore.addProjectComment(result);
+    } catch {
+      const localCmt: ProjectComment = {
+        id: `cmt-${Date.now()}`, projectId: selectedProject.id,
+        authorId: state.currentUser?.id ?? 'usr-lead', authorName: state.currentUser?.display_name ?? 'You',
+        body, mentions: pendingMentions, createdAt: new Date().toISOString(),
+      };
+      setComments((prev) => [...prev, localCmt]);
+      factoryStore.addProjectComment(localCmt);
+    }
+  };
+
+  const toggleVoiceComment = () => {
+    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!SR) { alert('Web Speech API not supported in this browser.'); return; }
+    if (listening) { recognitionRef.current?.stop(); setListening(false); return; }
+    const rec = new SR();
+    rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US';
+    recognitionRef.current = rec;
+    let final = commentText;
+    rec.onresult = (ev: SpeechRecognitionEvent) => {
+      let interim = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) final += (final ? ' ' : '') + ev.results[i][0].transcript;
+        else interim = ev.results[i][0].transcript;
+      }
+      setCommentText(final + (interim ? ` ${interim}` : ''));
+    };
+    rec.onend = () => { setListening(false); recognitionRef.current = null; };
+    rec.onerror = () => { setListening(false); recognitionRef.current = null; };
+    rec.start(); setListening(true);
+  };
+
+  const handleCommentInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setCommentText(val);
+    const match = val.slice(0, e.target.selectionStart).match(/@(\w*)$/);
+    setMentionQuery(match ? match[1] : null);
+  };
+
+  const insertCommentMention = (m: WorkspaceMember) => {
+    setCommentText((t) => t.replace(/@(\w*)$/, `@${m.displayName} `));
+    setPendingMentions((prev) => [...prev, m.id]);
+    setMentionQuery(null);
+  };
 
   const handleCopyProjectInvite = () => {
     if (!selectedProject) return;
@@ -237,6 +341,19 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
         </button>
 
         <button
+          onClick={() => setActiveStationTab('comments')}
+          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
+            activeStationTab === 'comments' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
+          }`}
+        >
+          <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+          <span>Comments</span>
+          {comments.filter((c) => !c.id.startsWith('cmt-')).length > 0 && (
+            <span className="text-[10px] bg-[#075BFF]/80 text-white rounded-full px-1.5 py-0 font-mono">{comments.length}</span>
+          )}
+        </button>
+
+        <button
           onClick={() => setActiveStationTab('team_access')}
           className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ml-auto ${
             activeStationTab === 'team_access' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-400 hover:text-white'
@@ -382,6 +499,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
       {/* Tab 4: Developer Swarm */}
       {activeStationTab === 'developer' && (
         <div className="space-y-6">
+          {/* Sub-header with Studio link */}
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-white">Developer Station & Swarm Control</h2>
             <button
@@ -393,15 +511,40 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
             </button>
           </div>
 
-          <GlassCard className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono uppercase text-[#075BFF] font-semibold">Autonomous Task Execution</span>
-              <span className="text-xs font-mono text-emerald-400">Isolated Sandboxes</span>
+          {/* Quick-stats bar */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-4 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
+              <p className="text-xs font-mono text-[#827D8E] uppercase tracking-wider mb-1">Open PRs</p>
+              <p className="text-2xl font-mono font-bold text-white">
+                {state.pullRequests.filter((pr) => pr.projectId === selectedProject.id && pr.status === 'open').length}
+              </p>
             </div>
-            <p className="text-xs text-slate-400">
-              Deep agents receive task context packages, execute edits in isolated container sandboxes, run test validation, and open pull requests.
-            </p>
-          </GlassCard>
+            <div className="p-4 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
+              <p className="text-xs font-mono text-[#827D8E] uppercase tracking-wider mb-1">Merged</p>
+              <p className="text-2xl font-mono font-bold" style={{ color: 'var(--purple)' }}>
+                {state.pullRequests.filter((pr) => pr.projectId === selectedProject.id && pr.status === 'merged').length}
+              </p>
+            </div>
+            <div className="p-4 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
+              <p className="text-xs font-mono text-[#827D8E] uppercase tracking-wider mb-1">Tasks in flight</p>
+              <p className="text-2xl font-mono font-bold" style={{ color: 'var(--accent)' }}>
+                {projectTasks.filter((i) => i.status === 'in_progress').length}
+              </p>
+            </div>
+          </div>
+
+          {/* Full PR review engine */}
+          <div className="p-6 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
+            <div className="flex items-center gap-2 mb-5">
+              <GitPullRequest className="w-4 h-4 text-cyan-400" />
+              <h3 className="text-sm font-semibold text-white">Pull Request Review Engine</h3>
+              <span className="text-xs font-mono text-[#075BFF] ml-auto">Karkhana AI · Better than CodeRabbit</span>
+            </div>
+            <PRReviewPanel
+              projectId={selectedProject.id}
+              token={token}
+            />
+          </div>
         </div>
       )}
 
@@ -538,6 +681,118 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
               ))}
             </div>
           </GlassCard>
+        </div>
+      )}
+
+      {/* Tab 9: Comments & @Mentions */}
+      {activeStationTab === 'comments' && (
+        <div className="space-y-4 max-w-3xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-sky-400" />
+              Project Comments
+            </h2>
+            <span className="text-xs text-[#827D8E] font-mono">{comments.length} comment{comments.length !== 1 ? 's' : ''}</span>
+          </div>
+
+          {/* Comments list */}
+          <div className="space-y-3">
+            {commentsLoading && (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-5 h-5 text-[#827D8E] animate-spin" />
+              </div>
+            )}
+            {!commentsLoading && comments.length === 0 && (
+              <div className="text-center py-10 text-[#827D8E] text-sm">
+                No comments yet. Start the conversation below.
+              </div>
+            )}
+            {comments.map((c) => {
+              const isMe = c.authorId === (state.currentUser?.id ?? 'usr-lead');
+              const renderBody = (body: string) =>
+                body.split(/(@\w[\w\s]*)/).map((part, i) =>
+                  part.startsWith('@')
+                    ? <span key={i} className="text-[#00d9a6] font-semibold bg-[#00d9a6]/10 rounded px-0.5">{part}</span>
+                    : <span key={i}>{part}</span>
+                );
+              return (
+                <div key={c.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#075BFF] to-[#9b6dff] flex items-center justify-center text-xs font-bold text-white shrink-0">
+                    {(c.authorName || 'U').charAt(0).toUpperCase()}
+                  </div>
+                  <div className={`flex-1 max-w-[80%] ${isMe ? 'items-end' : ''} flex flex-col gap-1`}>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-semibold text-white">{c.authorName}</span>
+                      <span className="text-[10px] text-[#4e5668] font-mono">
+                        {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                      isMe
+                        ? 'bg-[#075BFF]/20 border border-[#075BFF]/30 text-[#d0d4de]'
+                        : 'bg-white/[0.05] border border-white/[0.08] text-[#d0d4de]'
+                    }`}>
+                      {renderBody(c.body)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Comment composer */}
+          <div className="relative pt-2 border-t border-white/[0.08]">
+            {/* @mention picker */}
+            {mentionQuery !== null && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 bg-[#131720] border border-white/[0.12] rounded-xl overflow-hidden shadow-2xl z-10">
+                <div className="px-3 py-1.5 text-[10px] uppercase font-mono tracking-wider text-[#4e5668]">Members</div>
+                {members
+                  .filter((m) => m.displayName.toLowerCase().includes(mentionQuery.toLowerCase()))
+                  .slice(0, 5)
+                  .map((m) => (
+                    <button key={m.id} onClick={() => insertCommentMention(m)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.06] transition-colors text-sm text-[#d0d4de]"
+                    >
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#075BFF] to-[#9b6dff] flex items-center justify-center text-[9px] font-bold text-white">{m.displayName.charAt(0)}</div>
+                      <span className="font-medium">{m.displayName}</span>
+                      <span className="text-[10px] text-[#4e5668] ml-auto font-mono">{m.email}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+
+            <div className="flex items-end gap-2 bg-white/[0.04] border border-white/[0.1] rounded-2xl px-3 py-2 mt-2">
+              <textarea
+                value={commentText}
+                onChange={handleCommentInput}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment(); } }}
+                placeholder="Add a comment... @mention teammates"
+                rows={2}
+                className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-white placeholder-[#4e5668] leading-relaxed"
+                style={{ fontFamily: 'var(--font-sans)' }}
+              />
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button onClick={toggleVoiceComment} title={listening ? 'Stop recording' : 'Voice input'}
+                  className={`p-1.5 rounded-lg border transition-all ${listening ? 'bg-red-500/20 border-red-500/40 text-red-400' : 'bg-transparent border-transparent text-[#4e5668] hover:text-white'}`}
+                >
+                  {listening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                </button>
+                <button onClick={() => setCommentText((t) => t + '@')} title="Mention"
+                  className="p-1.5 rounded-lg border border-transparent text-[#4e5668] hover:text-white transition-colors"
+                >
+                  <AtSign className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleSendComment}
+                  disabled={!commentText.trim()}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${commentText.trim() ? 'bg-[#075BFF] text-white cursor-pointer' : 'bg-white/[0.05] text-[#4e5668] cursor-not-allowed'}`}
+                >
+                  <Send className="w-3 h-3" /> Post
+                </button>
+              </div>
+            </div>
+            <p className="text-[10px] text-[#4e5668] mt-1.5 font-mono">Enter to post · Shift+Enter for new line · @ to mention</p>
+          </div>
         </div>
       )}
     </div>

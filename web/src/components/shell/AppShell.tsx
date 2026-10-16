@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Layers,
   Search,
@@ -25,16 +25,21 @@ import {
   ChevronRight,
   Workflow,
   Radio,
+  MessageSquare,
+  Bell,
+  UserPlus,
 } from 'lucide-react';
 import { factoryStore, FactoryState, ROLE_CONFIGS } from '../../store/factoryStore';
 import { FactoryRole, ScreenId } from '../../types/factory';
 import { AICompanion } from './AICompanion';
 import { CommandPalette } from './CommandPalette';
+import { ChatPanel } from './ChatPanel';
+import { ActivityFeedPanel } from './ActivityFeedPanel';
 import { CreateProductModal } from '../workspace/CreateProductModal';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { WorkspaceInviteModal } from '../workspace/WorkspaceInviteModal';
 import { LiquidEther } from '../reactbits/LiquidEther';
-import { UserPlus } from 'lucide-react';
+import { chatSocket } from '../../lib/chatSocket';
 
 interface AppShellProps {
   state: FactoryState;
@@ -50,6 +55,19 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [createProductOpen, setCreateProductOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+
+  // Connect WebSocket when authenticated
+  useEffect(() => {
+    if (state.token) {
+      chatSocket.connect(state.token);
+      factoryStore.ensureGeneralChannel();
+    }
+  }, [state.token]);
+
+  const chatUnread = state.chatUnreadTotal ?? 0;
+  const activityUnread = state.activityUnreadTotal ?? 0;
 
   const activeRole = ROLE_CONFIGS[state.currentRole];
   const activeProduct = state.products.find((p) => p.id === state.selectedProductId) || state.products[0];
@@ -314,6 +332,31 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-3">
+            {/* Activity Feed */}
+            <button
+              onClick={() => { setActivityOpen((o) => !o); if (chatOpen) setChatOpen(false); }}
+              className={`relative h-8 w-8 rounded-lg flex items-center justify-center transition-colors border cursor-pointer ${activityOpen ? 'bg-[#f0a500]/15 border-[#f0a500]/40 text-[#f0a500]' : 'bg-[#101016] border-white/[0.08] text-[#827D8E] hover:text-white hover:bg-[#17151D]'}`}
+              title="Activity & Mentions"
+            >
+              <Bell className="w-4 h-4" />
+              {activityUnread > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#f0a500] text-black text-[9px] font-bold rounded-full flex items-center justify-center font-mono leading-none">{activityUnread > 9 ? '9+' : activityUnread}</span>
+              )}
+            </button>
+
+            {/* Chat */}
+            <button
+              onClick={() => { setChatOpen((o) => !o); if (activityOpen) setActivityOpen(false); }}
+              className={`relative h-8 px-3 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border cursor-pointer ${chatOpen ? 'bg-[#075BFF]/20 border-[#075BFF]/50 text-[#75aaff]' : 'bg-[#101016] border-white/[0.08] text-[#827D8E] hover:text-white hover:bg-[#17151D]'}`}
+              title="Team Chat"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Chat</span>
+              {chatUnread > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#075BFF] text-white text-[9px] font-bold rounded-full flex items-center justify-center font-mono leading-none">{chatUnread > 9 ? '9+' : chatUnread}</span>
+              )}
+            </button>
+
             {/* Invite Button in Topbar */}
             <button
               onClick={() => setInviteModalOpen(true)}
@@ -435,6 +478,21 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
           <AICompanion state={state} />
         </div>
       </div>
+
+      {/* Chat Panel (slides in from right) */}
+      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+
+      {/* Activity Feed Panel (slides in from right) */}
+      {activityOpen && (
+        <ActivityFeedPanel
+          onClose={() => setActivityOpen(false)}
+          onNavigate={(screen, targetId) => {
+            factoryStore.setScreen(screen as any);
+            if (targetId) factoryStore.selectProject(targetId);
+            setActivityOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

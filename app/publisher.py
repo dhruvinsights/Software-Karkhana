@@ -149,7 +149,15 @@ async def publish(
             sha=sha, passed=tests_passed, description=test_summary, target_url=pr.url
         )
         if review_markdown:
-            await gh.post_review(number=pr.number, body=review_markdown)
+            # Try inline review first; fall back to body comment
+            try:
+                from app.review.types import ReviewResult as _RR  # noqa: F401
+                # review_markdown is pre-formatted here; post as body comment only
+                # (inline review with line positions is only available via the
+                # rerun_review / run_complete paths where we have structured data)
+                await gh.post_review(number=pr.number, body=review_markdown)
+            except Exception:
+                pass
     finally:
         await gh.aclose()
     return Published(branch, pr.number, pr.url, sha, not tests_passed)

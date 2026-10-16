@@ -578,3 +578,66 @@ export interface AuditEvent {
   targetEntity: string;
   details: string;
 }
+
+// ─── Chat & Activity Types ────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  id: string;
+  channelId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar?: string;
+  body: string;
+  /** @mention user ids extracted from body */
+  mentions: string[];
+  attachments?: string[];
+  /** ISO timestamp */
+  createdAt: string;
+  editedAt?: string;
+}
+
+export interface ChatChannel {
+  id: string;
+  workspaceId: string;
+  name: string;
+  /** 'channel' = public #channel, 'dm' = direct message thread */
+  type: 'channel' | 'dm';
+  /** For DMs: the two participant user ids */
+  participantIds: string[];
+  description?: string;
+  unreadCount: number;
+  lastMessage?: ChatMessage;
+  createdAt: string;
+}
+
+export interface ActivityEvent {
+  id: string;
+  workspaceId: string;
+  actorId: string;
+  actorName: string;
+  actorAvatar?: string;
+  /** 'mention' | 'comment' | 'review' | 'approval' | 'run_complete' | 'pr_merged' */
+  type: 'mention' | 'comment' | 'review' | 'approval' | 'run_complete' | 'pr_merged';
+  /** human-readable summary */
+  summary: string;
+  /** deep-link target */
+  targetScreen?: ScreenId;
+  targetId?: string;
+  projectId?: string;
+  projectName?: string;
+  /** ISO timestamp */
+  createdAt: string;
+  read: boolean;
+}
+
+export interface ProjectComment {
+  id: string;
+  projectId: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  body: string;
+  mentions: string[];
+  createdAt: string;
+  editedAt?: string;
+}

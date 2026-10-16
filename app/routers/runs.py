@@ -298,6 +298,7 @@ async def run_complete(
     task = await get_or_404(session, Task, run.task_id)
     project = await get_or_404(session, Project, run.project_id)
     tests_passed = body.test_exit_code == 0
+    # Pre-format a fallback plain-body review; inline review happens below after DB flush
     review_md = (
         github.review_markdown(
             [c.model_dump() for c in body.review],

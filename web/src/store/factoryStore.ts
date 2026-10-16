@@ -29,6 +29,10 @@ import {
   ScreenId,
   DashboardWidget,
   WorkspaceTemplate,
+  ChatChannel,
+  ChatMessage,
+  ActivityEvent,
+  ProjectComment,
 } from '../types/factory';
 
 export const ROLE_CONFIGS: Record<FactoryRole, { label: string; badge: string; desc: string }> = {
@@ -144,6 +148,13 @@ export interface FactoryState {
   auditLogs: AuditEvent[];
   activeAgentRun?: AgentRun;
   companionOpen: boolean;
+  // Chat & Activity
+  chatChannels: ChatChannel[];
+  activeChatChannelId?: string;
+  activityEvents: ActivityEvent[];
+  projectComments: ProjectComment[];
+  chatUnreadTotal: number;
+  activityUnreadTotal: number;
 }
 
 const STORAGE_KEY = 'software_karkhana_clean_v4';
@@ -155,18 +166,7 @@ const DEFAULT_WIDGETS: DashboardWidget[] = [
   { id: 'w-pipelines', title: 'CI/CD Multi-Stage Canary Health', category: 'system', enabled: true, order: 4 },
 ];
 
-function loadInitialState(): FactoryState {
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.warn('Failed to parse stored state, using clean defaults', e);
-    }
-  }
-
+function freshDefaults(): FactoryState {
   return {
     authStatus: 'guest',
     token: typeof localStorage !== 'undefined' ? localStorage.getItem('karkhana_jwt_token') : null,
@@ -204,7 +204,29 @@ function loadInitialState(): FactoryState {
     skills: [],
     auditLogs: [],
     companionOpen: false,
+    chatChannels: [],
+    activeChatChannelId: undefined,
+    activityEvents: [],
+    projectComments: [],
+    chatUnreadTotal: 0,
+    activityUnreadTotal: 0,
   };
+}
+
+function loadInitialState(): FactoryState {
+  const defaults = freshDefaults();
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        // Merge stored state over defaults so newly-added fields are never undefined.
+        return { ...defaults, ...JSON.parse(stored) };
+      }
+    } catch (e) {
+      console.warn('Failed to parse stored state, using clean defaults', e);
+    }
+  }
+  return defaults;
 }
 
 let state: FactoryState = loadInitialState();
@@ -918,6 +940,155 @@ export const factoryStore = {
       localStorage.removeItem(STORAGE_KEY);
     }
     state = loadInitialState();
+    notify();
+  },
+
+  // ── Chat actions ────────────────────────────────────────────────────────────
+  ensureGeneralChannel: () => {
+    const existing = state.chatChannels.find((c) => c.id === 'ch-general');
+    if (existing) return;
+    const general: ChatChannel = {
+      id: 'ch-general',
+      workspaceId: state.activeWorkspaceId,
+      name: 'general',
+      type: 'channel',
+      participantIds: [],
+      description: 'Workspace-wide announcements and discussions',
+      unreadCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    state = { ...state, chatChannels: [general, ...state.chatChannels] };
+    notify();
+  },
+
+  createChannel: (name: string, description?: string) => {
+    const ch: ChatChannel = {
+      id: `ch-${Date.now()}`,
+      workspaceId: state.activeWorkspaceId,
+      name: name.toLowerCase().replace(/\s+/g, '-'),
+      type: 'channel',
+      participantIds: [],
+      description: description || '',
+      unreadCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    state = { ...state, chatChannels: [...state.chatChannels, ch], activeChatChannelId: ch.id };
+    notify();
+    return ch;
+  },
+
+  openDM: (targetMemberId: string) => {
+    const myId = state.currentUser?.id || state.members[0]?.id || 'usr-lead';
+    const existing = state.chatChannels.find(
+      (c) => c.type === 'dm' && c.participantIds.includes(myId) && c.participantIds.includes(targetMemberId)
+    );
+    if (existing) {
+      state = { ...state, activeChatChannelId: existing.id, currentScreen: 'chat_dm' };
+      notify();
+      return existing;
+    }
+    const target = state.members.find((m) => m.id === targetMemberId);
+    const dm: ChatChannel = {
+      id: `dm-${Date.now()}`,
+      workspaceId: state.activeWorkspaceId,
+      name: target?.name || 'Direct Message',
+      type: 'dm',
+      participantIds: [myId, targetMemberId],
+      unreadCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    state = {
+      ...state,
+      chatChannels: [...state.chatChannels, dm],
+      activeChatChannelId: dm.id,
+      currentScreen: 'chat_dm',
+    };
+    notify();
+    return dm;
+  },
+
+  setActiveChannel: (channelId: string) => {
+    // Mark channel messages as read
+    state = {
+      ...state,
+      activeChatChannelId: channelId,
+      chatChannels: state.chatChannels.map((c) =>
+        c.id === channelId ? { ...c, unreadCount: 0 } : c
+      ),
+      chatUnreadTotal: state.chatChannels
+        .filter((c) => c.id !== channelId)
+        .reduce((n, c) => n + c.unreadCount, 0),
+    };
+    notify();
+  },
+
+  receiveMessage: (msg: ChatMessage) => {
+    // Called when a realtime message arrives on a channel we're NOT viewing
+    const isActive = state.activeChatChannelId === msg.channelId;
+    state = {
+      ...state,
+      chatChannels: state.chatChannels.map((c) =>
+        c.id === msg.channelId
+          ? { ...c, lastMessage: msg, unreadCount: isActive ? 0 : c.unreadCount + 1 }
+          : c
+      ),
+      chatUnreadTotal: isActive ? state.chatUnreadTotal : state.chatUnreadTotal + 1,
+    };
+    notify();
+  },
+
+  // ── Activity/Mention actions ─────────────────────────────────────────────────
+  pushActivity: (ev: ActivityEvent) => {
+    state = {
+      ...state,
+      activityEvents: [ev, ...state.activityEvents].slice(0, 200),
+      activityUnreadTotal: state.activityUnreadTotal + (ev.read ? 0 : 1),
+    };
+    notify();
+  },
+
+  markActivityRead: (id: string) => {
+    state = {
+      ...state,
+      activityEvents: state.activityEvents.map((e) => (e.id === id ? { ...e, read: true } : e)),
+      activityUnreadTotal: Math.max(0, state.activityUnreadTotal - 1),
+    };
+    notify();
+  },
+
+  markAllActivityRead: () => {
+    state = {
+      ...state,
+      activityEvents: state.activityEvents.map((e) => ({ ...e, read: true })),
+      activityUnreadTotal: 0,
+    };
+    notify();
+  },
+
+  // ── Project comments ─────────────────────────────────────────────────────────
+  addProjectComment: (comment: ProjectComment) => {
+    state = { ...state, projectComments: [...state.projectComments, comment] };
+    // Extract @mentions and fire activity events for each mentioned user
+    comment.mentions.forEach((mentionedId) => {
+      const actor = state.members.find((m) => m.id === (state.currentUser?.id || 'usr-lead'));
+      const target = state.members.find((m) => m.id === mentionedId);
+      if (!target) return;
+      const ev: ActivityEvent = {
+        id: `act-${Date.now()}-${mentionedId}`,
+        workspaceId: state.activeWorkspaceId,
+        actorId: comment.authorId,
+        actorName: comment.authorName,
+        type: 'mention',
+        summary: `${comment.authorName} mentioned you in a project comment`,
+        targetScreen: 'project_detail',
+        targetId: comment.projectId,
+        projectId: comment.projectId,
+        projectName: state.projects.find((p) => p.id === comment.projectId)?.name,
+        createdAt: comment.createdAt,
+        read: mentionedId !== (state.currentUser?.id || actor?.id),
+      };
+      factoryStore.pushActivity(ev);
+    });
     notify();
   },
 };

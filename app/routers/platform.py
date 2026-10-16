@@ -33,6 +33,7 @@ from app.models import (
     LedgerEntry,
     Project,
     PullRequest,
+    ReviewComment,
     Run,
     Task,
     User,
@@ -44,6 +45,64 @@ from app.schemas import ChainOut, LearningOut, LedgerOut, StageOut, TaskOut, Use
 router = APIRouter(prefix="/api", tags=["platform"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 BOARD_COLUMNS = ("backlog", "ready", "in_progress", "review", "done")
+
+
+@router.get("/prs")
+async def list_prs(
+    session: Session,
+    _: CurrentUser,
+    project_id: uuid.UUID | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+) -> list[dict]:
+    """All pull requests visible to this user, with task/project context.
+
+    Returned shape matches ``PrRow`` in the frontend ``api.ts``.
+    """
+    q = (
+        select(PullRequest, Task, Project)
+        .join(Task, Task.id == PullRequest.task_id)
+        .join(Project, Project.id == Task.project_id)
+        .order_by(PullRequest.number.desc())
+    )
+    if project_id:
+        q = q.where(Task.project_id == project_id)
+    if status_filter:
+        q = q.where(PullRequest.status == status_filter)
+
+    rows = []
+    for pr, task, project in (await session.execute(q)).all():
+        open_c = await session.scalar(
+            select(func.count())
+            .select_from(ReviewComment)
+            .where(ReviewComment.pr_id == pr.id, ReviewComment.triage == "open")
+        )
+        total_c = await session.scalar(
+            select(func.count())
+            .select_from(ReviewComment)
+            .where(ReviewComment.pr_id == pr.id)
+        )
+        rows.append(
+            {
+                "id": str(pr.id),
+                "number": pr.number,
+                "url": pr.url,
+                "branch": pr.branch,
+                "status": pr.status,
+                "tests_passed": pr.tests_passed,
+                "reviewed": pr.reviewed_at is not None,
+                "review_engine": pr.review_engine,
+                "review_model": pr.review_model,
+                "review_summary": pr.review_summary,
+                "open_comments": open_c or 0,
+                "total_comments": total_c or 0,
+                "task_id": str(task.id),
+                "task_key": task.key,
+                "task_title": task.title,
+                "project_id": str(project.id),
+                "project_name": project.name,
+            }
+        )
+    return rows
 
 
 @router.get("/me", response_model=UserOut)

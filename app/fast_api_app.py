@@ -37,8 +37,10 @@ from app.app_utils.telemetry import setup_telemetry
 from app.config import get_settings
 from app.routers import (
     auth,
+    chat,
     context,
     gemini,
+    github_oauth,
     operations,
     platform,
     products,
@@ -92,7 +94,9 @@ def create_app() -> FastAPI:
         )
     for r in (
         auth.router,
+        chat.router,
         gemini.router,
+        github_oauth.router,
         products.router,
         operations.router,
         projects.router,

@@ -247,14 +247,30 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
     )
     if not pr.url.startswith("local://") and (gh := github.client()) is not None:
         try:
-            await gh.post_review(
+            await gh.post_inline_review(
                 number=pr.number,
-                body=github.review_markdown(
-                    [c.model_dump() for c in comments],
-                    engine=result.engine,
-                    summary=result.summary,
-                ),
+                head_sha=pr.head_sha,
+                comments=[c.model_dump() for c in comments],
+                engine=result.engine,
+                summary=result.summary,
             )
+        except Exception:
+            # Fall back to plain comment if inline review fails
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "Inline review failed for PR %s, falling back to plain comment", pr.number
+            )
+            try:
+                await gh.post_review(
+                    number=pr.number,
+                    body=github.review_markdown(
+                        [c.model_dump() for c in comments],
+                        engine=result.engine,
+                        summary=result.summary,
+                    ),
+                )
+            except Exception:
+                pass
         finally:
             await gh.aclose()
     return await _pr_out(session, pr)

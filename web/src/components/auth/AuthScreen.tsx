@@ -37,7 +37,7 @@ declare global {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const INITIAL_GOOGLE_CLIENT_ID = ((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || (import.meta as any).env?.GOOGLE_CLIENT_ID) as string | undefined;
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   onSuccessAuthenticated,
@@ -51,6 +51,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [isVerifyingBot, setIsVerifyingBot] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [googleClientId, setGoogleClientId] = useState<string | undefined>(INITIAL_GOOGLE_CLIENT_ID);
+
+  // Fetch Google Client ID if not provided at build time
+  React.useEffect(() => {
+    if (!googleClientId) {
+      fetch('/api/auth/google/client-id')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.client_id) {
+            setGoogleClientId(data.client_id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [googleClientId]);
 
   // Check for GitHub OAuth redirect code callback in URL query parameters
   React.useEffect(() => {
@@ -104,10 +119,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     };
 
     const setupGsi = () => {
-      if (window.google?.accounts?.id) {
+      if (window.google?.accounts?.id && googleClientId) {
         try {
           window.google.accounts.id.initialize({
-            client_id: GOOGLE_CLIENT_ID,
+            client_id: googleClientId,
             callback: handleGoogleCredentialResponse,
             auto_select: false,
             cancel_on_tap_outside: true,
@@ -140,7 +155,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       }, 250);
       return () => clearInterval(timer);
     }
-  }, [step]);
+  }, [step, googleClientId]);
 
   // Check personal email domain
   const isPersonalEmail = (() => {
