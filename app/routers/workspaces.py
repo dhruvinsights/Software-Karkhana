@@ -81,7 +81,7 @@ async def onboard_workspace(
         id=uuid.uuid4(),
         workspace_id=workspace.id,
         user_id=user.id,
-        role=payload.role or user.role,
+        role="pm",
         is_owner=True,
     )
     session.add(member)
@@ -103,7 +103,6 @@ async def onboard_workspace(
         session.add(product)
 
     # Update user state
-    user.role = payload.role or user.role
     user.onboarded_at = dt.datetime.now(dt.timezone.utc)
     session.add(user)
     await session.flush()
@@ -119,7 +118,7 @@ async def onboard_workspace(
             "workspace_name": workspace.name,
             "slug": workspace.slug,
             "security_posture": workspace.security_posture,
-            "role": user.role,
+            "role": "pm",
         },
     )
 
@@ -213,8 +212,6 @@ async def create_workspace(
 
     if payload.get("user_name"):
         user.display_name = payload["user_name"].strip()
-    if payload.get("user_role"):
-        user.role = payload["user_role"]
     user.onboarded_at = dt.datetime.now(dt.timezone.utc)
     session.add(user)
 
@@ -222,7 +219,7 @@ async def create_workspace(
         id=uuid.uuid4(),
         workspace_id=workspace.id,
         user_id=user.id,
-        role=user.role,
+        role="pm",
         is_owner=True,
     )
     session.add(member)

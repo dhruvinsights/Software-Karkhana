@@ -99,6 +99,7 @@ class Settings(BaseSettings):
     worker_job_name: str = "karkhana-worker"
     public_base_url: str = "http://localhost:8080"
     run_hmac_secret: str = Field(default="dev-only-change-me", repr=False)
+    session_jwt_secret: str = Field(default="dev-session-secret-change-me", repr=False)
     # One run at a time keeps the shared project stage simple for the demo. The
     # multi-run transitions are still tested with MAX_ACTIVE_RUNS_PER_PROJECT=3.
     max_active_runs_per_project: int = 1
@@ -163,6 +164,10 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RUN_HMAC_SECRET must come from Secret Manager on Cloud Run."
             )
+        if on_cloud_run and not self.session_jwt_secret:
+            raise ValueError("SESSION_JWT_SECRET must come from Secret Manager on Cloud Run.")
+        if on_cloud_run and self.session_jwt_secret == "dev-session-secret-change-me":  # noqa: S105
+            raise ValueError("SESSION_JWT_SECRET must not use the development default.")
         return self
 
 
