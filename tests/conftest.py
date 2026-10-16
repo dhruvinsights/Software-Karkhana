@@ -31,7 +31,7 @@ OWNER_DSN = os.environ.get(
     "TEST_OWNER_DSN",
     "postgresql://karkhana_owner:karkhana_owner@localhost:5432/postgres",
 )
-TEST_DB = "karkhana_test"
+TEST_DB = os.environ.get("KARKHANA_TEST_DB", "karkhana_test")
 
 os.environ.update(
     {
