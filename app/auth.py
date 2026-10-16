@@ -22,8 +22,14 @@ grant themselves Director by editing client state.
 from __future__ import annotations
 
 import asyncio
+import base64
 import functools
+import hashlib
+import hmac
+import json
 import logging
+import os
+import time
 from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
 
@@ -37,6 +43,85 @@ from app.models import User
 from app.process import Role
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Password Hashing (PBKDF2-HMAC-SHA256)
+# ---------------------------------------------------------------------------
+
+def hash_password(password: str) -> str:
+    """Hashes a password with a random 16-byte salt using PBKDF2-HMAC-SHA256."""
+    salt = os.urandom(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+    return f"pbkdf2_sha256$100000${salt.hex()}${key.hex()}"
+
+
+def verify_password(plain_password: str, hashed_password: str | None) -> bool:
+    """Verifies a plain password against its stored hash."""
+    if not hashed_password or not hashed_password.startswith("pbkdf2_sha256$"):
+        return False
+    try:
+        _, iterations, salt_hex, key_hex = hashed_password.split("$")
+        salt = bytes.fromhex(salt_hex)
+        expected_key = bytes.fromhex(key_hex)
+        computed_key = hashlib.pbkdf2_hmac(
+            "sha256", plain_password.encode("utf-8"), salt, int(iterations)
+        )
+        return hmac.compare_digest(expected_key, computed_key)
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# JWT / Signed Token Generation & Verification
+# ---------------------------------------------------------------------------
+
+def _b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
+
+
+def _b64url_decode(data: str) -> bytes:
+    padding = "=" * (4 - (len(data) % 4) % 4)
+    return base64.urlsafe_b64decode(data + padding)
+
+
+def create_token(payload: dict[str, Any], expires_in_seconds: int = 86400 * 7) -> str:
+    """Creates a cryptographically signed HMAC-SHA256 JWT."""
+    settings = get_settings()
+    secret = (settings.run_hmac_secret or "karkhana-jwt-secret-default").encode("utf-8")
+    
+    header = {"alg": "HS256", "typ": "JWT"}
+    body = {**payload, "exp": int(time.time()) + expires_in_seconds, "iat": int(time.time())}
+    
+    header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
+    body_bytes = json.dumps(body, separators=(",", ":")).encode("utf-8")
+    
+    signing_input = f"{_b64url_encode(header_bytes)}.{_b64url_encode(body_bytes)}".encode("utf-8")
+    signature = hmac.new(secret, signing_input, hashlib.sha256).digest()
+    
+    return f"{signing_input.decode('utf-8')}.{_b64url_encode(signature)}"
+
+
+def decode_token(token: str) -> dict[str, Any] | None:
+    """Verifies and decodes a signed HMAC-SHA256 JWT."""
+    settings = get_settings()
+    secret = (settings.run_hmac_secret or "karkhana-jwt-secret-default").encode("utf-8")
+    
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        signing_input = f"{parts[0]}.{parts[1]}".encode("utf-8")
+        expected_sig = hmac.new(secret, signing_input, hashlib.sha256).digest()
+        provided_sig = _b64url_decode(parts[2])
+        if not hmac.compare_digest(expected_sig, provided_sig):
+            return None
+        
+        body = json.loads(_b64url_decode(parts[1]).decode("utf-8"))
+        if body.get("exp") and body["exp"] < time.time():
+            return None
+        return body
+    except Exception:
+        return None
 
 
 @functools.cache
@@ -69,27 +154,36 @@ async def current_user(
 ) -> User:
     """Resolves the signed-in user and their server-side role."""
     settings = get_settings()
-    if settings.auth_mode == "dev":
+    email: str | None = None
+
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+        # 1. Try our internal signed JWT token
+        payload = decode_token(token)
+        if payload and payload.get("email"):
+            email = payload["email"]
+        # 2. Try Firebase ID token if configured and not internal token
+        elif settings.auth_mode == "firebase":
+            claims = await _verify_firebase_token(token)
+            if claims.get("email"):
+                email = claims["email"]
+        else:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+    elif x_dev_user:
         email = x_dev_user
-        if not email:
-            raise HTTPException(
-                status.HTTP_401_UNAUTHORIZED, "Missing X-Dev-User header"
-            )
+    elif settings.auth_mode == "dev":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing authentication")
     else:
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in required")
-        claims = await _verify_firebase_token(authorization.removeprefix("Bearer "))
-        if not claims.get("email") or not claims.get("email_verified"):
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN, "A verified email is required"
-            )
-        email = claims["email"]
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in required")
+
+    if not email:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Could not determine identity")
 
     user = await session.scalar(select(User).where(User.email == email.lower()))
     if user is None:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "This account has no Karkhana role yet. Ask an admin.",
+            "This account is not registered. Please sign up or contact an administrator.",
         )
     return user
 

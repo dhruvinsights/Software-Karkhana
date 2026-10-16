@@ -35,7 +35,18 @@ from sqlalchemy import text
 from app import db
 from app.app_utils.telemetry import setup_telemetry
 from app.config import get_settings
-from app.routers import context, platform, projects, reviews, runs, workspace
+from app.routers import (
+    auth,
+    context,
+    gemini,
+    operations,
+    platform,
+    products,
+    projects,
+    reviews,
+    runs,
+    workspace,
+)
 
 
 def _setup_logging() -> None:
@@ -79,6 +90,10 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
     for r in (
+        auth.router,
+        gemini.router,
+        products.router,
+        operations.router,
         projects.router,
         runs.router,
         reviews.router,

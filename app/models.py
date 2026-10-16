@@ -39,15 +39,82 @@ def _now() -> Mapped[dt.datetime]:
 
 
 class User(Base):
-    """A person with exactly one server-side role."""
+    """A person with an enterprise role and identity."""
 
     __tablename__ = "users"
     id: Mapped[uuid.UUID] = _uuid_pk()
     email: Mapped[str] = mapped_column(String, unique=True)
     display_name: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(String)
+    hashed_password: Mapped[str | None] = mapped_column(String, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     onboarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = _now()
+
+
+class Workspace(Base):
+    """An organization workspace container."""
+
+    __tablename__ = "workspaces"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String)
+    slug: Mapped[str] = mapped_column(String, unique=True)
+    domain: Mapped[str | None] = mapped_column(String, nullable=True)
+    plan: Mapped[str] = mapped_column(String, default="enterprise")
+    security_posture: Mapped[str] = mapped_column(String, default="STANDARD")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class WorkspaceMember(Base):
+    """Membership connecting users to workspaces with RBAC."""
+
+    __tablename__ = "workspace_members"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String)
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False)
+    joined_at: Mapped[dt.datetime] = _now()
+
+
+class Product(Base):
+    """A product anchor containing projects and ideas."""
+
+    __tablename__ = "products"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True)
+    name: Mapped[str] = mapped_column(String)
+    code: Mapped[str] = mapped_column(String)
+    domain: Mapped[str] = mapped_column(String, default="Cloud Services")
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class Idea(Base):
+    """A feature idea under validation with AI feasibility radar."""
+
+    __tablename__ = "ideas"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=True)
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True)
+    title: Mapped[str] = mapped_column(String)
+    problem_statement: Mapped[str] = mapped_column(Text)
+    target_user: Mapped[str] = mapped_column(String, default="Enterprise Users")
+    expected_value: Mapped[str] = mapped_column(Text, default="")
+    author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String, default="draft")
+    complexity: Mapped[str] = mapped_column(String, default="Medium")
+    tags: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    assessment: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Project(Base):
@@ -55,15 +122,77 @@ class Project(Base):
 
     __tablename__ = "projects"
     id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=True)
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True)
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     name: Mapped[str] = mapped_column(String)
     idea_text: Mapped[str] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     stage: Mapped[str] = mapped_column(String, default="evaluate")
     stage_status: Mapped[str] = mapped_column(String, default="submitted")
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class WorkspaceInvite(Base):
+    """An invitation token to join an enterprise workspace."""
+
+    __tablename__ = "workspace_invites"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    inviter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    role: Mapped[str] = mapped_column(String, default="developer")
+    token: Mapped[str] = mapped_column(String, unique=True)
+    status: Mapped[str] = mapped_column(String, default="pending")
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class ProjectMember(Base):
+    """Role and station permissions for users assigned to a project."""
+
+    __tablename__ = "project_members"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String, default="developer")
+    stations: Mapped[list[str]] = mapped_column(
+        JSONB,
+        default=lambda: ["product", "architecture", "developer", "qa", "devops", "security", "release"],
+    )
+    joined_at: Mapped[dt.datetime] = _now()
+
+
+class ProductDocument(Base):
+    """An uploaded product brief or documentation file."""
+
+    __tablename__ = "product_documents"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=True)
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True)
+    filename: Mapped[str] = mapped_column(String)
+    content_type: Mapped[str] = mapped_column(String, default="text/plain")
+    extracted_text: Mapped[str] = mapped_column(Text, default="")
+    parsed_spec: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class ProductDocumentChunk(Base):
+    """A semantic chunk of product documentation with a pgvector 768-d embedding."""
+
+    __tablename__ = "product_document_chunks"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("product_documents.id", ondelete="CASCADE"))
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
 
 
 class Evaluation(Base):

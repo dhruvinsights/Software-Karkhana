@@ -43,7 +43,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100dvh; }
 .rail { position: sticky; top: 0; height: 100dvh; padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; background: var(--surface); border-right: 1px solid var(--line); }
 .brand { display: flex; gap: 10px; align-items: center; padding: 0 8px; text-decoration: none; }
-.mark { width: 34px; height: 34px; border-radius: 11px; background: var(--accent); color: #fff; display: grid; place-items: center; font: 700 17px var(--font-sans); box-shadow: 0 6px 24px -6px var(--accent); }
+.mark { width: 34px; height: 34px; border-radius: 11px; background: #fff; display: grid; place-items: center; overflow: hidden; box-shadow: 0 4px 18px -4px rgba(45,92,255,.35); flex-shrink: 0; }
 .brand b { display: block; font: 600 15px var(--font-sans); letter-spacing: -0.01em; }
 .brand small { color: var(--muted); font: 11px var(--font-mono); }
 .nav { display: flex; flex-direction: column; gap: 2px; }

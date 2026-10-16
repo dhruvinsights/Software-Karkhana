@@ -19,6 +19,7 @@ import {
 import { MarketingNavbar } from './MarketingNavbar';
 import { LaserFlow } from '../reactbits/LaserFlow';
 import { SpecularButton } from '../reactbits/SpecularButton';
+import { LiquidEther } from '../reactbits/LiquidEther';
 
 interface MarketingLandingPageProps {
   onGetStarted: () => void;
@@ -207,7 +208,25 @@ export const MarketingLandingPage: React.FC<MarketingLandingPageProps> = ({
   const role = ROLES[activeRoleTab];
 
   return (
-    <div className="min-h-screen bg-black text-[#f7f8fc] font-sans antialiased selection:bg-[#075bff] selection:text-white relative overflow-x-hidden">
+    <div className="min-h-screen text-[#f7f8fc] font-sans antialiased selection:bg-[#075bff] selection:text-white relative overflow-x-hidden" style={{ background: '#05010f' }}>
+      {/* Fixed full-screen LiquidEther background */}
+      <LiquidEther
+        style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: 0 }}
+        colors={['#2a00ff', '#5300ff', '#b497cf']}
+        mouseForce={12}
+        cursorSize={50}
+        persistence={0.5}
+        autoDemo
+        autoSpeed={0.25}
+        autoIntensity={0.3}
+        intensity={0.35}
+        viscosity={0}
+        resolution={0.4}
+        clickBurst={false}
+        bounceEdges={false}
+        intro={false}
+        lightMode={false}
+      />
       <MarketingNavbar onGetStarted={onGetStarted} onSignIn={onSignIn} />
 
       {/* =================================================================== */}

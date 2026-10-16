@@ -129,25 +129,216 @@ class UserOut(ORM):
     email: str
     display_name: str
     role: str
+    avatar_url: str | None = None
+    is_active: bool = True
     onboarded_at: dt.datetime | None = None
 
 
-class ProjectCreate(BaseModel):
-    """PM's idea submission."""
+class UserSignUp(BaseModel):
+    """User account registration."""
 
-    name: str = Field(min_length=3, max_length=120)
-    idea_text: str = Field(min_length=40, max_length=8000)
+    email: str
+    password: str = Field(min_length=6, max_length=128)
+    display_name: str = Field(min_length=2, max_length=100)
+    role: str = "product_manager"
+
+
+class UserLogin(BaseModel):
+    """User authentication credentials."""
+
+    email: str
+    password: str
+
+
+class TokenOut(BaseModel):
+    """JWT / Session token response."""
+
+    access_token: str
+    token_type: str = "Bearer"
+    user: UserOut
+
+
+class WorkspaceOnboard(BaseModel):
+    """Progressive onboarding submission payload."""
+
+    workspace_name: str = Field(min_length=2, max_length=100)
+    workspace_slug: str | None = None
+    domain: str | None = None
+    security_posture: str = "STANDARD"
+    role: str = "product_manager"
+    product_name: str | None = None
+    product_domain: str | None = "Cloud Services"
+    product_description: str | None = None
+
+
+class WorkspaceOut(ORM):
+    """Workspace output representation."""
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    domain: str | None = None
+    plan: str
+    security_posture: str
+    created_at: dt.datetime
+
+
+class WorkspaceSummary(BaseModel):
+    """Enrolled workspace card summary for chooser."""
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    domain: str | None = None
+    role: str
+    member_count: int = 1
+    last_active: str
+    is_owner: bool = False
+
+
+class WorkspaceCreateRequest(BaseModel):
+    """Progressive 3-step workspace creation payload."""
+
+    name: str = Field(min_length=2, max_length=100)
+    slug: str | None = None
+    user_name: str | None = None
+    user_avatar: str | None = None
+    user_role: str = "product_manager"
+    teammate_emails: list[str] = Field(default_factory=list)
+
+
+class ProductCreate(BaseModel):
+    """Product creation payload."""
+
+    name: str = Field(min_length=2, max_length=100)
+    code: str | None = None
+    domain: str = "Cloud Services"
+    description: str = ""
+
+
+class ProductOut(ORM):
+    """Product output representation."""
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID | None = None
+    name: str
+    code: str
+    domain: str
+    description: str
+    status: str
+    created_at: dt.datetime
+
+
+class ProjectCreate(BaseModel):
+    """Project creation by any team member (PM, Developer, Architect, etc.)."""
+
+    name: str = Field(min_length=2, max_length=120)
+    idea_text: str = Field(default="", max_length=16000)
+    product_id: uuid.UUID | None = None
+    workspace_id: uuid.UUID | None = None
+    code: str | None = None
+    description: str | None = None
+    repository_url: str | None = None
+    target_release_date: str | None = None
 
 
 class ProjectOut(ORM):
     """A project summary."""
 
     id: uuid.UUID
+    product_id: uuid.UUID | None = None
+    workspace_id: uuid.UUID | None = None
+    lead_id: uuid.UUID | None = None
     name: str
     idea_text: str
     stage: str
     stage_status: str
+    settings: dict[str, Any] = Field(default_factory=dict)
     created_at: dt.datetime
+
+
+class WorkspaceInviteCreate(BaseModel):
+    """Workspace invitation request."""
+
+    workspace_id: uuid.UUID
+    email: str | None = None
+    role: str = "developer"
+
+
+class WorkspaceInviteOut(ORM):
+    """Workspace invitation response."""
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    inviter_id: uuid.UUID
+    email: str | None = None
+    role: str
+    token: str
+    status: str
+    created_at: dt.datetime
+
+
+class WorkspaceJoinRequest(BaseModel):
+    """Workspace join request using invite token or workspace id."""
+
+    token: str | None = None
+    workspace_id: uuid.UUID | None = None
+    role: str = "developer"
+
+
+class ProjectMemberCreate(BaseModel):
+    """Add member to project."""
+
+    user_id: uuid.UUID
+    role: str = "developer"
+    stations: list[str] = Field(
+        default_factory=lambda: ["product", "architecture", "developer", "qa", "devops", "security", "release"]
+    )
+
+
+class ProjectMemberOut(ORM):
+    """Project member info."""
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    user_id: uuid.UUID
+    role: str
+    stations: list[str]
+    joined_at: dt.datetime
+
+
+class ExtractedProductSpec(BaseModel):
+    """Structured product specification extracted from docs using RAG & AI."""
+
+    name: str = "New Autonomous Product"
+    code: str = "PROD"
+    domain: str = "Cloud & Core Infrastructure"
+    description: str = ""
+    value_proposition: str = ""
+    target_personas: list[str] = Field(default_factory=list)
+    key_features: list[str] = Field(default_factory=list)
+    tech_stack: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    security_requirements: list[str] = Field(default_factory=list)
+    suggested_epics: list[str] = Field(default_factory=list)
+
+
+class DocumentExtractRequest(BaseModel):
+    """Document extraction request payload."""
+
+    filename: str = "document.txt"
+    content_type: str = "text/plain"
+    text: str
+    product_id: uuid.UUID | None = None
+    workspace_id: uuid.UUID | None = None
+
+
+class DocumentExtractResponse(BaseModel):
+    """Document extraction output with RAG embeddings stored."""
+
+    document_id: str
+    chunks_stored: int
+    spec: ExtractedProductSpec
 
 
 class CitationOut(BaseModel):

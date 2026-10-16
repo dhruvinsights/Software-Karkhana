@@ -17,11 +17,11 @@ export const ShinyText: React.FC<ShinyTextProps> = ({
 
   return (
     <span
-      className={`inline-block bg-clip-text text-transparent bg-gradient-to-r from-neutral-200 via-white to-neutral-400 bg-[length:200%_100%] animate-shine font-medium ${className}`}
+      className={`inline-block bg-clip-text text-transparent bg-gradient-to-r from-slate-200 via-white to-slate-200 bg-[length:200%_100%] animate-shine font-semibold ${className}`}
       style={{
         backgroundImage: disabled
           ? undefined
-          : 'linear-gradient(120deg, rgba(255, 255, 255, 0) 20%, rgba(255, 255, 255, 0.9) 50%, rgba(255, 255, 255, 0) 80%)',
+          : 'linear-gradient(120deg, #e2e8f0 10%, #ffffff 50%, #93c5fd 90%)',
         WebkitBackgroundClip: 'text',
         animationDuration: animationDuration,
       }}

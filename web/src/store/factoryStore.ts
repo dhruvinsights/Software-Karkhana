@@ -97,8 +97,19 @@ const INITIAL_TEAMS: Team[] = [
   },
 ];
 
+export interface CurrentUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  avatar_url?: string | null;
+  onboarded_at?: string | null;
+}
+
 export interface FactoryState {
   authStatus: 'guest' | 'authenticated';
+  token: string | null;
+  currentUser: CurrentUser | null;
   currentRole: FactoryRole;
   currentScreen: ScreenId;
   selectedProductId?: string;
@@ -158,6 +169,8 @@ function loadInitialState(): FactoryState {
 
   return {
     authStatus: 'guest',
+    token: typeof localStorage !== 'undefined' ? localStorage.getItem('karkhana_jwt_token') : null,
+    currentUser: null,
     currentRole: 'product_manager',
     currentScreen: 'landing',
     selectedProductId: undefined,
@@ -217,15 +230,163 @@ export const factoryStore = {
     };
   },
 
+  setAuthSession: (token: string, user: CurrentUser) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('karkhana_jwt_token', token);
+    }
+    const roleKey = (user.role in ROLE_CONFIGS ? user.role : 'product_manager') as FactoryRole;
+    state = {
+      ...state,
+      authStatus: 'authenticated',
+      token,
+      currentUser: user,
+      currentRole: roleKey,
+      currentScreen: user.onboarded_at ? 'workspace_home' : 'onboarding',
+    };
+    notify();
+    // Fetch live workspace data in background
+    factoryStore.syncSessionFromServer();
+  },
+
+  syncSessionFromServer: async () => {
+    const token = state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('karkhana_jwt_token') : null);
+    if (!token) return;
+
+    try {
+      const authHeader = { Authorization: `Bearer ${token}` };
+
+      // 1. Fetch Me
+      const meRes = await fetch('/api/auth/me', { headers: authHeader });
+      if (meRes.ok) {
+        const user = await meRes.json();
+        state.currentUser = user;
+        state.authStatus = 'authenticated';
+        state.token = token;
+      }
+
+      // 2. Fetch Workspaces
+      const wsRes = await fetch('/api/workspaces/list', { headers: authHeader });
+      if (wsRes.ok) {
+        const wsList = await wsRes.json();
+        if (wsList && wsList.length > 0) {
+          state.workspaces = wsList.map((w: any) => ({
+            id: w.id,
+            name: w.name,
+            slug: w.slug,
+            domain: w.domain,
+            plan: 'enterprise',
+            createdAt: new Date().toISOString(),
+            securityPosture: 'STANDARD',
+            isDemo: false,
+          }));
+          if (!state.workspaces.find((w) => w.id === state.activeWorkspaceId)) {
+            state.activeWorkspaceId = state.workspaces[0].id;
+            state.workspace = state.workspaces[0];
+          }
+        }
+      }
+
+      // 3. Fetch Products
+      const prodRes = await fetch('/api/products', { headers: authHeader });
+      if (prodRes.ok) {
+        const prods = await prodRes.json();
+        if (prods) {
+          state.products = prods.map((p: any) => ({
+            id: p.id,
+            workspaceId: p.workspaceId || state.activeWorkspaceId,
+            name: p.name,
+            code: p.code,
+            domain: p.domain,
+            description: p.description,
+            ownerId: state.currentUser?.id || 'usr-lead',
+            status: p.status || 'active',
+            techStack: ['TypeScript', 'Python', 'PostgreSQL'],
+            activeIdeaCount: 0,
+            activeProjectCount: 0,
+            repositories: [],
+            lastActivity: p.createdAt || 'Active',
+          }));
+          if (!state.selectedProductId && state.products.length > 0) {
+            state.selectedProductId = state.products[0].id;
+          }
+        }
+      }
+
+      // 4. Fetch Projects
+      const projRes = await fetch('/api/projects', { headers: authHeader });
+      if (projRes.ok) {
+        const projs = await projRes.json();
+        if (projs) {
+          state.projects = projs.map((pr: any) => ({
+            id: pr.id,
+            productId: pr.product_id || state.selectedProductId || state.products[0]?.id || '',
+            name: pr.name,
+            code: pr.settings?.code || `PRJ-${pr.id.substring(0, 4).toUpperCase()}`,
+            description: pr.settings?.description || pr.idea_text || 'Active engineering project deliverable.',
+            status: pr.stage_status === 'submitted' ? 'planning' : 'development',
+            phase: 'Sprint 1',
+            health: 'healthy',
+            leadId: pr.lead_id || state.currentUser?.id || 'usr-lead',
+            teamsAssigned: ['tm-core'],
+            targetReleaseDate: pr.settings?.target_release_date || '2026-12-31',
+            repositoryUrl: pr.settings?.repository_url || 'github.com/org/repo',
+            milestonesCount: 1,
+            completedTasks: 0,
+            totalTasks: 0,
+            createdAt: pr.created_at || new Date().toISOString(),
+          }));
+          if (!state.selectedProjectId && state.projects.length > 0) {
+            state.selectedProjectId = state.projects[0].id;
+          }
+        }
+      }
+
+      // 5. Fetch Ideas
+      const ideasRes = await fetch('/api/ideas', { headers: authHeader });
+      if (ideasRes.ok) {
+        const ideas = await ideasRes.json();
+        if (ideas) {
+          state.ideas = ideas.map((i: any) => ({
+            id: i.id,
+            productId: i.productId || state.selectedProductId || '',
+            title: i.title,
+            problemStatement: i.problemStatement,
+            targetUser: i.targetUser,
+            expectedValue: i.expectedValue,
+            authorId: i.authorId,
+            status: i.status || 'draft',
+            complexity: i.complexity || 'Medium',
+            tags: i.tags || [],
+            assessment: i.assessment,
+            createdAt: i.createdAt,
+            updatedAt: i.updatedAt,
+          }));
+        }
+      }
+
+      notify();
+    } catch (e) {
+      console.warn('Session sync from server skipped / offline:', e);
+    }
+  },
+
   setAuthStatus: (authStatus: 'guest' | 'authenticated') => {
     state = { ...state, authStatus };
     notify();
   },
 
   signInDemo: () => {
+    const demoUser: CurrentUser = {
+      id: 'usr-lead',
+      email: 'lead@factory.internal',
+      display_name: 'Workspace Lead',
+      role: 'product_manager',
+      onboarded_at: new Date().toISOString(),
+    };
     state = {
       ...state,
       authStatus: 'authenticated',
+      currentUser: demoUser,
       activeWorkspaceId: state.workspaces[0]?.id || INITIAL_WORKSPACE.id,
       workspace: state.workspaces[0] || INITIAL_WORKSPACE,
       currentScreen: 'workspace_home',
@@ -235,7 +396,16 @@ export const factoryStore = {
   },
 
   signOut: () => {
-    state = { ...state, authStatus: 'guest', currentScreen: 'landing' };
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('karkhana_jwt_token');
+    }
+    state = {
+      ...state,
+      authStatus: 'guest',
+      token: null,
+      currentUser: null,
+      currentScreen: 'landing',
+    };
     notify();
   },
 

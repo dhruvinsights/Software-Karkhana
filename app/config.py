@@ -126,6 +126,20 @@ class Settings(BaseSettings):
     google_chat_webhook_url: str | None = Field(default=None, repr=False)
     artifacts_bucket: str | None = None
 
+    # --- Email (Resend) --------------------------------------------------
+    # Used for transactional email (invites, notifications, magic links).
+    # Set RESEND_API_KEY in .env locally or via Secret Manager on Cloud Run.
+    # EMAIL_FROM must use a domain verified in your Resend dashboard.
+    resend_api_key: str | None = Field(default=None, repr=False)
+    email_from: str = "onboarding@visiarise.com"
+    email_from_team: str = "team@visiarise.com"
+
+    # --- OAuth (Google & GitHub) -----------------------------------------
+    google_client_id: str | None = Field(default=None, repr=False)
+    google_client_secret: str | None = Field(default=None, repr=False)
+    github_client_id: str | None = None
+    github_client_secret: str | None = Field(default=None, repr=False)
+
     # --- Web -------------------------------------------------------------
     static_dir: str = "web/dist"
     allow_origins: list[str] = Field(default_factory=list)

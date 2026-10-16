@@ -34,9 +34,19 @@ class Role(enum.StrEnum):
     """Server-side roles."""
 
     PM = "pm"
+    PRODUCT_MANAGER = "product_manager"
     DIRECTOR = "director"
+    EXECUTIVE = "executive"
     DEVELOPER = "developer"
     LEAD = "lead"
+    DESIGNER = "designer"
+    ARCHITECT = "architect"
+    QA = "qa"
+    SECURITY = "security"
+    DEVOPS = "devops"
+    RELEASE_MANAGER = "release_manager"
+    SUPPORT = "support"
+    ADMIN = "admin"
 
 
 @dataclass(frozen=True)

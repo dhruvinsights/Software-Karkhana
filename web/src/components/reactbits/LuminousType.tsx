@@ -39,7 +39,7 @@ export const LuminousType: React.FC<LuminousTypeProps> = ({
       className={`relative inline-block cursor-default select-none ${className}`}
     >
       {/* Dimmed Base Text */}
-      <span className="text-slate-500/60 transition-colors duration-300">
+      <span className="text-slate-200 transition-colors duration-300">
         {words.map((word, idx) => {
           const isHighlight = highlightWords.some((hw) =>
             word.toLowerCase().includes(hw.toLowerCase())

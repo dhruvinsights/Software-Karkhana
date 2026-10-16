@@ -62,13 +62,19 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 
 @router.get("", response_model=list[ProjectOut])
-async def list_projects(session: Session, _: CurrentUser) -> list[Project]:
-    """All projects, newest first."""
-    return list(
-        (
-            await session.scalars(select(Project).order_by(Project.created_at.desc()))
-        ).all()
-    )
+async def list_projects(
+    session: Session,
+    _: CurrentUser,
+    product_id: uuid.UUID | None = None,
+    workspace_id: uuid.UUID | None = None,
+) -> list[Project]:
+    """All projects, newest first, optionally filtered by product or workspace."""
+    stmt = select(Project).order_by(Project.created_at.desc())
+    if product_id:
+        stmt = stmt.where(Project.product_id == product_id)
+    if workspace_id:
+        stmt = stmt.where(Project.workspace_id == workspace_id)
+    return list((await session.scalars(stmt)).all())
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_202_ACCEPTED)
@@ -76,17 +82,44 @@ async def create_project(
     body: ProjectCreate,
     background: BackgroundTasks,
     session: Session,
-    user: Annotated[User, Depends(require_role(Role.PM))],
+    user: CurrentUser,
 ) -> Project:
-    """A PM submits an idea. Evaluation runs in the background; poll the project."""
+    """Any authenticated team member (Developer, PM, Architect, Lead) can create a project."""
+    idea_text = body.idea_text.strip() if body.idea_text else f"Project {body.name.strip()} initialized."
+    settings_dict = {}
+    if body.code:
+        settings_dict["code"] = body.code
+    if body.description:
+        settings_dict["description"] = body.description
+    if body.repository_url:
+        settings_dict["repository_url"] = body.repository_url
+    if body.target_release_date:
+        settings_dict["target_release_date"] = body.target_release_date
+
     project = Project(
         id=uuid.uuid4(),
+        product_id=body.product_id,
+        workspace_id=body.workspace_id,
+        lead_id=user.id,
         name=body.name.strip(),
-        idea_text=body.idea_text.strip(),
+        idea_text=idea_text,
         created_by=user.id,
+        settings=settings_dict,
     )
     session.add(project)
     await session.flush()
+
+    # Automatically add the creator as lead with all station permissions
+    from app.models import ProjectMember
+    creator_member = ProjectMember(
+        id=uuid.uuid4(),
+        project_id=project.id,
+        user_id=user.id,
+        role=user.role or "lead",
+        stations=["product", "architecture", "developer", "qa", "devops", "security", "release"],
+    )
+    session.add(creator_member)
+
     await ledger.append(
         session,
         actor=ledger.Actor.human(user),
@@ -94,11 +127,89 @@ async def create_project(
         subject_type="project",
         subject_id=project.id,
         project_id=project.id,
-        payload={"name": project.name, "idea_chars": len(project.idea_text)},
+        payload={"name": project.name, "created_by": str(user.id), "role": user.role},
     )
-    await session.commit()  # The background job reads the project in its own session.
+    await session.commit()
     background.add_task(run_evaluation, project.id)
     return project
+
+
+@router.get("/{project_id}/members")
+async def list_project_members(
+    project_id: uuid.UUID,
+    session: Session,
+    _: CurrentUser,
+) -> list[dict]:
+    """Lists all team members assigned to the project with their station permissions."""
+    from app.models import ProjectMember, User
+    stmt = (
+        select(ProjectMember, User)
+        .join(User, User.id == ProjectMember.user_id)
+        .where(ProjectMember.project_id == project_id)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        {
+            "id": str(pm.id),
+            "projectId": str(pm.project_id),
+            "userId": str(pm.user_id),
+            "name": u.display_name,
+            "email": u.email,
+            "role": pm.role,
+            "stations": pm.stations or [],
+            "avatarUrl": u.avatar_url,
+            "joinedAt": pm.joined_at.isoformat(),
+        }
+        for pm, u in rows
+    ]
+
+
+@router.post("/{project_id}/members")
+async def add_project_member(
+    project_id: uuid.UUID,
+    payload: dict,
+    session: Session,
+    user: CurrentUser,
+) -> dict:
+    """Assigns or updates a member's role and stations on the project."""
+    from app.models import ProjectMember
+    user_id_str = payload.get("user_id") or payload.get("userId")
+    if not user_id_str:
+        raise HTTPException(status_code=400, detail="User ID is required.")
+    target_user_id = uuid.UUID(str(user_id_str))
+    role = payload.get("role", "developer")
+    stations = payload.get("stations", ["product", "architecture", "developer", "qa", "devops", "security", "release"])
+
+    existing = await session.scalar(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == target_user_id,
+        )
+    )
+    if existing:
+        existing.role = role
+        existing.stations = stations
+        session.add(existing)
+        member = existing
+    else:
+        member = ProjectMember(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            user_id=target_user_id,
+            role=role,
+            stations=stations,
+        )
+        session.add(member)
+
+    await session.commit()
+    return {
+        "status": "ok",
+        "memberId": str(member.id),
+        "projectId": str(project_id),
+        "userId": str(target_user_id),
+        "role": member.role,
+        "stations": member.stations,
+    }
 
 
 @router.post("/{project_id}/evaluate", status_code=status.HTTP_202_ACCEPTED)

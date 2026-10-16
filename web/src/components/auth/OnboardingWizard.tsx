@@ -60,7 +60,30 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, 
     setTeammateEmails(teammateEmails.filter((e) => e !== email));
   };
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
+    const token = factoryStore.getState().token;
+    try {
+      if (token) {
+        await fetch('/api/workspaces/onboard', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            workspace_name: workspaceName,
+            workspace_slug: workspaceSlug,
+            domain: `${workspaceSlug}.internal`,
+            security_posture: 'STANDARD',
+            role: factoryStore.getState().currentUser?.role || 'product_manager',
+            product_name: `${workspaceName} Core`,
+            product_domain: 'Cloud Services',
+          }),
+        });
+      }
+    } catch (e) {
+      console.warn('Backend sync failed, storing locally', e);
+    }
     factoryStore.createWorkspace(
       workspaceName,
       workspaceSlug,

@@ -2,8 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { factoryStore, FactoryState } from './store/factoryStore';
 import { AppShell } from './components/shell/AppShell';
 import { MarketingLandingPage } from './components/marketing/MarketingLandingPage';
-import { AuthModal } from './components/auth/AuthModal';
-import { OnboardingWizard } from './components/auth/OnboardingWizard';
+import { AuthScreen } from './components/auth/AuthScreen';
+import { WorkspaceChooser } from './components/auth/WorkspaceChooser';
+import { CreateWorkspaceModal } from './components/auth/CreateWorkspaceModal';
+import { DreamTransitionScreen } from './components/auth/DreamTransitionScreen';
+import { GuidedTutorialOverlay } from './components/workspace/GuidedTutorialOverlay';
 
 import { WorkspaceHomeView } from './components/views/WorkspaceHomeView';
 import { IdeaValidationView } from './components/views/IdeaValidationView';
@@ -24,16 +27,89 @@ import { ProductWorkspaceView } from './components/views/ProductWorkspaceView';
 
 export default function App() {
   const [state, setState] = useState<FactoryState>(factoryStore.getState());
-  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [createWorkspaceModalOpen, setCreateWorkspaceModalOpen] = useState(false);
+  const [showDreamTransition, setShowDreamTransition] = useState(false);
+  const [pendingWorkspaceName, setPendingWorkspaceName] = useState('Nexus Engineering');
+  const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
     const unsubscribe = factoryStore.subscribe((newState) => {
       setState(newState);
     });
+
+    // 1. Initial Session Restore & Data Sync
+    factoryStore.syncSessionFromServer();
+
+    // 2. Parse URL parameters for workspace/project invite links
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const joinWs = urlParams.get('join_workspace') || urlParams.get('invite_workspace');
+      const token = urlParams.get('token');
+      const role = urlParams.get('role');
+      const joinProject = urlParams.get('join_project');
+
+      if (joinWs || token || joinProject) {
+        const pendingInvite = {
+          workspaceId: joinWs,
+          token,
+          role: role || 'developer',
+          projectId: joinProject,
+        };
+
+        const currentToken = localStorage.getItem('karkhana_jwt_token');
+        if (currentToken) {
+          // If already authenticated, directly enroll
+          fetch('/api/workspaces/join', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${currentToken}`,
+            },
+            body: JSON.stringify({
+              workspace_id: joinWs,
+              token: token,
+              role: role || 'developer',
+            }),
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.status === 'ok' && data.workspace) {
+                factoryStore.switchWorkspace(data.workspace.id);
+                if (joinProject) {
+                  factoryStore.selectProject(joinProject);
+                  factoryStore.setScreen('projects');
+                }
+              }
+            })
+            .catch((e) => console.warn('Auto-join workspace error:', e));
+        } else {
+          // Not logged in: store pending invite and prompt login
+          localStorage.setItem('karkhana_pending_invite', JSON.stringify(pendingInvite));
+          factoryStore.setScreen('signin');
+        }
+      }
+    }
+
     return () => {
       unsubscribe();
     };
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // TRANSITION: DREAM / DIM-TO-APPEAR EFFECT
+  // ---------------------------------------------------------------------------
+  if (showDreamTransition) {
+    return (
+      <DreamTransitionScreen
+        workspaceName={pendingWorkspaceName}
+        onFinish={() => {
+          setShowDreamTransition(false);
+          factoryStore.setScreen('workspace_home');
+          setShowTutorial(true);
+        }}
+      />
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // EXPERIENCE A: THE PUBLIC WEBSITE (MARKETING & PRODUCT DISCOVERY)
@@ -45,32 +121,56 @@ export default function App() {
     state.currentScreen === 'solutions' ||
     state.currentScreen === 'research';
 
-  if (isMarketingScreen) {
+  if (isMarketingScreen && state.authStatus === 'guest') {
     return (
-      <>
-        <MarketingLandingPage
-          onGetStarted={() => factoryStore.startOnboarding()}
-          onSignIn={() => setAuthModalOpen(true)}
-        />
-        <AuthModal
-          isOpen={authModalOpen}
-          onClose={() => setAuthModalOpen(false)}
-          onStartOnboarding={() => factoryStore.startOnboarding()}
-          onSuccessAuth={() => factoryStore.setScreen('workspace_home')}
-        />
-      </>
+      <MarketingLandingPage
+        onGetStarted={() => factoryStore.setScreen('signin')}
+        onSignIn={() => factoryStore.setScreen('signin')}
+      />
     );
   }
 
   // ---------------------------------------------------------------------------
-  // PROGRESSIVE SLACK-STYLE ONBOARDING WIZARD
+  // UNIFIED EMAIL ENTRY & AUTHENTICATION SCREEN
   // ---------------------------------------------------------------------------
-  if (state.currentScreen === 'onboarding') {
+  if (state.currentScreen === 'signin' || (state.authStatus === 'guest' && !isMarketingScreen)) {
     return (
-      <OnboardingWizard
-        onComplete={() => factoryStore.setScreen('workspace_home')}
+      <AuthScreen
+        onSuccessAuthenticated={() => {
+          factoryStore.setScreen('workspace_chooser');
+        }}
         onCancel={() => factoryStore.setScreen('landing')}
       />
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // WORKSPACE CHOOSER & ENROLLED HUBS
+  // ---------------------------------------------------------------------------
+  if (state.currentScreen === 'workspace_chooser') {
+    return (
+      <>
+        <WorkspaceChooser
+          state={state}
+          onOpenWorkspace={(id, name) => {
+            factoryStore.switchWorkspace(id);
+            setPendingWorkspaceName(name);
+            setShowDreamTransition(true);
+          }}
+          onCreateNewWorkspace={() => setCreateWorkspaceModalOpen(true)}
+          onSignOut={() => factoryStore.signOut()}
+        />
+        <CreateWorkspaceModal
+          state={state}
+          isOpen={createWorkspaceModalOpen}
+          onClose={() => setCreateWorkspaceModalOpen(false)}
+          onWorkspaceCreated={(createdId, createdName) => {
+            setCreateWorkspaceModalOpen(false);
+            setPendingWorkspaceName(createdName);
+            setShowDreamTransition(true);
+          }}
+        />
+      </>
     );
   }
 
@@ -201,5 +301,13 @@ export default function App() {
     }
   };
 
-  return <AppShell state={state}>{renderCurrentView()}</AppShell>;
+  return (
+    <>
+      <AppShell state={state}>{renderCurrentView()}</AppShell>
+      <GuidedTutorialOverlay
+        isOpen={showTutorial}
+        onClose={() => setShowTutorial(false)}
+      />
+    </>
+  );
 }

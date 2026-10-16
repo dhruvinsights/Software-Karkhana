@@ -16,7 +16,7 @@ export function AuthFrame({ children, headline }: { children: React.ReactNode; h
   return (
     <div className="auth">
       <section className="auth-hero">
-        <Link to="/" className="brand" style={{ padding: 0 }}><span className="mark">K</span><b>Software Karkhana</b></Link>
+        <Link to="/" className="brand" style={{ padding: 0 }}><span className="mark"><img src="/logo.png" alt="Software Karkhana" width={22} height={22} style={{ objectFit: 'contain', display: 'block' }} /></span><b>Software Karkhana</b></Link>
         <h1>{headline}</h1>
         <p className="muted" style={{ maxWidth: '44ch' }}>One record from idea to merged code. Humans decide at every gate; agents do the typing.</p>
       </section>

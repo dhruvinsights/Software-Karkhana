@@ -19,7 +19,7 @@ export const BlurText: React.FC<BlurTextProps> = ({
   animateBy = 'words',
   direction = 'top',
   threshold = 0.1,
-  rootMargin = '-50px',
+  rootMargin = '0px',
   onAnimationComplete,
 }) => {
   const elements = animateBy === 'words' ? text.split(' ') : text.split('');
@@ -32,47 +32,31 @@ export const BlurText: React.FC<BlurTextProps> = ({
     const targets = el.querySelectorAll('.blur-unit');
     if (!targets.length) return;
 
-    const fromY = direction === 'top' ? -20 : 20;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            gsap.fromTo(
-              targets,
-              {
-                filter: 'blur(10px)',
-                opacity: 0,
-                y: fromY,
-              },
-              {
-                filter: 'blur(0px)',
-                opacity: 1,
-                y: 0,
-                duration: 0.6,
-                stagger: delay / 1000,
-                ease: 'power3.out',
-                onComplete: onAnimationComplete,
-              }
-            );
-            observer.unobserve(el);
-          }
-        });
+    gsap.fromTo(
+      targets,
+      {
+        filter: 'blur(4px)',
+        opacity: 0.4,
+        y: direction === 'top' ? -10 : 10,
       },
-      { threshold, rootMargin }
+      {
+        filter: 'blur(0px)',
+        opacity: 1,
+        y: 0,
+        duration: 0.4,
+        stagger: delay / 1000,
+        ease: 'power2.out',
+        onComplete: onAnimationComplete,
+      }
     );
-
-    observer.observe(el);
-
-    return () => observer.disconnect();
-  }, [text, delay, direction, threshold, rootMargin, onAnimationComplete]);
+  }, [text, delay, direction, onAnimationComplete]);
 
   return (
-    <p ref={ref} className={`inline-flex flex-wrap ${className}`}>
+    <p ref={ref} className={`inline-flex flex-wrap text-white font-medium ${className}`}>
       {elements.map((segment, i) => (
         <span
           key={i}
-          className="blur-unit inline-block will-change-transform will-change-filter will-change-opacity mr-[0.25em]"
+          className="blur-unit inline-block mr-[0.25em]"
         >
           {segment === ' ' ? '\u00A0' : segment}
         </span>

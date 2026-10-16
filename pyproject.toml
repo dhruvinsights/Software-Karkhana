@@ -26,6 +26,8 @@ dependencies = [
     "asyncpg>=0.30.0,<1.0.0",
     "pgvector>=0.3.6,<1.0.0",
     "httpx>=0.28,<1.0",
+    # Transactional email via Resend.
+    "resend>=2.0.0,<3.0.0",
     # The worker runs the demo repo's tests inside the same image.
     "pytest>=8.3.4,<9.0.0",
 ]

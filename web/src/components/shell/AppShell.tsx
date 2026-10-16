@@ -32,7 +32,9 @@ import { AICompanion } from './AICompanion';
 import { CommandPalette } from './CommandPalette';
 import { CreateProductModal } from '../workspace/CreateProductModal';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
+import { WorkspaceInviteModal } from '../workspace/WorkspaceInviteModal';
 import { LiquidEther } from '../reactbits/LiquidEther';
+import { UserPlus } from 'lucide-react';
 
 interface AppShellProps {
   state: FactoryState;
@@ -44,6 +46,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [createProductOpen, setCreateProductOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
@@ -93,12 +96,31 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#07070B] text-[#F6F5FA] antialiased font-sans select-none">
+      {/* Full-viewport LiquidEther background — covers sidebar + content */}
+      <LiquidEther
+        style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: 0 }}
+        colors={['#2a00ff', '#5300ff', '#b497cf']}
+        mouseForce={42}
+        cursorSize={55}
+        persistence={0.78}
+        autoDemo
+        autoSpeed={0.5}
+        autoIntensity={1.4}
+        intensity={1.6}
+        viscosity={0}
+        resolution={0.5}
+        clickBurst
+        bounceEdges={false}
+        intro
+        lightMode={false}
+      />
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <CreateProductModal isOpen={createProductOpen} onClose={() => setCreateProductOpen(false)} />
       <CreateProjectModal isOpen={createProjectOpen} onClose={() => setCreateProjectOpen(false)} state={state} />
+      <WorkspaceInviteModal isOpen={inviteModalOpen} onClose={() => setInviteModalOpen(false)} state={state} />
 
       {/* Dark Editorial Sidebar */}
-      <aside className="w-64 bg-[#0A0A0F] text-[#B5B1C0] flex flex-col shrink-0 border-r border-white/[0.08] z-20">
+      <aside className="w-64 bg-[#0A0A0F]/75 backdrop-blur-md text-[#B5B1C0] flex flex-col shrink-0 border-r border-white/[0.08] z-20">
         {/* Workspace Brand & Switcher Header - Pure typography, NO icon badge */}
         <div className="p-4 border-b border-white/[0.08]">
           <div className="mb-3 px-1 flex items-center justify-between">
@@ -209,20 +231,26 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
         {/* User Session Footer */}
         <div className="p-3 border-t border-white/[0.08] space-y-2 bg-[#0A0A0F]">
           <div className="flex items-center gap-2.5 p-2 rounded-xl bg-[#101016] border border-white/[0.06]">
-            <img
-              src={state.members[0]?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces'}
-              alt="Avatar"
-              className="w-8 h-8 rounded-lg object-cover ring-1 ring-white/10 shrink-0"
-            />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-xs text-white shrink-0">
+              {(state.currentUser?.display_name || state.members[0]?.name || 'U').charAt(0).toUpperCase()}
+            </div>
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold text-white truncate leading-tight">
-                {state.members[0]?.name || 'Sarah Chen'}
+                {state.currentUser?.display_name || state.members[0]?.name || 'Dhruv Chaturvedi'}
               </div>
               <div className="text-[10px] text-[#075BFF] font-mono truncate mt-0.5">
-                {activeRole.label}
+                {state.currentUser?.role ? state.currentUser.role.replace('_', ' ').toUpperCase() : activeRole.label}
               </div>
             </div>
           </div>
+
+          <button
+            onClick={() => setInviteModalOpen(true)}
+            className="w-full py-1.5 px-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Invite to Workspace</span>
+          </button>
 
           {/* Quick links */}
           <div className="flex items-center justify-between pt-1 px-1">
@@ -244,7 +272,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
       </aside>
 
       {/* Main Workspace Stage */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#07070B] relative">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Atmospheric Glow in background */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(7,91,255,0.06)_0%,_transparent_65%)]" />
 
@@ -274,6 +302,15 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-3">
+            {/* Invite Button in Topbar */}
+            <button
+              onClick={() => setInviteModalOpen(true)}
+              className="h-8 px-3 rounded-lg bg-[#101016] hover:bg-[#17151D] border border-white/[0.08] text-indigo-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Invite</span>
+            </button>
+
             {/* Create Dropdown */}
             <div className="relative">
               <button
@@ -380,13 +417,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
         {/* Viewport Workspace Content and Companion */}
         <div className="flex-1 flex overflow-hidden relative z-1">
-          {/* Subtle Liquid Ether Background Layer */}
-          <LiquidEther
-            opacity={0.25}
-            speed={0.4}
-            className="z-0"
-          />
-          <main className="flex-1 overflow-y-auto p-8 lg:p-10 min-w-0 bg-[#07070B]/85 backdrop-blur-sm text-[#F6F5FA] relative z-1">
+          <main className="flex-1 overflow-y-auto p-8 lg:p-10 min-w-0 bg-[#07070B]/80 backdrop-blur-sm text-[#F6F5FA] relative z-1">
             {children}
           </main>
           <AICompanion state={state} />

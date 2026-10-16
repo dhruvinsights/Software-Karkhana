@@ -38,7 +38,7 @@ export default function Shell() {
   return (
     <div className="app">
       <aside className="rail">
-        <NavLink to={home} className="brand"><span className="mark">K</span><span><b>Karkhana</b><small>{config?.runner} runner</small></span></NavLink>
+        <NavLink to={home} className="brand"><span className="mark"><img src="/logo.png" alt="Software Karkhana" width={22} height={22} style={{ objectFit: 'contain', display: 'block' }} /></span><span><b>Software Karkhana</b><small>{config?.runner} runner</small></span></NavLink>
         <nav className="nav" aria-label="Primary">
           {nav.pages.map((p) => <NavLink key={p.path} to={p.path}><NavIcon name={p.icon} />{p.label}</NavLink>)}
         </nav>
