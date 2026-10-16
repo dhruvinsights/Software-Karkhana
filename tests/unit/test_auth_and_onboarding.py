@@ -59,7 +59,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 
 @pytest.mark.asyncio
-async def test_send_and_verify_otp_flow():
+async def test_send_and_verify_otp_flow(monkeypatch):
+    monkeypatch.setenv("DEV_OTP_CODE", "424242")
+    monkeypatch.delenv("K_SERVICE", raising=False)
     # Test send OTP
     req = SendOTPRequest(email="test.pilot@enterprise.internal")
     resp = await send_otp(req)
@@ -67,7 +69,7 @@ async def test_send_and_verify_otp_flow():
     assert "expires_in" in resp
 
     # Test verify OTP with private bypass code and cache
-    code = "9068"
+    code = "424242"
 
     # Test verify OTP
     mock_session = AsyncMock()

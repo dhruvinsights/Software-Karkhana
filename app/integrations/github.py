@@ -251,11 +251,17 @@ class GitHub:
         comments: list[dict[str, Any]],
         summary: str = "",
         engine: str = "",
+        diff: str | None = None,
     ) -> int:
         """Posts inline review comments as a single GitHub PR Review object.
 
         Each entry in *comments* must have: ``path``, ``body``, ``severity``.
         Optional: ``line`` (positive int → RIGHT-side diff line).
+
+        When the PR's unified *diff* is given, every comment is first anchored to
+        a line that really exists in it. GitHub rejects the whole review (422)
+        if even one inline comment points outside the diff, so unanchorable
+        comments become file-level findings instead.
 
         Returns the GitHub review ID. Falls back to a plain issue comment when
         the diff position cannot be determined (e.g. new-file paths).
@@ -270,6 +276,11 @@ class GitHub:
             "Each must be triaged in Karkhana before merge.\n\n"
             "---"
         )
+
+        if diff:
+            from app.review.diff import anchor_dicts
+
+            comments = anchor_dicts(diff, comments)
 
         gh_comments = []
         fallback_lines = []
@@ -314,6 +325,12 @@ class GitHub:
             # Inline comments failed (e.g. diff not found) — retry without them.
             logger.warning("GitHub inline review rejected, retrying as body-only")
             payload.pop("comments")
+            payload["body"] += (
+                "\n\n**Findings (could not be anchored inline):**\n"
+                + "\n".join(
+                    f"- `{gc['path']}:{gc['line']}`: {gc['body']}" for gc in gh_comments
+                )
+            )
             r = await self._http.post(f"/pulls/{number}/reviews", json=payload)
         r.raise_for_status()
         return r.json().get("id", 0)

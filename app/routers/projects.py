@@ -21,15 +21,12 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger, memory, process
-from app.ai import evaluator
-from app.ai.errors import ModelError
+from app import access, ledger, process
 from app.auth import CurrentUser, require_role
-from app.db import get_session, sessionmaker
-from app.integrations import chat
+from app.db import get_session
 from app.models import (
     Approval,
     Epic,
@@ -39,9 +36,11 @@ from app.models import (
     PullRequest,
     Task,
     User,
+    WorkspaceMember,
 )
 from app.process import Event, Role
 from app.routers.common import advance_or_http, get_or_404
+from app.services.evaluation import run_evaluation
 from app.schemas import (
     ApprovalOut,
     BatchApprovalOut,
@@ -64,12 +63,16 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 @router.get("", response_model=list[ProjectOut])
 async def list_projects(
     session: Session,
-    _: CurrentUser,
+    user: CurrentUser,
     product_id: uuid.UUID | None = None,
     workspace_id: uuid.UUID | None = None,
 ) -> list[Project]:
-    """All projects, newest first, optionally filtered by product or workspace."""
-    stmt = select(Project).order_by(Project.created_at.desc())
+    """Projects the caller may see, newest first, optionally by product or workspace."""
+    stmt = (
+        select(Project)
+        .where(access.visible_projects(user))
+        .order_by(Project.created_at.desc())
+    )
     if product_id:
         stmt = stmt.where(Project.product_id == product_id)
     if workspace_id:
@@ -138,10 +141,12 @@ async def create_project(
 async def list_project_members(
     project_id: uuid.UUID,
     session: Session,
-    _: CurrentUser,
+    user: CurrentUser,
 ) -> list[dict]:
     """Lists all team members assigned to the project with their station permissions."""
     from app.models import ProjectMember, User
+
+    await access.get_visible_project(session, user, project_id)
     stmt = (
         select(ProjectMember, User)
         .join(User, User.id == ProjectMember.user_id)
@@ -157,11 +162,44 @@ async def list_project_members(
             "email": u.email,
             "role": pm.role,
             "stations": pm.stations or [],
+            "isLead": bool(pm.is_lead),
             "avatarUrl": u.avatar_url,
             "joinedAt": pm.joined_at.isoformat(),
         }
         for pm, u in rows
     ]
+
+
+@router.get("/{project_id}/access")
+async def project_access(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict:
+    """What the caller can see and do on this project (drives which stations the UI shows)."""
+    project = await get_or_404(session, Project, project_id)
+    return await access.my_access(session, user, project)
+
+
+@router.patch("/{project_id}/access")
+async def set_project_access(
+    project_id: uuid.UUID, payload: dict, session: Session, user: CurrentUser
+) -> dict:
+    """Switches a project between ``open`` (whole workspace) and ``restricted`` (its team)."""
+    project = await get_or_404(session, Project, project_id)
+    mine = await access.my_access(session, user, project)
+    if not mine["canManage"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the project lead or a manager can change access.")
+    mode = payload.get("access")
+    if mode not in (access.OPEN, access.RESTRICTED):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "access must be 'open' or 'restricted'.")
+    project.settings = {**(project.settings or {}), "access": mode}
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="project.access_changed",
+        subject_type="project",
+        subject_id=project.id,
+        project_id=project.id,
+        payload={"access": mode},
+    )
+    return await access.my_access(session, user, project)
 
 
 @router.post("/{project_id}/members")
@@ -171,7 +209,12 @@ async def add_project_member(
     session: Session,
     user: CurrentUser,
 ) -> dict:
-    """Assigns or updates a member's role and stations on the project."""
+    """Assigns or updates a member's role and stations on the project.
+
+    The project lead and manager roles can enrol anyone. A station lead can add
+    people to their own team only: same role, no station they lack themselves.
+    """
+    from app import idea_flow as rules
     from app.models import ProjectMember
     user_id_str = payload.get("user_id") or payload.get("userId")
     if not user_id_str:
@@ -179,6 +222,38 @@ async def add_project_member(
     target_user_id = uuid.UUID(str(user_id_str))
     role = payload.get("role", "developer")
     stations = payload.get("stations", ["product", "architecture", "developer", "qa", "devops", "security", "release"])
+
+    project = await get_or_404(session, Project, project_id)
+    caller = await session.scalar(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id, ProjectMember.user_id == user.id
+        )
+    )
+    is_project_lead = project.lead_id == user.id
+    my_role = await access.effective_role(session, user, project.workspace_id)
+    allowed, why = rules.can_add_member(
+        caller_role=my_role,
+        caller_is_project_lead=is_project_lead,
+        caller_member_is_lead=bool(caller and caller.is_lead),
+        caller_member_role=caller.role if caller else None,
+        caller_stations=(caller.stations or []) if caller else [],
+        new_role=role,
+        new_stations=stations,
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail=why)
+    if project.workspace_id is not None:
+        in_ws = await session.scalar(
+            select(WorkspaceMember.id).where(
+                WorkspaceMember.workspace_id == project.workspace_id,
+                WorkspaceMember.user_id == target_user_id,
+            )
+        )
+        if in_ws is None:
+            raise HTTPException(status_code=422, detail="That person is not a member of this workspace. Invite them first.")
+    # Only the project lead or a manager can mint more station leads.
+    may_set_lead = is_project_lead or my_role in rules.MANAGER_ROLES
+    wants_lead = bool(payload.get("is_lead") or payload.get("isLead")) and may_set_lead
 
     existing = await session.scalar(
         select(ProjectMember).where(
@@ -189,6 +264,8 @@ async def add_project_member(
     if existing:
         existing.role = role
         existing.stations = stations
+        if may_set_lead and ("is_lead" in payload or "isLead" in payload):
+            existing.is_lead = wants_lead
         session.add(existing)
         member = existing
     else:
@@ -198,6 +275,7 @@ async def add_project_member(
             user_id=target_user_id,
             role=role,
             stations=stations,
+            is_lead=wants_lead,
         )
         session.add(member)
 
@@ -209,6 +287,7 @@ async def add_project_member(
         "userId": str(target_user_id),
         "role": member.role,
         "stations": member.stations,
+        "isLead": bool(member.is_lead),
     }
 
 
@@ -237,117 +316,6 @@ async def reevaluate(
     await session.commit()
     background.add_task(run_evaluation, project.id)
     return {"status": "evaluating"}
-
-
-async def run_evaluation(project_id: uuid.UUID) -> None:
-    """Background job: retrieve memory, evaluate, validate, store, record."""
-    async with sessionmaker()() as session:
-        project = await session.get(Project, project_id)
-        if project is None:
-            return
-        try:
-            hits = await memory.retrieve(session, project.idea_text)
-            result = await evaluator.evaluate(
-                idea_text=project.idea_text,
-                project_name=project.name,
-                memory=memory.as_memory_items(hits),
-            )
-        except ModelError as exc:
-            await ledger.append(
-                session,
-                actor=ledger.Actor.ai("evaluator"),
-                action="evaluation.failed",
-                subject_type="project",
-                subject_id=project.id,
-                project_id=project.id,
-                payload={"error": str(exc)[:500]},
-            )
-            await session.commit()
-            logger.error("Evaluation failed for %s: %s", project_id, exc)
-            return
-
-        version = (
-            await session.scalar(
-                select(func.coalesce(func.max(Evaluation.version), 0)).where(
-                    Evaluation.project_id == project.id
-                )
-            )
-        ) + 1
-        out = result.output
-        evaluation = Evaluation(
-            project_id=project.id,
-            version=version,
-            payload=out.model_dump(mode="json"),
-            model=result.model,
-            memory_used=[
-                {"learning_id": str(lr.id), "similarity": round(sim, 3)}
-                for lr, _, sim in hits
-            ],
-        )
-        session.add(evaluation)
-
-        # Epics and stories are (re)drafted from the latest evaluation. They stay
-        # Draft until the director approves.
-        old_tasks = (
-            await session.scalars(select(Task).where(Task.project_id == project.id))
-        ).all()
-        if any(t.status != "draft" for t in old_tasks):
-            logger.info(
-                "Project %s already has live tasks; keeping the board", project.id
-            )
-        else:
-            for t in old_tasks:
-                await session.delete(t)
-            for e in (
-                await session.scalars(select(Epic).where(Epic.project_id == project.id))
-            ).all():
-                await session.delete(e)
-            await session.flush()
-            n = 0
-            for pos, ep in enumerate(out.epics):
-                epic = Epic(
-                    id=uuid.uuid4(),
-                    project_id=project.id,
-                    title=ep.title,
-                    description=ep.description,
-                    source_quote=ep.source_quote,
-                    position=pos,
-                )
-                session.add(epic)
-                for story in ep.stories:
-                    n += 1
-                    session.add(
-                        Task(
-                            project_id=project.id,
-                            epic_id=epic.id,
-                            key=f"KAR-{n}",
-                            title=story.title,
-                            description=ep.description,
-                            acceptance_criteria=story.acceptance_criteria,
-                            status="draft",
-                        )
-                    )
-        await session.flush()
-        await process.advance(
-            session,
-            project,
-            Event.EVALUATED,
-            actor=ledger.Actor.ai("evaluator"),
-            role=None,
-            payload={
-                "evaluation_version": version,
-                "score": out.score,
-                "epics": len(out.epics),
-                "schema_valid": True,
-                "source_quotes_verified": True,
-                "memory_citations": len(out.memory_citations),
-                "model": result.model,
-            },
-        )
-        await session.commit()
-    await chat.notify(
-        f"Karkhana: '{project.name}' was evaluated (score {out.score}/10). A director decision is needed."
-    )
 
 
 async def _citations(session: AsyncSession, out: EvaluationOutput) -> list[CitationOut]:
@@ -384,9 +352,9 @@ async def _citations(session: AsyncSession, out: EvaluationOutput) -> list[Citat
 
 
 @router.get("/{project_id}")
-async def get_project(project_id: uuid.UUID, session: Session, _: CurrentUser) -> dict:
+async def get_project(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict:
     """Everything a project screen needs in one call."""
-    project = await get_or_404(session, Project, project_id)
+    project = await access.get_visible_project(session, user, project_id)
     ev = await session.scalar(
         select(Evaluation)
         .where(Evaluation.project_id == project.id)

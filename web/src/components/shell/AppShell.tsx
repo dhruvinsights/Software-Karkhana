@@ -56,6 +56,29 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
   const [createProductOpen, setCreateProductOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+
+  // Which stations the signed-in person may use on the selected project.
+  // null = unknown or unrestricted, so nothing is hidden.
+  const [stationAccess, setStationAccess] = useState<{ stations: string[]; restricted: boolean } | null>(null);
+  useEffect(() => {
+    const pid = state.selectedProjectId;
+    const jwt = state.token;
+    if (!pid || !jwt || pid.length !== 36) {
+      setStationAccess(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/projects/${pid}/access`, { headers: { Authorization: `Bearer ${jwt}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((a) => {
+        if (cancelled) return;
+        setStationAccess(a ? { stations: a.stations as string[], restricted: a.access === 'restricted' } : null);
+      })
+      .catch(() => !cancelled && setStationAccess(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [state.selectedProjectId, state.token]);
   const [activityOpen, setActivityOpen] = useState(false);
 
   // Connect WebSocket when authenticated
@@ -103,19 +126,19 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
     {
       title: 'Build & Code',
       items: [
-        { id: 'developer_dashboard' as ScreenId, label: 'Engineering & Agents', icon: Terminal },
-        { id: 'pull_requests' as ScreenId, label: 'Pull Requests', icon: GitPullRequest, count: state.pullRequests.length },
-        { id: 'system_design' as ScreenId, label: 'System Architecture', icon: Workflow },
-        { id: 'prototype_studio' as ScreenId, label: 'Design System', icon: Cpu },
+        { station: 'developer', id: 'developer_dashboard' as ScreenId, label: 'Engineering & Agents', icon: Terminal },
+        { station: 'developer', id: 'pull_requests' as ScreenId, label: 'Pull Requests', icon: GitPullRequest, count: state.pullRequests.length },
+        { station: 'architecture', id: 'system_design' as ScreenId, label: 'System Architecture', icon: Workflow },
+        { station: 'design', id: 'prototype_studio' as ScreenId, label: 'Design System', icon: Cpu },
       ],
     },
     {
       title: 'Quality & Ops',
       items: [
-        { id: 'qa_dashboard' as ScreenId, label: 'QA Verification', icon: CheckCircle2 },
-        { id: 'security_dashboard' as ScreenId, label: 'Security & AppSec', icon: Shield, count: state.securityFindings.length },
-        { id: 'pipeline_studio' as ScreenId, label: 'CI/CD Pipelines', icon: Server },
-        { id: 'release_dashboard' as ScreenId, label: 'Releases & Canary', icon: Radio },
+        { station: 'qa', id: 'qa_dashboard' as ScreenId, label: 'QA Verification', icon: CheckCircle2 },
+        { station: 'security', id: 'security_dashboard' as ScreenId, label: 'Security & AppSec', icon: Shield, count: state.securityFindings.length },
+        { station: 'devops', id: 'pipeline_studio' as ScreenId, label: 'CI/CD Pipelines', icon: Server },
+        { station: 'release', id: 'release_dashboard' as ScreenId, label: 'Releases & Canary', icon: Radio },
       ],
     },
     {
@@ -151,6 +174,15 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <CreateProductModal isOpen={createProductOpen} onClose={() => setCreateProductOpen(false)} />
       <CreateProjectModal isOpen={createProjectOpen} onClose={() => setCreateProjectOpen(false)} state={state} />
+      {state.inviteNotice && (
+        <div
+          role="status"
+          style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 80, maxWidth: 480, padding: '12px 16px', borderRadius: 12, background: '#0f1a2e', border: '1px solid rgba(7,91,255,.5)', color: '#fff', fontSize: 13, display: 'flex', gap: 12, alignItems: 'center' }}
+        >
+          <span>{state.inviteNotice}</span>
+          <button onClick={() => factoryStore.dismissInviteNotice()} style={{ opacity: 0.7, cursor: 'pointer' }} aria-label="Dismiss">✕</button>
+        </div>
+      )}
       <WorkspaceInviteModal isOpen={inviteModalOpen} onClose={() => setInviteModalOpen(false)} state={state} />
 
       {/* Dark Editorial Sidebar */}
@@ -233,7 +265,12 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
               <div className="px-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
                 {section.title}
               </div>
-              {section.items.map((item) => {
+              {section.items
+                .filter((item) => {
+                  const st = (item as { station?: string }).station;
+                  return !(stationAccess?.restricted && st && !stationAccess.stations.includes(st));
+                })
+                .map((item) => {
                 const Icon = item.icon;
                 const isActive = state.currentScreen === item.id;
                 return (

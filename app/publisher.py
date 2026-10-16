@@ -26,14 +26,18 @@ or test remote) and the PR is recorded with a ``local://`` URL.
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
 import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from app.config import get_settings
 from app.integrations import github
+
+logger = logging.getLogger(__name__)
 
 MAX_PATCH_BYTES = 1_000_000
 
@@ -95,6 +99,9 @@ async def publish(
     tests_passed: bool,
     test_summary: str,
     review_markdown: str | None,
+    review_comments: list[dict[str, Any]] | None = None,
+    review_engine: str = "",
+    review_summary: str = "",
 ) -> Published:
     """Pushes the patch and opens the PR. Raises :class:`PublishError`."""
     if not patch.strip():
@@ -148,16 +155,32 @@ async def publish(
         await gh.set_status(
             sha=sha, passed=tests_passed, description=test_summary, target_url=pr.url
         )
-        if review_markdown:
-            # Try inline review first; fall back to body comment
+        if review_comments:
+            # Line-level threads in a single GitHub review, anchored to the diff.
             try:
-                from app.review.types import ReviewResult as _RR  # noqa: F401
-                # review_markdown is pre-formatted here; post as body comment only
-                # (inline review with line positions is only available via the
-                # rerun_review / run_complete paths where we have structured data)
+                await gh.post_inline_review(
+                    number=pr.number,
+                    head_sha=sha,
+                    comments=review_comments,
+                    summary=review_summary,
+                    engine=review_engine,
+                    diff=patch,
+                )
+            except Exception:
+                logger.warning(
+                    "Inline review failed for PR %s, falling back to a plain comment",
+                    pr.number,
+                )
+                if review_markdown:
+                    try:
+                        await gh.post_review(number=pr.number, body=review_markdown)
+                    except Exception:
+                        logger.warning("Plain review comment failed for PR %s", pr.number)
+        elif review_markdown:
+            try:
                 await gh.post_review(number=pr.number, body=review_markdown)
             except Exception:
-                pass
+                logger.warning("Review comment failed for PR %s", pr.number)
     finally:
         await gh.aclose()
     return Published(branch, pr.number, pr.url, sha, not tests_passed)

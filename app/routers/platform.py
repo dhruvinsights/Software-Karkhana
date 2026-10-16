@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger
+from app import access, ledger
 from app.auth import CurrentUser, require_role
 from app.db import get_session
 from app.models import (
@@ -118,9 +118,9 @@ async def stages(_: CurrentUser) -> list[StageOut]:
 
 
 @router.get("/projects/{project_id}/board")
-async def board(project_id: uuid.UUID, session: Session, _: CurrentUser) -> dict:
+async def board(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict:
     """Task board columns. Draft cards are shown separately until approval."""
-    await get_or_404(session, Project, project_id)
+    await access.get_visible_project(session, user, project_id)
     tasks = (
         await session.scalars(
             select(Task).where(Task.project_id == project_id).order_by(Task.key)

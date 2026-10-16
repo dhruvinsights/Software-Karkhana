@@ -36,6 +36,7 @@ import {
   Terminal,
   Info,
 } from 'lucide-react';
+import { PRDiffViewer } from './PRDiffViewer';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -943,6 +944,32 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Files changed, with the AI review's comments as inline threads */}
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <FileCode2 size={15} style={{ color: 'var(--accent)' }} />
+                <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  Files changed
+                </h3>
+              </div>
+              <PRDiffViewer
+                prId={selectedPrId!}
+                token={token}
+                reloadKey={(detail?.comments ?? []).map((c) => `${c.id}:${c.triage}`).join(',')}
+                renderComment={(c) => (
+                  <CommentCard
+                    comment={c}
+                    token={token}
+                    onTriaged={() => {
+                      fetch(`/api/tasks/${selectedPr?.task_id}/pr`, { headers: authHeaders() })
+                        .then((r) => (r.ok ? r.json() : null))
+                        .then((d) => d && setDetail(d));
+                    }}
+                  />
+                )}
+              />
             </div>
 
             {/* Merge blockers + merge button */}

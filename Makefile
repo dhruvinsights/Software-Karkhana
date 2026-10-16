@@ -25,10 +25,14 @@ web: ## Run the React dev server on :5173 (proxies /api to :8080)
 test: ## Unit + integration tests (integration needs `make db-local`)
 	uv run --group dev pytest -q
 
+arch: ## Enforce module boundaries (import-linter)
+	uv run --group dev lint-imports
+
 lint: ## ruff + codespell + TypeScript
 	uv run --group dev ruff check app tests
 	uv run --group dev ruff format --check app tests
 	uv run --group dev codespell
+	uv run --group dev lint-imports
 	cd web && npx tsc -b
 
 check-models: ## Phase 0: which Gemini models can this project call?

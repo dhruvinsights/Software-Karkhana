@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Copy, Check, Mail, Users } from 'lucide-react';
 import { factoryStore, FactoryState, ROLE_CONFIGS } from '../../store/factoryStore';
 import { FactoryRole } from '../../types/factory';
+import { createInvite } from '../../lib/invites';
 
 interface WorkspaceInviteModalProps {
   isOpen: boolean;
@@ -23,13 +24,13 @@ export const WorkspaceInviteModal: React.FC<WorkspaceInviteModalProps> = ({ isOp
   const [selectedRole, setSelectedRole] = useState<FactoryRole>('developer');
   const [copied, setCopied] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [generatedLink, setGeneratedLink] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'invite' | 'members'>('members');
 
   const currentWorkspace = state.workspace;
-  const inviteLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/?join_workspace=${currentWorkspace.id}&role=${selectedRole}`;
 
   const token = state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('karkhana_jwt_token') : null);
   const authHeaders: Record<string, string> = {
@@ -60,48 +61,45 @@ export const WorkspaceInviteModal: React.FC<WorkspaceInviteModalProps> = ({ isOp
 
   if (!isOpen) return null;
 
+  const canUseApi = !!token && currentWorkspace.id.includes('-') && currentWorkspace.id.length === 36;
+
   const handleCopyLink = async () => {
+    setInviteStatus(null);
+    if (!canUseApi || !token) {
+      setInviteStatus('Sign in to a real workspace to create invite links.');
+      return;
+    }
     try {
-      if (token && currentWorkspace.id.includes('-') && currentWorkspace.id.length === 36) {
-        await fetch(`/api/workspaces/${currentWorkspace.id}/invites`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({ role: selectedRole }),
-        });
-      }
-      await navigator.clipboard.writeText(inviteLink);
+      const inv = await createInvite(token, currentWorkspace.id, { role: selectedRole });
+      setGeneratedLink(inv.inviteLink);
+      await navigator.clipboard.writeText(inv.inviteLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
-    } catch {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
+    } catch (e) {
+      setInviteStatus((e as Error).message);
     }
   };
 
   const handleSendEmailInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
-    setIsSending(true);
     setInviteStatus(null);
+    if (!canUseApi || !token) {
+      setInviteStatus('Sign in to a real workspace to send invitations.');
+      return;
+    }
+    setIsSending(true);
     try {
-      if (token && currentWorkspace.id.includes('-') && currentWorkspace.id.length === 36) {
-        const res = await fetch(`/api/workspaces/${currentWorkspace.id}/invites`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({ email: email.trim(), role: selectedRole }),
-        });
-        if (res.ok) {
-          setInviteStatus(`✓ Invitation dispatched to ${email.trim()}`);
-        } else {
-          setInviteStatus(`Invite link generated for ${email.trim()}`);
-        }
+      const inv = await createInvite(token, currentWorkspace.id, { email: email.trim(), role: selectedRole });
+      if (inv.emailSent) {
+        setInviteStatus(`✓ Invitation emailed to ${inv.email}`);
       } else {
-        setInviteStatus(`Invite link generated for ${email.trim()}`);
+        await navigator.clipboard.writeText(inv.inviteLink).catch(() => undefined);
+        setInviteStatus(`Invite created for ${inv.email}, but the email could not be sent. The link is copied: share it directly.`);
       }
       setEmail('');
-    } catch {
-      setInviteStatus(`Invite link generated for ${email.trim()}`);
+    } catch (err) {
+      setInviteStatus((err as Error).message);
     } finally {
       setIsSending(false);
     }
@@ -236,7 +234,7 @@ export const WorkspaceInviteModal: React.FC<WorkspaceInviteModalProps> = ({ isOp
                 Invite Link
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input readOnly value={inviteLink} className="input" style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)' }} />
+                <input readOnly value={generatedLink} placeholder="Press Copy to create a link"  className="input" style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)' }} />
                 <button onClick={handleCopyLink} className="btn btn-ghost" style={{ flexShrink: 0 }}>
                   {copied ? <Check size={14} style={{ color: 'var(--accent)' }} /> : <Copy size={14} />}
                   {copied ? 'Copied' : 'Copy'}

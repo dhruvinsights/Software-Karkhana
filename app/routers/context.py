@@ -26,7 +26,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ledger
@@ -34,34 +33,11 @@ from app.auth import CurrentUser
 from app.db import get_session
 from app.models import ContextEntry, Project
 from app.routers.common import get_or_404
-from app.schemas import ContextIn, ContextNote, ContextOut
+from app.schemas import ContextIn, ContextOut
+from app.services.context_notes import recent
 
 router = APIRouter(prefix="/api/projects/{project_id}/context", tags=["context"])
 Session = Annotated[AsyncSession, Depends(get_session)]
-
-
-async def recent(
-    session: AsyncSession, project_id: uuid.UUID, limit: int = 12
-) -> list[ContextEntry]:
-    """Newest entries first."""
-    return list(
-        (
-            await session.scalars(
-                select(ContextEntry)
-                .where(ContextEntry.project_id == project_id)
-                .order_by(ContextEntry.created_at.desc())
-                .limit(limit)
-            )
-        ).all()
-    )
-
-
-def as_notes(entries: list[ContextEntry]) -> list[ContextNote]:
-    """Oldest first, the order an agent should read them."""
-    return [
-        ContextNote(kind=e.kind, title=e.title, body=e.body, author=e.author_label)
-        for e in reversed(entries)
-    ]
 
 
 @router.get("", response_model=list[ContextOut])

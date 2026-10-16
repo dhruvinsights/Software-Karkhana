@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   GitBranch,
   Layers,
@@ -27,9 +27,25 @@ interface PlanningRoadmapViewProps {
 export const PlanningRoadmapView: React.FC<PlanningRoadmapViewProps> = ({ state }) => {
   const [newIssueTitle, setNewIssueTitle] = useState('');
   const [newIssueType, setNewIssueType] = useState<Issue['type']>('story');
+  const [newIssuePriority, setNewIssuePriority] = useState<Issue['priority']>('P2');
+  const [newIssueAssignee, setNewIssueAssignee] = useState('');
+  const [issueError, setIssueError] = useState<string | null>(null);
+  const [people, setPeople] = useState<{ userId: string; name: string; email: string }[]>([]);
 
   const selectedProject = state.projects.find((p) => p.id === state.selectedProjectId) || state.projects[0];
   const projectIssues = state.issues.filter((i) => i.projectId === selectedProject?.id);
+
+  // Load the real issues and the people who can be assigned them.
+  useEffect(() => {
+    const pid = selectedProject?.id;
+    const jwt = state.token;
+    if (!pid || !jwt || pid.length !== 36) return;
+    void factoryStore.loadIssues(pid);
+    fetch(`/api/projects/${pid}/members`, { headers: { Authorization: `Bearer ${jwt}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setPeople(rows))
+      .catch(() => setPeople([]));
+  }, [selectedProject?.id, state.token]);
 
   const columns: { id: Issue['status']; title: string }[] = [
     { id: 'todo', title: 'To Do' },
@@ -38,18 +54,30 @@ export const PlanningRoadmapView: React.FC<PlanningRoadmapViewProps> = ({ state 
     { id: 'done', title: 'Done' },
   ];
 
-  const handleCreateIssue = (e: React.FormEvent) => {
+  const handleCreateIssue = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIssueTitle.trim()) return;
-
-    factoryStore.createIssue({
+    setIssueError(null);
+    const res = await factoryStore.createIssue({
       projectId: selectedProject?.id,
       title: newIssueTitle.trim(),
       type: newIssueType,
-      status: 'todo',
+      priority: newIssuePriority,
+      assigneeId: newIssueAssignee || undefined,
+      source: newIssueType === 'bug' ? 'qa' : 'manual',
     });
+    if (res.ok) {
+      setNewIssueTitle('');
+      setNewIssueAssignee('');
+    } else {
+      setIssueError(res.error ?? 'Could not create the issue.');
+    }
+  };
 
-    setNewIssueTitle('');
+  const changeIssue = async (id: string, patch: Parameters<typeof factoryStore.updateIssue>[1]) => {
+    setIssueError(null);
+    const res = await factoryStore.updateIssue(id, patch);
+    if (!res.ok) setIssueError(res.error ?? 'Could not update the issue.');
   };
 
   if (!selectedProject) {
@@ -109,6 +137,30 @@ export const PlanningRoadmapView: React.FC<PlanningRoadmapViewProps> = ({ state 
             <option value="story">Story</option>
             <option value="task">Task</option>
             <option value="bug">Bug</option>
+            <option value="chore">Chore</option>
+            <option value="security">Security</option>
+          </select>
+          <select
+            value={newIssuePriority}
+            onChange={(e) => setNewIssuePriority(e.target.value as Issue['priority'])}
+            className="text-xs p-2.5 bg-[#0a0c12] border border-white/10 rounded-xl outline-none focus:border-blue-500 text-slate-200 font-mono transition-colors"
+          >
+            <option value="P0">P0 Critical</option>
+            <option value="P1">P1 High</option>
+            <option value="P2">P2 Normal</option>
+            <option value="P3">P3 Low</option>
+          </select>
+          <select
+            value={newIssueAssignee}
+            onChange={(e) => setNewIssueAssignee(e.target.value)}
+            className="text-xs p-2.5 bg-[#0a0c12] border border-white/10 rounded-xl outline-none focus:border-blue-500 text-slate-200 transition-colors"
+          >
+            <option value="">Unassigned</option>
+            {people.map((p) => (
+              <option key={p.userId} value={p.userId}>
+                {p.name || p.email}
+              </option>
+            ))}
           </select>
           <input
             type="text"
@@ -125,12 +177,13 @@ export const PlanningRoadmapView: React.FC<PlanningRoadmapViewProps> = ({ state 
             + Create Issue
           </button>
         </form>
+        {issueError && <p className="text-[11px] text-red-400">{issueError}</p>}
       </GlassCard>
 
       {/* Kanban Board Columns */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {columns.map((col) => {
-          const colIssues = projectIssues.filter((i) => i.status === col.id);
+          const colIssues = projectIssues.filter((i) => i.status === col.id || (col.id === 'done' && i.status === 'wont_fix'));
           return (
             <div key={col.id} className="space-y-3 bg-[#0a0c12]/60 p-4 rounded-2xl border border-white/5">
               <div className="flex items-center justify-between pb-2 border-b border-white/5">
@@ -145,17 +198,36 @@ export const PlanningRoadmapView: React.FC<PlanningRoadmapViewProps> = ({ state 
                   <SpotlightCard key={issue.id} className="p-3.5 space-y-2 bg-[#0c0f18]/90 border border-white/10">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-mono uppercase text-blue-400">{issue.type}</span>
-                      <span className="text-[10px] font-mono text-slate-500">#{issue.id.slice(-4)}</span>
+                      <span className="flex items-center gap-2">
+                        <span className={`text-[10px] font-mono ${issue.priority === 'P0' || issue.priority === 'P1' ? 'text-red-400' : 'text-slate-400'}`}>{issue.priority}</span>
+                        <span className="text-[10px] font-mono text-slate-500">{issue.key ?? `#${issue.id.slice(-4)}`}</span>
+                      </span>
                     </div>
                     <div className="text-xs font-semibold text-white leading-snug">{issue.title}</div>
                     <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                      <span className="text-[10px] text-slate-400">{issue.assigneeId || 'Agent Pool'}</span>
+                      {people.length > 0 ? (
+                        <select
+                          value={issue.assigneeId}
+                          onChange={(e) => changeIssue(issue.id, { assigneeId: e.target.value || null })}
+                          className="max-w-[120px] text-[10px] bg-transparent text-slate-300 outline-none"
+                          aria-label="Assignee"
+                        >
+                          <option value="">Unassigned</option>
+                          {people.map((p) => (
+                            <option key={p.userId} value={p.userId}>
+                              {p.name || p.email}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">{issue.assigneeName || 'Unassigned'}</span>
+                      )}
                       {col.id !== 'done' && (
                         <button
                           onClick={() => {
                             const nextStatus: Issue['status'] =
                               col.id === 'todo' ? 'in_progress' : col.id === 'in_progress' ? 'in_review' : 'done';
-                            factoryStore.updateIssueStatus(issue.id, nextStatus);
+                            void changeIssue(issue.id, { status: nextStatus });
                           }}
                           className="text-[10px] text-blue-400 hover:text-blue-300 font-mono"
                         >

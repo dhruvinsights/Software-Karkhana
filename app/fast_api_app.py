@@ -26,7 +26,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +41,9 @@ from app.routers import (
     context,
     gemini,
     github_oauth,
+    idea_approvals,
+    invites,
+    issues,
     operations,
     platform,
     products,
@@ -49,6 +52,7 @@ from app.routers import (
     reviews,
     runs,
     workspace,
+    workspaces,
 )
 
 
@@ -98,6 +102,9 @@ def create_app() -> FastAPI:
         gemini.router,
         github_oauth.router,
         products.router,
+        idea_approvals.router,
+        invites.router,
+        issues.router,
         operations.router,
         projects.router,
         rag.router,
@@ -105,6 +112,7 @@ def create_app() -> FastAPI:
         reviews.router,
         platform.router,
         workspace.router,
+        workspaces.router,
         context.router,
     ):
         app.include_router(r)
@@ -133,6 +141,17 @@ def create_app() -> FastAPI:
             "reviewEngine": settings.review_engine,
         }
 
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
+
     @app.exception_handler(Exception)
     async def unhandled(_: Request, exc: Exception) -> JSONResponse:
         logging.getLogger("karkhana").exception("Unhandled error: %s", exc)
@@ -146,6 +165,9 @@ def create_app() -> FastAPI:
 
         @app.get("/{path:path}", include_in_schema=False)
         async def spa(path: str) -> FileResponse:
+            # An unknown API route is a 404, never the app shell with a 200.
+            if path.split("/", 1)[0] in ("api", "internal"):
+                raise HTTPException(status_code=404, detail="Not found")
             candidate = (static / path).resolve()
             if path and candidate.is_file() and static.resolve() in candidate.parents:  # noqa: ASYNC240 - stat on a local file
                 return FileResponse(candidate)

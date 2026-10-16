@@ -169,7 +169,9 @@ async def current_user(
                 email = claims["email"]
         else:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
-    elif x_dev_user:
+    elif x_dev_user and settings.auth_mode == "dev":
+        # The dev header is trusted only in dev mode. In any other mode it is
+        # ignored, so it can never be used to sign in as someone else.
         email = x_dev_user
     elif settings.auth_mode == "dev":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing authentication")

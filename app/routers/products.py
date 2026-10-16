@@ -185,6 +185,7 @@ async def list_ideas(
             "complexity": i.complexity,
             "tags": i.tags or [],
             "assessment": i.assessment,
+            "promotedProjectId": str(i.project_id) if i.project_id else None,
             "createdAt": i.created_at.isoformat(),
             "updatedAt": i.updated_at.isoformat() if i.updated_at else i.created_at.isoformat(),
         }
@@ -289,53 +290,6 @@ async def update_idea(
         "problemStatement": idea.problem_statement,
         "status": idea.status,
         "assessment": idea.assessment,
-    }
-
-
-@router.post("/api/ideas/{idea_id}/promote", status_code=status.HTTP_201_CREATED)
-async def promote_idea_to_project(
-    idea_id: str,
-    session: Session,
-    user: CurrentUser,
-) -> dict[str, Any]:
-    """Promotes a validated idea into an active engineering project."""
-    try:
-        idea_uuid = uuid.UUID(idea_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid idea ID.")
-
-    idea = await session.scalar(select(Idea).where(Idea.id == idea_uuid))
-    if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found.")
-
-    # Create project
-    project = Project(
-        id=uuid.uuid4(),
-        name=idea.title,
-        idea_text=f"{idea.problem_statement}\n\nExpected Value:\n{idea.expected_value}",
-        created_by=user.id,
-        stage="evaluate",
-        stage_status="submitted",
-    )
-    session.add(project)
-    idea.status = "approved"
-    session.add(idea)
-    await session.flush()
-
-    await ledger.append(
-        session,
-        actor=ledger.Actor.human(user),
-        action="idea.promoted",
-        subject_type="project",
-        subject_id=project.id,
-        payload={"idea_id": str(idea.id), "project_name": project.name},
-    )
-
-    return {
-        "status": "promoted",
-        "projectId": str(project.id),
-        "projectName": project.name,
-        "ideaId": str(idea.id),
     }
 
 

@@ -46,6 +46,7 @@ dev = [
     "ruff>=0.8.0,<1.0.0",
     "ty>=0.0.1a0",
     "codespell>=2.2.0,<3.0.0",
+    "import-linter>=2.1,<3.0",
 ]
 
 [project.optional-dependencies]
@@ -119,3 +120,85 @@ session_type = "in_memory"
 cicd_runner = "google_cloud_build"
 include_data_ingestion = false
 datastore = "none"
+
+# Architecture rules, enforced by `make arch` and CI (see docs/ARCHITECTURE.md).
+[tool.importlinter]
+root_package = "app"
+include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "Routers do not import each other (share code through app.services)"
+type = "independence"
+modules = [
+    "app.routers.auth",
+    "app.routers.workspaces",
+    "app.routers.workspace",
+    "app.routers.chat",
+    "app.routers.context",
+    "app.routers.gemini",
+    "app.routers.github_oauth",
+    "app.routers.idea_approvals",
+    "app.routers.invites",
+    "app.routers.issues",
+    "app.routers.operations",
+    "app.routers.platform",
+    "app.routers.products",
+    "app.routers.projects",
+    "app.routers.rag",
+    "app.routers.reviews",
+    "app.routers.runs",
+]
+
+[[tool.importlinter.contracts]]
+name = "Only the API layer may import routers"
+type = "forbidden"
+source_modules = [
+    "app.services",
+    "app.ai",
+    "app.review",
+    "app.agents",
+    "app.integrations",
+    "app.runner",
+    "app.worker",
+    "app.publisher",
+    "app.memory",
+    "app.models",
+    "app.schemas",
+    "app.ledger",
+    "app.process",
+    "app.idea_flow",
+    "app.invite_rules",
+    "app.issue_rules",
+    "app.otp",
+    "app.auth",
+    "app.db",
+    "app.config",
+    "app.access",
+]
+forbidden_modules = ["app.routers"]
+
+[[tool.importlinter.contracts]]
+name = "The kernel does not depend on features"
+type = "forbidden"
+source_modules = [
+    "app.models",
+    "app.schemas",
+    "app.ledger",
+    "app.process",
+    "app.idea_flow",
+    "app.otp",
+    "app.auth",
+    "app.db",
+    "app.config",
+    "app.access",
+]
+forbidden_modules = [
+    "app.services",
+    "app.ai",
+    "app.review",
+    "app.agents",
+    "app.integrations",
+    "app.runner",
+    "app.worker",
+    "app.publisher",
+]

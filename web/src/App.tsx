@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { factoryStore, FactoryState } from './store/factoryStore';
 import { AppShell } from './components/shell/AppShell';
+import { stashPendingInvite, takeInviteFromUrl } from './lib/invites';
 import { MarketingLandingPage } from './components/marketing/MarketingLandingPage';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { WorkspaceChooser } from './components/auth/WorkspaceChooser';
@@ -40,53 +41,14 @@ export default function App() {
     // 1. Initial Session Restore & Data Sync
     factoryStore.syncSessionFromServer();
 
-    // 2. Parse URL parameters for workspace/project invite links
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const joinWs = urlParams.get('join_workspace') || urlParams.get('invite_workspace');
-      const token = urlParams.get('token');
-      const role = urlParams.get('role');
-      const joinProject = urlParams.get('join_project');
-
-      if (joinWs || token || joinProject) {
-        const pendingInvite = {
-          workspaceId: joinWs,
-          token,
-          role: role || 'developer',
-          projectId: joinProject,
-        };
-
-        const currentToken = localStorage.getItem('karkhana_jwt_token');
-        if (currentToken) {
-          // If already authenticated, directly enroll
-          fetch('/api/workspaces/join', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${currentToken}`,
-            },
-            body: JSON.stringify({
-              workspace_id: joinWs,
-              token: token,
-              role: role || 'developer',
-            }),
-          })
-            .then((r) => r.json())
-            .then((data) => {
-              if (data.status === 'ok' && data.workspace) {
-                factoryStore.switchWorkspace(data.workspace.id);
-                if (joinProject) {
-                  factoryStore.selectProject(joinProject);
-                  factoryStore.setScreen('projects');
-                }
-              }
-            })
-            .catch((e) => console.warn('Auto-join workspace error:', e));
-        } else {
-          // Not logged in: store pending invite and prompt login
-          localStorage.setItem('karkhana_pending_invite', JSON.stringify(pendingInvite));
-          factoryStore.setScreen('signin');
-        }
+    // 2. Invite links: /?invite=TOKEN. Remember it, then accept once signed in.
+    const inviteToken = takeInviteFromUrl();
+    if (inviteToken) {
+      stashPendingInvite(inviteToken);
+      if (localStorage.getItem('karkhana_jwt_token')) {
+        void factoryStore.syncSessionFromServer().then(() => factoryStore.acceptPendingInvite());
+      } else {
+        factoryStore.setScreen('signin');
       }
     }
 

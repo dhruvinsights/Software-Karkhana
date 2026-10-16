@@ -16,6 +16,7 @@ import {
 import { factoryStore, FactoryState } from '../../store/factoryStore';
 import { Idea } from '../../types/factory';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
+import { IdeaApprovalPanel } from './IdeaApprovalPanel';
 import { GlassCard } from '../reactbits/GlassCard';
 import { GlassSurface } from '../reactbits/GlassSurface';
 import { ShinyText } from '../reactbits/ShinyText';
@@ -348,15 +349,24 @@ export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state })
                   )}
 
                   {/* Actions */}
-                  <div className="pt-2 flex items-center gap-3">
-                    <button
-                      onClick={() => factoryStore.promoteIdeaToProject(selectedIdea.id, `${selectedIdea.title} Service`)}
-                      className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-[#075BFF]/20"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Promote to Engineering Project</span>
-                    </button>
-                  </div>
+                  {state.token && state.currentUser ? (
+                    <IdeaApprovalPanel
+                      idea={selectedIdea}
+                      token={state.token}
+                      workspaceId={state.activeWorkspaceId}
+                      currentUserId={state.currentUser.id}
+                    />
+                  ) : (
+                    <div className="pt-2 flex items-center gap-3">
+                      <button
+                        onClick={() => void factoryStore.promoteIdeaToProject(selectedIdea.id, `${selectedIdea.title} Service`)}
+                        className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-[#075BFF]/20"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Promote to Engineering Project (demo)</span>
+                      </button>
+                    </div>
+                  )}
                 </SpotlightCard>
               )}
             </div>

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 

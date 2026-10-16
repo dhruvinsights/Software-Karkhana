@@ -116,13 +116,8 @@ async def test_golden_path(client, fakes):
     fake, backend = fakes
     idea = IDEAS["discounts"]
 
-    # A2: only a PM can submit.
-    r = await client.post(
-        "/api/projects",
-        json={"name": idea["name"], "idea_text": idea["idea_text"]},
-        headers=as_(DEV),
-    )
-    assert r.status_code == 403
+    # A2: any signed-in team member may submit (access to the result is governed
+    # by workspace membership and project stations, see test_project_access).
     r = await client.post(
         "/api/projects",
         json={"name": idea["name"], "idea_text": idea["idea_text"]},

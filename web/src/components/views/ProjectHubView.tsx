@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createInvite } from '../../lib/invites';
 import {
   FolderGit2,
   Plus,
@@ -69,6 +70,9 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   const token = state.token ?? '';
 
   const [copiedProjectLink, setCopiedProjectLink] = useState(false);
+  const [projectInviteError, setProjectInviteError] = useState<string | null>(null);
+  const [inviteStations, setInviteStations] = useState<string[]>([]);
+  const [accessInfo, setAccessInfo] = useState<{ access: string; canManage: boolean } | null>(null);
   const [inviteRole, setInviteRole] = useState<FactoryRole>('developer');
 
   const selectedProject = state.projects.find((p) => p.id === state.selectedProjectId) || state.projects[0];
@@ -154,12 +158,56 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
     setMentionQuery(null);
   };
 
-  const handleCopyProjectInvite = () => {
+  const STATION_LABELS: Record<string, string> = {
+    product: 'Product', design: 'Design', architecture: 'Architecture', developer: 'Developer',
+    qa: 'QA', devops: 'DevOps', security: 'Security', release: 'Release',
+  };
+
+  useEffect(() => {
+    const pid = selectedProject?.id;
+    if (!pid || !token || pid.length !== 36) {
+      setAccessInfo(null);
+      return;
+    }
+    fetch(`/api/projects/${pid}/access`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((a) => setAccessInfo(a ? { access: a.access, canManage: a.canManage } : null))
+      .catch(() => setAccessInfo(null));
+  }, [selectedProject?.id, token]);
+
+  const toggleProjectAccess = async () => {
+    if (!selectedProject || !accessInfo) return;
+    setProjectInviteError(null);
+    const next = accessInfo.access === 'restricted' ? 'open' : 'restricted';
+    const res = await fetch(`/api/projects/${selectedProject.id}/access`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ access: next }),
+    });
+    if (res.ok) {
+      const a = await res.json();
+      setAccessInfo({ access: a.access, canManage: a.canManage });
+    } else {
+      const j = await res.json().catch(() => ({}));
+      setProjectInviteError(typeof j.detail === 'string' ? j.detail : 'Could not change access.');
+    }
+  };
+
+  const handleCopyProjectInvite = async () => {
     if (!selectedProject) return;
-    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/?join_project=${selectedProject.id}&role=${inviteRole}`;
-    navigator.clipboard.writeText(url);
-    setCopiedProjectLink(true);
-    setTimeout(() => setCopiedProjectLink(false), 3000);
+    setProjectInviteError(null);
+    try {
+      const inv = await createInvite(token, state.activeWorkspaceId, {
+        role: inviteRole,
+        project_id: selectedProject.id,
+        stations: inviteStations.length ? inviteStations : undefined,
+      });
+      await navigator.clipboard.writeText(inv.inviteLink);
+      setCopiedProjectLink(true);
+      setTimeout(() => setCopiedProjectLink(false), 3000);
+    } catch (e) {
+      setProjectInviteError((e as Error).message);
+    }
   };
 
   if (state.projects.length === 0) {
@@ -650,9 +698,46 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
                 )}
               </button>
             </div>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(STATION_LABELS).map(([id, label]) => {
+                const on = inviteStations.includes(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setInviteStations((s) => (on ? s.filter((x) => x !== id) : [...s, id]))}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors cursor-pointer ${
+                      on ? 'bg-indigo-600/30 border-indigo-400 text-white' : 'border-white/[0.1] text-[#827D8E]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
             <p className="text-[11px] text-[#827D8E]">
-              Anyone with this link joining the workspace will be immediately enrolled into this project with the chosen station permissions.
+              {inviteStations.length ? 'They will only see the selected stations.' : 'No station selected: they get the default stations for their role.'}
             </p>
+            {accessInfo && (
+              <div className="flex items-center justify-between rounded-xl border border-white/[0.08] px-3.5 py-2.5">
+                <div className="text-[12px] text-white">
+                  {accessInfo.access === 'restricted' ? 'Restricted to the project team' : 'Open to the whole workspace'}
+                </div>
+                {accessInfo.canManage && (
+                  <button
+                    type="button"
+                    onClick={toggleProjectAccess}
+                    className="text-[11px] px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-white cursor-pointer"
+                  >
+                    {accessInfo.access === 'restricted' ? 'Open to workspace' : 'Restrict to team'}
+                  </button>
+                )}
+              </div>
+            )}
+            <p className="text-[11px] text-[#827D8E]">
+              Anyone who opens this link and signs in joins the workspace and this project with the chosen role. The link works for 14 days.
+            </p>
+            {projectInviteError && <p className="text-[11px] text-red-400">{projectInviteError}</p>}
           </GlassCard>
 
           {/* Assigned Workspace Members */}

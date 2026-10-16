@@ -111,10 +111,30 @@ class Idea(Base):
     complexity: Mapped[str] = mapped_column(String, default="Medium")
     tags: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     assessment: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class IdeaApproval(Base):
+    """One reviewer's decision on an idea (all assigned reviewers must approve)."""
+
+    __tablename__ = "idea_approvals"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    idea_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ideas.id", ondelete="CASCADE"))
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    requested_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String, default="pending")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Project(Base):
@@ -131,6 +151,9 @@ class Project(Base):
     stage: Mapped[str] = mapped_column(String, default="evaluate")
     stage_status: Mapped[str] = mapped_column(String, default="submitted")
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    idea_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ideas.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -149,6 +172,14 @@ class WorkspaceInvite(Base):
     token: Mapped[str] = mapped_column(String, unique=True)
     status: Mapped[str] = mapped_column(String, default="pending")
     created_at: Mapped[dt.datetime] = _now()
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    stations: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    is_lead: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    accepted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProjectMember(Base):
@@ -163,6 +194,7 @@ class ProjectMember(Base):
         JSONB,
         default=lambda: ["product", "architecture", "developer", "qa", "devops", "security", "release"],
     )
+    is_lead: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[dt.datetime] = _now()
 
 
@@ -439,3 +471,26 @@ class ActivityEvent(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = _now()
+
+
+class Issue(Base):
+    """An issue or bug raised on a project and assigned to whoever fixes it."""
+
+    __tablename__ = "issues"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    number: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(String, default="task")
+    priority: Mapped[str] = mapped_column(String, default="P2")
+    status: Mapped[str] = mapped_column(String, default="todo")
+    source: Mapped[str] = mapped_column(String, default="manual")
+    labels: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    reporter_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    pr_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pull_requests.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = _now()
+    closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

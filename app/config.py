@@ -131,6 +131,8 @@ class Settings(BaseSettings):
     # Set RESEND_API_KEY in .env locally or via Secret Manager on Cloud Run.
     # EMAIL_FROM must use a domain verified in your Resend dashboard.
     resend_api_key: str | None = Field(default=None, repr=False)
+    # Public base URL of the app, used in invite emails (APP_URL).
+    app_url: str | None = None
     email_from: str = "onboarding@visiarise.com"
     email_from_team: str = "team@visiarise.com"
 

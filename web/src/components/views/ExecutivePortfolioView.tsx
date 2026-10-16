@@ -27,7 +27,7 @@ export const ExecutivePortfolioView: React.FC<ExecutivePortfolioViewProps> = ({ 
 
   // Derive real approvals from staged releases and evaluating ideas
   const pendingReleases = state.releases.filter((r) => r.status === 'ready' || r.status === 'in_review');
-  const evaluatingIdeas = state.ideas.filter((i) => i.status === 'draft' || i.status === 'evaluating');
+  const evaluatingIdeas = state.ideas.filter((i) => i.status === 'draft' || i.status === 'evaluating' || i.status === 'pending_approval' || i.status === 'approved');
 
   const pendingApprovals = [
     ...pendingReleases.map((rel) => ({
@@ -49,9 +49,13 @@ export const ExecutivePortfolioView: React.FC<ExecutivePortfolioViewProps> = ({ 
       project: state.products.find((p) => p.id === idea.productId)?.name || 'Product Core',
       impact: idea.expectedValue,
       status: 'Action Needed',
-      onApprove: () => {
-        factoryStore.promoteIdeaToProject(idea.id, `${idea.title} Service`);
-        setSuccessNotice(`Promoted "${idea.title}" to active project.`);
+      onApprove: async () => {
+        const res = await factoryStore.promoteIdeaToProject(idea.id, `${idea.title} Service`);
+        setSuccessNotice(
+          res.ok
+            ? `Promoted "${idea.title}" to active project.`
+            : `Could not promote "${idea.title}": ${res.error}`,
+        );
       },
     })),
   ];
