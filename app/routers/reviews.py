@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, ledger, memory, process
-from app.auth import require_role
+from app.auth import CurrentUser
 from app.db import get_session
 from app.integrations import github
 from app.models import Project, PullRequest, ReviewComment, Run, Task, User
@@ -36,8 +36,10 @@ from app.schemas import CommentOut, LearningOut, PullRequestOut, TriageIn
 
 router = APIRouter(prefix="/api", tags=["reviews"])
 Session = Annotated[AsyncSession, Depends(get_session)]
-Dev = Annotated[User, Depends(require_role(Role.DEVELOPER, Role.LEAD))]
-AnyRole = Annotated[User, Depends(require_role(*Role))]
+# Authority is checked per project in ``_guard_task`` (workspace role + station).
+Dev = CurrentUser
+AnyRole = CurrentUser
+DEV_ROLES = (Role.DEVELOPER, Role.LEAD)
 
 
 def merge_blockers(pr: PullRequest, comments: list[ReviewComment]) -> list[str]:
@@ -72,10 +74,18 @@ async def _pr_out(session: AsyncSession, pr: PullRequest) -> PullRequestOut:
     return out
 
 
-async def _guard_task(session: AsyncSession, user: User, task_id: uuid.UUID) -> None:
-    """Only people on the developer or QA station of the task's project reach its PRs."""
+async def _guard_task(
+    session: AsyncSession, user: User, task_id: uuid.UUID, *roles: str
+) -> None:
+    """Only people on the developer or QA station of the task's project reach its PRs.
+
+    With ``roles``, the caller must also hold one of them in the project's
+    workspace (for example developer/lead to triage or merge).
+    """
     task = await get_or_404(session, Task, task_id)
     project = await get_or_404(session, Project, task.project_id)
+    if roles:
+        await access.require_project_role(session, user, project, *roles)
     await access.ensure_station(session, user, project, "developer", "qa")
 
 
@@ -101,7 +111,7 @@ async def triage(
     """Developer marks an AI comment Valid or Dismissed (a reason is required to dismiss)."""
     comment = await get_or_404(session, ReviewComment, comment_id)
     pr = await get_or_404(session, PullRequest, comment.pr_id)
-    await _guard_task(session, user, pr.task_id)
+    await _guard_task(session, user, pr.task_id, *DEV_ROLES)
     if pr.status != "open":
         raise HTTPException(status.HTTP_409_CONFLICT, "PR is no longer open")
     reason = (body.reason or "").strip() or None
@@ -129,7 +139,7 @@ async def triage(
 async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
     """Merges on GitHub only when every blocker is cleared, then captures a learning."""
     pr = await get_or_404(session, PullRequest, pr_id)
-    await _guard_task(session, user, pr.task_id)
+    await _guard_task(session, user, pr.task_id, *DEV_ROLES)
     comments = list(
         (
             await session.scalars(
@@ -211,7 +221,7 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
     )
     if pr is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "PullRequest not found")
-    await _guard_task(session, user, pr.task_id)
+    await _guard_task(session, user, pr.task_id, *DEV_ROLES)
     if pr.status != "open":
         raise HTTPException(status.HTTP_409_CONFLICT, "PR is not open")
     if pr.reviewed_at is not None:

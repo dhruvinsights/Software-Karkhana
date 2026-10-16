@@ -33,7 +33,7 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel
 
-from app import db, ledger, otp
+from app import access, db, ledger, otp
 from app.auth import CurrentUser, create_token, hash_password, verify_password
 from app.models import User
 from app.schemas import (
@@ -290,7 +290,7 @@ async def verify_otp(
             id=uuid.uuid4(),
             email=email_clean,
             display_name=display_name,
-            role="product_manager",
+            role=access.DEFAULT_ACCOUNT_ROLE,
             hashed_password=None,
             is_active=True,
             is_verified=True,
@@ -353,7 +353,7 @@ async def google_auth(
             id=uuid.uuid4(),
             email=email,
             display_name=display_name,
-            role="product_manager",
+            role=access.DEFAULT_ACCOUNT_ROLE,
             hashed_password=None,
             avatar_url=avatar_url,
             is_active=True,
@@ -501,7 +501,7 @@ async def github_auth(
             id=uuid.uuid4(),
             email=email,
             display_name=display_name,
-            role="developer",
+            role=access.DEFAULT_ACCOUNT_ROLE,
             hashed_password=None,
             avatar_url=avatar_url,
             is_active=True,
@@ -548,12 +548,12 @@ async def signup(
             detail="An account with this email address already exists.",
         )
 
-    # Allowed roles
+    # The account role is only a label (authority comes from workspace
+    # membership), and a self-chosen label may never claim a manager role.
     role = payload.role if payload.role in (
-        "product_manager", "pm", "executive", "director", "developer", "lead",
-        "designer", "architect", "qa", "security", "devops", "release_manager",
-        "support", "admin"
-    ) else "product_manager"
+        "developer", "designer", "architect", "qa", "security", "devops",
+        "release_manager", "support",
+    ) else access.DEFAULT_ACCOUNT_ROLE
 
     user = User(
         id=uuid.uuid4(),

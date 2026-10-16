@@ -34,7 +34,7 @@ import uuid
 from sqlalchemy import select
 
 from app import db, ledger
-from app.models import Learning, Project, User
+from app.models import Learning, Project, User, Workspace, WorkspaceMember
 
 ROLES = [
     ("pm", "Priya (PM)"),
@@ -42,6 +42,11 @@ ROLES = [
     ("developer", "Aman (Developer)"),
     ("lead", "Vikram (Lead)"),
 ]
+
+# Every seeded account is a member of this workspace with its demo role. Roles
+# are granted per workspace (``WorkspaceMember.role``), never by ``User.role``.
+DEMO_WORKSPACE_SLUG = "karkhana-demo"
+DEMO_WORKSPACE_NAME = "Karkhana Demo"
 
 HISTORY_LEARNING = (
     "Money must be computed with Decimal and rounded once per amount with ROUND_HALF_UP "
@@ -70,6 +75,9 @@ async def seed(domain: str, firebase: bool, history: bool) -> None:
             elif u.role != role:
                 u.role = role
                 print(f"team user {email} role -> {role}")
+        team = []
+        for email, role, _name in team_users():
+            team.append((await s.scalar(select(User).where(User.email == email)), role))
         users = {}
         for role, name in ROLES:
             email = f"{role}@{domain}"
@@ -81,6 +89,40 @@ async def seed(domain: str, firebase: bool, history: bool) -> None:
             users[role] = u
         await s.flush()
 
+        ws = await s.scalar(select(Workspace).where(Workspace.slug == DEMO_WORKSPACE_SLUG))
+        if ws is None:
+            ws = Workspace(
+                id=uuid.uuid4(),
+                name=DEMO_WORKSPACE_NAME,
+                slug=DEMO_WORKSPACE_SLUG,
+                domain=f"{DEMO_WORKSPACE_SLUG}.internal",
+                created_by=users["pm"].id,
+            )
+            s.add(ws)
+            await s.flush()
+            print(f"workspace {DEMO_WORKSPACE_SLUG}")
+        members = [(users[r], r) for r, _ in ROLES] + [(u, r) for u, r in team if u]
+        for u, role in members:
+            m = await s.scalar(
+                select(WorkspaceMember).where(
+                    WorkspaceMember.workspace_id == ws.id, WorkspaceMember.user_id == u.id
+                )
+            )
+            if m is None:
+                s.add(
+                    WorkspaceMember(
+                        id=uuid.uuid4(),
+                        workspace_id=ws.id,
+                        user_id=u.id,
+                        role=role,
+                        # The demo PM owns the workspace, so it stays their default.
+                        is_owner=u.id == users["pm"].id,
+                    )
+                )
+            elif m.role != role:
+                m.role = role
+        await s.flush()
+
         if history and not await s.scalar(
             select(Learning).where(Learning.text == HISTORY_LEARNING)
         ):
@@ -89,6 +131,7 @@ async def seed(domain: str, firebase: bool, history: bool) -> None:
             p = Project(
                 id=uuid.uuid4(),
                 name="Ledgerline reconciliation (archived)",
+                workspace_id=ws.id,
                 idea_text="Archived project used to seed project memory.",
                 created_by=users["pm"].id,
                 stage="feedback",

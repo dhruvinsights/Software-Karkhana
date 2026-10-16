@@ -69,24 +69,114 @@ def decide(
     return True, ""
 
 
-async def effective_role(session: AsyncSession, user: Any, workspace_id: uuid.UUID | None) -> str:
-    """The role that counts for permissions: the one held *in that workspace*.
+# The account-level role new sign-ups get. ``User.role`` is only a display
+# label and the default for workspaces a person creates; it grants nothing.
+DEFAULT_ACCOUNT_ROLE = "support"
 
-    A person's account-level role is only a starting label (everyone who signs
-    in is provisioned with one), so it never grants authority by itself. In a
-    workspace the owner counts as a manager; a non-member has no role (``""``).
-    Without a workspace (legacy projects) the account role is all there is.
-    """
+
+async def workspace_member(
+    session: AsyncSession, user: Any, workspace_id: uuid.UUID | None
+) -> WorkspaceMember | None:
+    """The caller's membership row in ``workspace_id``, or ``None``."""
     if workspace_id is None:
-        return user.role or ""
-    member = await session.scalar(
+        return None
+    return await session.scalar(
         select(WorkspaceMember).where(
             WorkspaceMember.workspace_id == workspace_id, WorkspaceMember.user_id == user.id
         )
     )
+
+
+def _member_role(member: WorkspaceMember | None) -> str:
     if member is None:
         return ""
-    return "pm" if member.is_owner else (member.role or "")
+    role = member.role or ""
+    # The owner always counts as at least a manager of their own workspace.
+    if member.is_owner and role not in MANAGER_ROLES:
+        return "pm"
+    return role
+
+
+async def effective_role(session: AsyncSession, user: Any, workspace_id: uuid.UUID | None) -> str:
+    """The role that counts for permissions: the one held *in that workspace*.
+
+    ``User.role`` (the account label) never grants authority. A non-member
+    has no role (``""``), and so does everyone on a resource with no workspace:
+    such legacy rows are not governed by anyone's self-chosen label.
+    """
+    return _member_role(await workspace_member(session, user, workspace_id))
+
+
+# Clearer name for new call sites; same function.
+workspace_role = effective_role
+
+
+async def require_workspace_role(
+    session: AsyncSession, user: Any, workspace_id: uuid.UUID | None, *roles: str
+) -> str:
+    """Returns the caller's role in ``workspace_id``; 403 unless it is one of ``roles``."""
+    role = await effective_role(session, user, workspace_id)
+    allowed = {str(r) for r in roles}
+    if role not in allowed:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Requires role in this workspace: {', '.join(sorted(allowed))}",
+        )
+    return role
+
+
+async def require_project_role(
+    session: AsyncSession, user: Any, project: Project, *roles: str
+) -> str:
+    """403 unless the caller holds one of ``roles`` in the project's workspace.
+
+    This replaces the old global ``require_role``: being a director in one
+    workspace grants nothing in another.
+    """
+    return await require_workspace_role(session, user, project.workspace_id, *roles)
+
+
+async def primary_workspace_id(session: AsyncSession, user: Any) -> uuid.UUID | None:
+    """The workspace shown by default: owned first, then the earliest joined."""
+    return await session.scalar(
+        select(WorkspaceMember.workspace_id)
+        .where(WorkspaceMember.user_id == user.id)
+        .order_by(WorkspaceMember.is_owner.desc(), WorkspaceMember.joined_at.asc())
+        .limit(1)
+    )
+
+
+async def resolve_workspace(
+    session: AsyncSession, user: Any, requested: uuid.UUID | None
+) -> uuid.UUID:
+    """The workspace a new project or idea goes into.
+
+    An explicit workspace must be one the caller belongs to; without one the
+    caller's primary workspace is used. Nothing is created outside a workspace.
+    """
+    if requested is not None:
+        if await workspace_member(session, user, requested) is None:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "You are not a member of that workspace."
+            )
+        return requested
+    ws = await primary_workspace_id(session, user)
+    if ws is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Create or join a workspace first.",
+        )
+    return ws
+
+
+async def display_role(session: AsyncSession, user: Any) -> str:
+    """Role label for navigation: the one held in the primary workspace.
+
+    For UI only. Server-side checks always use the resource's workspace.
+    """
+    ws = await primary_workspace_id(session, user)
+    member = await workspace_member(session, user, ws)
+    return (member.role if member else None) or user.role or DEFAULT_ACCOUNT_ROLE
 
 
 async def _is_privileged(session: AsyncSession, user: Any, project: Project) -> bool:
