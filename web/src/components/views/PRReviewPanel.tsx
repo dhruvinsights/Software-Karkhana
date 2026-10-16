@@ -152,7 +152,7 @@ function DeviceFlowModal({
   onDismiss,
 }: {
   token: string;
-  onGranted: (ghToken: string) => void;
+  onGranted: () => void;
   onDismiss: () => void;
 }) {
   const [flow, setFlow] = useState<DeviceFlow | null>(null);
@@ -188,10 +188,11 @@ function DeviceFlowModal({
             { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
           );
           const data = await res.json();
-          if (data.status === 'granted' && data.token) {
+          // The token is stored encrypted server-side and never sent back.
+          if (data.status === 'granted') {
             stopped = true;
             setPolling(false);
-            onGranted(data.token);
+            onGranted();
             return;
           }
           if (data.status === 'error') {
@@ -429,7 +430,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDeviceFlow, setShowDeviceFlow] = useState(false);
-  const [sessionGhToken, setSessionGhToken] = useState<string | null>(null);
+  const [ghConnected, setGhConnected] = useState(false);
   const [showAddPR, setShowAddPR] = useState(false);
   const [newPrBranch, setNewPrBranch] = useState('');
   const [newPrTitle, setNewPrTitle] = useState('');
@@ -437,7 +438,6 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
   const authHeaders = (extra?: Record<string, string>) => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
-    ...(sessionGhToken ? { 'X-GitHub-Token': sessionGhToken } : {}),
     ...extra,
   });
 
@@ -457,7 +457,14 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
     } finally {
       setLoading(false);
     }
-  }, [projectId, token, sessionGhToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, token, ghConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetch('/api/github/auth/status', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setGhConnected(Boolean(d.connected || d.server_token)); })
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     fetchPrs();
@@ -566,7 +573,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
       {showDeviceFlow && (
         <DeviceFlowModal
           token={token}
-          onGranted={(t) => { setSessionGhToken(t); setShowDeviceFlow(false); }}
+          onGranted={() => { setGhConnected(true); setShowDeviceFlow(false); }}
           onDismiss={() => setShowDeviceFlow(false)}
         />
       )}
@@ -649,7 +656,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
         )}
 
         {/* Authenticate button when no GH config */}
-        {!sessionGhToken && (
+        {!ghConnected && (
           <button
             onClick={() => setShowDeviceFlow(true)}
             className="btn btn-ghost"
