@@ -55,6 +55,22 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
   const activeProduct = state.products.find((p) => p.id === state.selectedProductId) || state.products[0];
   const activeProject = state.projects.find((p) => p.id === state.selectedProjectId) || state.projects[0];
 
+  // Map screenId → display label for the breadcrumb
+  const SCREEN_LABELS: Partial<Record<ScreenId, string>> = {
+    workspace_home: 'Overview', products: 'Products', product_detail: 'Product Detail',
+    ideas: 'Idea Lab', idea_detail: 'Idea Detail', idea_generate: 'AI Brainstorm',
+    projects: 'Project Hub', project_detail: 'Project Detail',
+    approvals: 'Approvals', portfolio: 'Portfolio',
+    roadmap: 'Roadmap', epics: 'Epics', issues: 'Issues', board: 'Sprint Board',
+    developer_dashboard: 'Engineering & Agents', pull_requests: 'Pull Requests',
+    system_design: 'System Architecture', adrs: 'ADRs', prototype_studio: 'Design System',
+    qa_dashboard: 'QA Verification', security_dashboard: 'Security & AppSec',
+    pipeline_studio: 'CI/CD Pipelines', release_dashboard: 'Releases & Canary',
+    feedback_inbox: 'Incidents & Triage', knowledge_hub: 'Knowledge Base',
+    rule_governance: 'Factory Governance', workflow_templates: 'Workflow Admin',
+  };
+  const currentScreenLabel = SCREEN_LABELS[state.currentScreen] ?? state.currentScreen.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
   // Curated, modern navigation structure - sleek, minimal, zero slop
   const navSections = [
     {
@@ -278,27 +294,23 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
         {/* Dark Editorial Top Navigation Header */}
         <header className="h-14 bg-[#0A0A0F]/90 backdrop-blur-md border-b border-white/[0.08] px-6 flex items-center justify-between shrink-0 z-10">
-          {/* Breadcrumb Path */}
-          <div className="flex items-center gap-2.5 text-sm">
-            <span className="font-semibold text-white tracking-tight">{state.workspace.name}</span>
-            {activeProduct && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-[#827D8E]" />
-                <button
-                  onClick={() => factoryStore.setScreen('product_detail')}
-                  className="font-medium text-[#B5B1C0] hover:text-white transition-colors"
-                >
-                  {activeProduct.name}
-                </button>
-              </>
-            )}
-            {activeProject && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-[#827D8E]" />
-                <span className="font-medium text-[#F6F5FA] truncate max-w-xs">{activeProject.name}</span>
-              </>
-            )}
-          </div>
+          {/* Breadcrumb Path — always reflects current screen */}
+            <div className="flex items-center gap-2 text-sm overflow-hidden">
+              <button
+                onClick={() => factoryStore.setScreen('workspace_home')}
+                className="font-semibold text-[#B5B1C0] hover:text-white transition-colors truncate shrink-0"
+              >
+                {state.workspace.name}
+              </button>
+              <ChevronRight className="w-3.5 h-3.5 text-[#827D8E] shrink-0" />
+              <span className="font-medium text-[#F6F5FA] truncate">{currentScreenLabel}</span>
+              {(state.currentScreen === 'project_detail' || state.currentScreen === 'pull_requests') && activeProject && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-[#827D8E] shrink-0" />
+                  <span className="font-medium text-[#B5B1C0] truncate max-w-[160px]">{activeProject.name}</span>
+                </>
+              )}
+            </div>
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-3">

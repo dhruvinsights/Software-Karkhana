@@ -229,3 +229,78 @@ async def generate_tests(payload: GenerateTestsRequest) -> dict[str, Any]:
         },
     ]
     return {"scenarios": scenarios}
+
+
+class CompanionMessage(BaseModel):
+    role: str
+    content: str
+
+
+class CompanionContext(BaseModel):
+    role: str = ""
+    screen: str = ""
+    entityTitle: str = ""
+    data: dict[str, Any] = {}
+
+
+class CompanionRequest(BaseModel):
+    messages: list[CompanionMessage] = Field(default_factory=list)
+    context: CompanionContext = Field(default_factory=CompanionContext)
+
+
+@router.post("/companion")
+async def ai_companion(payload: CompanionRequest) -> dict[str, Any]:
+    """Context-aware AI companion chat using Gemini / Ollama."""
+    from app.ai.providers import ollama  # local import to avoid circular dep
+
+    system_prompt = (
+        f"You are the Software Karkhana Factory AI Companion — an expert senior engineer.\n"
+        f"Current context: role={payload.context.role}, screen={payload.context.screen}, "
+        f"entity={payload.context.entityTitle}.\n"
+        "Be concise, precise, and grounded. No hallucinations."
+    )
+
+    conversation = "\n".join(
+        f"{m.role.upper()}: {m.content}" for m in payload.messages[-10:]
+    )
+    full_prompt = f"{system_prompt}\n\n{conversation}\nASSISTANT:"
+
+    if gemini.configured():
+        try:
+            client = gemini.client()
+            res = client.models.generate_content(
+                model=get_settings().gemini_model,
+                contents=full_prompt,
+            )
+            return {"reply": res.text.strip()}
+        except Exception as e:
+            logger.warning("Gemini companion error: %s", e)
+
+    # Try Ollama
+    try:
+        import httpx
+        s = get_settings()
+        r = httpx.post(
+            f"{s.ollama_base_url or 'http://localhost:11434'}/api/generate",
+            json={"model": s.ollama_model or "llama3.1", "prompt": full_prompt, "stream": False},
+            timeout=30,
+        )
+        if r.status_code == 200:
+            return {"reply": r.json().get("response", "").strip()}
+    except Exception as e:
+        logger.warning("Ollama companion error: %s", e)
+
+    # Deterministic fallback
+    last_user = next((m.content for m in reversed(payload.messages) if m.role == "user"), "")
+    screen = payload.context.screen
+    if "security" in last_user.lower() or "review" in last_user.lower():
+        reply = f"Security review for {payload.context.entityTitle}: Ensure all inputs are validated, JWT claims are verified, and no secrets are logged. Run SAST scan before merge."
+    elif "adr" in last_user.lower() or "architecture" in last_user.lower():
+        reply = f"ADR draft for {payload.context.entityTitle}: Context: [describe the problem]. Decision: [chosen approach]. Consequences: [trade-offs]. Status: PROPOSED."
+    elif "deploy" in last_user.lower():
+        reply = "Deploy to Cloud Run: `gcloud run deploy karkhana --image gcr.io/PROJECT/karkhana:latest --region us-central1`. Set secrets via Secret Manager."
+    else:
+        reply = f"I'm analysing the current context ({screen}). Please ensure Ollama is running (`ollama serve`) or GEMINI_API_KEY is set for full AI responses."
+
+    return {"reply": reply}
+

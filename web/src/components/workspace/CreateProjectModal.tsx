@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { X, FolderGit2, ArrowRight, Calendar, Users, Code2, Link, Check, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, FolderGit2, ArrowRight, Users, Check } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
+
+interface WorkspaceMember { id: string; name: string; email: string; role: string; avatar_url?: string | null; }
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -15,7 +17,33 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
   const [productId, setProductId] = useState(state.selectedProductId || state.products[0]?.id || '');
   const [targetDate, setTargetDate] = useState('2026-12-31');
   const [repositoryUrl, setRepositoryUrl] = useState('');
-  const [assignedRole, setAssignedRole] = useState(state.currentUser?.role || 'developer');
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [wsMembers, setWsMembers] = useState<WorkspaceMember[]>([]);
+
+  const token = state.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('karkhana_jwt_token') : null);
+  const authHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  // Load workspace members when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    const wsId = state.activeWorkspaceId;
+    const isRealId = wsId.includes('-') && wsId.length === 36;
+    if (isRealId) {
+      fetch(`/api/workspaces/${wsId}/members`, { headers: authHeaders })
+        .then((r) => r.ok ? r.json() : Promise.reject())
+        .then((data: WorkspaceMember[]) => setWsMembers(data))
+        .catch(() => setWsMembers(state.members.map((m) => ({ id: m.id, name: m.name, email: m.email, role: m.roles[0] || 'developer' }))));
+    } else {
+      setWsMembers(state.members.map((m) => ({ id: m.id, name: m.name, email: m.email, role: m.roles[0] || 'developer' })));
+    }
+  }, [isOpen, state.activeWorkspaceId]);
+
+  const toggleMember = (id: string) => {
+    setSelectedMemberIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
 
   if (!isOpen) return null;
 
@@ -169,6 +197,45 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               />
             </div>
           </div>
+
+          {/* Team Assignment — who is on this project session */}
+          {wsMembers.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                <Users className="w-3.5 h-3.5 inline mr-1" />
+                Assign Team Members ({wsMembers.length} in workspace)
+              </label>
+              <div className="grid grid-cols-1 gap-1.5 max-h-32 overflow-y-auto">
+                {wsMembers.map((m) => {
+                  const selected = selectedMemberIds.includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggleMember(m.id)}
+                      className="flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                      style={{
+                        background: selected ? 'rgba(7,91,255,0.12)' : 'rgba(0,0,0,0.3)',
+                        border: selected ? '1px solid rgba(7,91,255,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                        color: selected ? 'white' : 'rgb(156,163,175)',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-6 h-6 rounded-md bg-indigo-600/30 flex items-center justify-center text-[10px] font-bold text-indigo-300 shrink-0">
+                          {m.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{m.name}</div>
+                          <div className="text-[10px] text-slate-500 font-mono truncate">{m.role}</div>
+                        </div>
+                      </div>
+                      {selected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
             <button

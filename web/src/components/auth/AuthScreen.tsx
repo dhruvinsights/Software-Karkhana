@@ -36,7 +36,8 @@ declare global {
   }
 }
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   onSuccessAuthenticated,

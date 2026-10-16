@@ -135,7 +135,11 @@ export type ScreenId =
   | 'integrations'
   | 'models'
   | 'admin_settings'
-  | 'audit_explorer';
+  | 'audit_explorer'
+  // Group Q — Chat & Activity
+  | 'chat_dm'
+  | 'chat_channel'
+  | 'activity_feed';
 
 export type WorkspaceTemplate =
   | 'empty'
