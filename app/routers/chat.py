@@ -36,7 +36,6 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections import defaultdict
 from typing import Annotated, Any
 
 from fastapi import (
@@ -44,18 +43,21 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Response,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, decode_token
 from app.db import get_session, sessionmaker
 from app.models import (
     ActivityEvent,
+    ChatAttachment,
     ChatChannel,
     ChatChannelMember,
     ChatMessage,
@@ -65,6 +67,7 @@ from app.models import (
     User,
     WorkspaceMember,
 )
+from app.services.realtime import Conn, manager, notify_activity
 from app.workspace_access import (
     CurrentWorkspace,
     default_workspace_id,
@@ -75,99 +78,6 @@ from app.workspace_access import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 Session = Annotated[AsyncSession, Depends(get_session)]
-
-
-# ── In-process connection hub ─────────────────────────────────────────────────
-
-class _Conn:
-    """Wraps a WebSocket with metadata."""
-
-    def __init__(self, ws: WebSocket, user_id: str, workspace_id: str, display_name: str):
-        self.ws = ws
-        self.user_id = user_id
-        self.workspace_id = workspace_id
-        self.display_name = display_name
-
-    async def send(self, data: dict[str, Any]) -> None:
-        try:
-            await self.ws.send_json(data)
-        except Exception:
-            # stale connection — will be removed on disconnect
-            logger.debug("WS send failed for %s", self.user_id, exc_info=True)
-
-
-class ConnectionManager:
-    """Manages all active WebSocket connections, keyed by workspace."""
-
-    def __init__(self) -> None:
-        # workspace_id → list[_Conn]
-        self._rooms: dict[str, list[_Conn]] = defaultdict(list)
-
-    def connect(self, conn: _Conn) -> None:
-        """Register a connection in its workspace room."""
-        self._rooms[conn.workspace_id].append(conn)
-        logger.info("WS connected: %s in workspace %s", conn.user_id, conn.workspace_id)
-
-    def disconnect(self, conn: _Conn) -> None:
-        """Remove a connection from its workspace room, if present."""
-        room = self._rooms.get(conn.workspace_id, [])
-        if conn in room:
-            room.remove(conn)
-        logger.info("WS disconnected: %s", conn.user_id)
-
-    async def broadcast(self, workspace_id: str, frame: dict[str, Any], exclude_user: str | None = None) -> None:
-        """Send a frame to all connections in a workspace."""
-        for conn in list(self._rooms.get(workspace_id, [])):
-            if exclude_user and conn.user_id == exclude_user:
-                continue
-            await conn.send(frame)
-
-    async def send_to_user(self, workspace_id: str, user_id: str, frame: dict[str, Any]) -> None:
-        """Send a frame to a specific user (all their tabs)."""
-        await self.send_to_users(workspace_id, {user_id}, frame)
-
-    async def send_to_users(
-        self, workspace_id: str, user_ids: set[str], frame: dict[str, Any], exclude_user: str | None = None
-    ) -> None:
-        """Send a frame to the listed users' open tabs in a workspace."""
-        for conn in list(self._rooms.get(workspace_id, [])):
-            if conn.user_id in user_ids and conn.user_id != exclude_user:
-                await conn.send(frame)
-
-    async def deliver(
-        self, workspace_id: str, audience: set[str] | None, frame: dict[str, Any], exclude_user: str | None = None
-    ) -> None:
-        """``audience`` None means every member of the workspace."""
-        if audience is None:
-            await self.broadcast(workspace_id, frame, exclude_user)
-        else:
-            await self.send_to_users(workspace_id, audience, frame, exclude_user)
-
-    def online_users(self, workspace_id: str) -> list[str]:
-        """Return the distinct user ids currently connected to a workspace."""
-        return list({c.user_id for c in self._rooms.get(workspace_id, [])})
-
-
-manager = ConnectionManager()
-
-
-async def notify_activity(workspace_id: uuid.UUID | str, user_ids: list[uuid.UUID] | set[str] | list[str]) -> None:
-    """Tells these users' open tabs that they have new activity (mention, review request...).
-
-    Call after the ActivityEvent rows are committed; clients refetch their feed.
-    """
-    ids = {str(u) for u in user_ids}
-    if ids:
-        await manager.send_to_users(str(workspace_id), ids, {"type": "activity"})
-
-
-async def notify_workspace(workspace_id: uuid.UUID | str, scope: str) -> None:
-    """Tells every open tab in the workspace that ``scope`` changed so it re-syncs.
-
-    Scopes: projects, products, members. The frame carries no data; clients
-    refetch through the normal access-checked endpoints.
-    """
-    await manager.broadcast(str(workspace_id), {"type": "workspace_sync", "scope": scope})
 
 
 # ── Pydantic payloads ─────────────────────────────────────────────────────────
@@ -198,8 +108,10 @@ class DMCreate(BaseModel):
 class MessageSend(BaseModel):
     """Request body for sending a chat message."""
 
-    body: str = Field(min_length=1, max_length=4000)
+    # Empty is fine when files are attached; snippets make long bodies normal.
+    body: str = Field(default="", max_length=40000)
     mentions: list[uuid.UUID] = Field(default_factory=list)
+    attachments: list[uuid.UUID] = Field(default_factory=list, max_length=10)
 
 
 class CommentCreate(BaseModel):
@@ -217,7 +129,47 @@ class ReadCursorUpdate(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _msg_dict(msg: ChatMessage, sender: User) -> dict[str, Any]:
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# Shown inline in the browser. Everything else (SVG and HTML included) downloads.
+_INLINE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp", "audio/")
+
+
+def _attachment_kind(content_type: str) -> str:
+    if content_type.startswith("image/") and content_type != "image/svg+xml":
+        return "image"
+    if content_type.startswith("audio/"):
+        return "audio"
+    return "file"
+
+
+def _attachment_dict(a: ChatAttachment) -> dict[str, Any]:
+    return {
+        "id": str(a.id), "filename": a.filename, "contentType": a.content_type,
+        "kind": a.kind, "size": a.size_bytes,
+    }
+
+
+async def _attach(
+    session: AsyncSession, msg: ChatMessage, ids: list[uuid.UUID], user_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """Binds the caller's pending uploads in this channel to ``msg``."""
+    if not ids:
+        return []
+    rows = (await session.scalars(
+        update(ChatAttachment)
+        .where(
+            ChatAttachment.id.in_(ids),
+            ChatAttachment.channel_id == msg.channel_id,
+            ChatAttachment.uploader_id == user_id,
+            ChatAttachment.message_id.is_(None),
+        )
+        .values(message_id=msg.id)
+        .returning(ChatAttachment)
+    )).all()
+    return [_attachment_dict(a) for a in rows]
+
+
+def _msg_dict(msg: ChatMessage, sender: User, attachments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {
         "id": str(msg.id),
         "channelId": str(msg.channel_id),
@@ -228,6 +180,7 @@ def _msg_dict(msg: ChatMessage, sender: User) -> dict[str, Any]:
         "mentions": [str(m) for m in (msg.mentions or [])],
         "createdAt": msg.created_at.isoformat(),
         "editedAt": msg.edited_at.isoformat() if msg.edited_at else None,
+        "attachments": attachments or [],
     }
 
 
@@ -371,7 +324,7 @@ async def chat_ws(
             return
         workspace_id = str(ws_uuid)
 
-    conn = _Conn(websocket, str(user.id), workspace_id, user.display_name)
+    conn = Conn(websocket, str(user.id), workspace_id, user.display_name)
     manager.connect(conn)
 
     # Announce presence to the workspace
@@ -398,16 +351,18 @@ async def chat_ws(
             # ── message ───────────────────────────────────────────────────────
             elif ftype == "message":
                 channel_id_str = frame.get("channelId", "")
-                body = (frame.get("body") or "").strip()
+                body = (frame.get("body") or "").strip()[:40000]
                 mentions_raw = frame.get("mentions", [])
+                attachments_raw = (frame.get("attachments") or [])[:10]
 
-                if not body or not channel_id_str:
+                if not (body or attachments_raw) or not channel_id_str:
                     await conn.send({"type": "error", "detail": "body and channelId required"})
                     continue
 
                 try:
                     channel_id = uuid.UUID(channel_id_str)
                     mention_ids = [uuid.UUID(m) for m in mentions_raw if m]
+                    attachment_ids = [uuid.UUID(a) for a in attachments_raw if a]
                 except ValueError:
                     await conn.send({"type": "error", "detail": "Invalid UUID"})
                     continue
@@ -427,6 +382,8 @@ async def chat_ws(
                         mentions=[str(m) for m in mention_ids],
                     )
                     session.add(msg)
+                    await session.flush()
+                    files = await _attach(session, msg, attachment_ids, user.id)
 
                     # Write activity events for every @mention
                     for mid in mention_ids:
@@ -447,7 +404,7 @@ async def chat_ws(
 
                 out_frame = {
                     "type": "message",
-                    **_msg_dict(msg, user),
+                    **_msg_dict(msg, user, files),
                 }
                 await manager.deliver(workspace_id, audience, out_frame)
 
@@ -773,9 +730,17 @@ async def get_messages(
         for u in (await session.scalars(select(User).where(User.id.in_(sender_ids)))).all()
     }
 
+    files: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    if messages:
+        for a in (await session.scalars(
+            select(ChatAttachment).where(ChatAttachment.message_id.in_([m.id for m in messages]))
+            .order_by(ChatAttachment.created_at)
+        )).all():
+            files.setdefault(a.message_id, []).append(_attachment_dict(a))
+
     # Return in ascending order (oldest first)
     return [
-        _msg_dict(m, senders[m.sender_id])
+        _msg_dict(m, senders[m.sender_id], files.get(m.id))
         for m in reversed(messages)
         if m.sender_id in senders
     ]
@@ -790,6 +755,8 @@ async def send_message(
 ) -> dict[str, Any]:
     """REST fallback for sending a message (WebSocket preferred)."""
     user, workspace_id = ws.user, str(ws.workspace_id)
+    if not body.body.strip() and not body.attachments:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message is empty")
     ch = await _assert_channel_access(channel_id, workspace_id, user.id, session)
     audience = await _audience(session, ch)
 
@@ -800,6 +767,8 @@ async def send_message(
         mentions=[str(m) for m in body.mentions],
     )
     session.add(msg)
+    await session.flush()
+    files = await _attach(session, msg, body.attachments, user.id)
 
     for mid in body.mentions:
         await _write_activity(
@@ -813,10 +782,65 @@ async def send_message(
     await session.commit()
     await session.refresh(msg)
 
-    out = {"type": "message", **_msg_dict(msg, user)}
+    out = {"type": "message", **_msg_dict(msg, user, files)}
     await manager.deliver(workspace_id, audience, out)
     await notify_activity(workspace_id, body.mentions)
     return out
+
+
+@router.post("/channels/{channel_id}/attachments", status_code=201)
+async def upload_attachment(
+    channel_id: uuid.UUID,
+    file: UploadFile,
+    ws: CurrentWorkspace,
+    session: Session,
+) -> dict[str, Any]:
+    """Stores one file for a message about to be sent (10 MB max)."""
+    await _assert_channel_access(channel_id, str(ws.workspace_id), ws.user.id, session)
+    data = await file.read(MAX_ATTACHMENT_BYTES + 1)
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Files are limited to 10 MB")
+    if not data:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "File is empty")
+    content_type = (file.content_type or "application/octet-stream").split(";")[0].strip().lower()
+    a = ChatAttachment(
+        workspace_id=ws.workspace_id,
+        channel_id=channel_id,
+        uploader_id=ws.user.id,
+        filename=(file.filename or "file")[:200],
+        content_type=content_type,
+        kind=_attachment_kind(content_type),
+        size_bytes=len(data),
+        data=data,
+    )
+    session.add(a)
+    await session.commit()
+    return _attachment_dict(a)
+
+
+@router.get("/attachments/{attachment_id}")
+async def get_attachment(
+    attachment_id: uuid.UUID,
+    ws: CurrentWorkspace,
+    session: Session,
+) -> Response:
+    """Serves an attachment to people who can read its channel."""
+    a = await session.get(ChatAttachment, attachment_id)
+    if not a or str(a.workspace_id) != str(ws.workspace_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+    await _assert_channel_access(a.channel_id, str(ws.workspace_id), ws.user.id, session)
+    data = await session.scalar(select(ChatAttachment.data).where(ChatAttachment.id == a.id))
+    inline = a.content_type.startswith(_INLINE_TYPES)
+    safe_name = "".join(ch for ch in a.filename if ch not in '"\\\r\n')
+    return Response(
+        content=data,
+        media_type=a.content_type if inline else "application/octet-stream",
+        headers={
+            "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{safe_name}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=86400",
+        },
+    )
 
 
 @router.put("/channels/{channel_id}/read")

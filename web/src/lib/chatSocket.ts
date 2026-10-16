@@ -10,7 +10,7 @@
  */
 
 export type ChatFrame =
-  | { type: 'message'; id: string; channelId: string; senderId: string; senderName: string; senderAvatar?: string; body: string; mentions: string[]; createdAt: string; editedAt?: string }
+  | { type: 'message'; id: string; channelId: string; senderId: string; senderName: string; senderAvatar?: string; body: string; mentions: string[]; createdAt: string; editedAt?: string; attachments?: ChatAttachment[] }
   | { type: 'typing'; channelId: string; userId: string; displayName: string }
   | { type: 'presence'; onlineUsers: string[] }
   | { type: 'project_comment'; id: string; projectId: string; authorId: string; authorName: string; authorAvatar?: string; body: string; mentions: string[]; createdAt: string }
@@ -35,6 +35,8 @@ class ChatSocketManager {
   private backoff = 1000; // ms, doubles on each failed attempt (cap 30 s)
   private intentionalClose = false;
   private hasConnected = false;
+  /** Last presence list, so views mounted later start with it. */
+  online: string[] = [];
 
   /**
    * Call once after authentication — keeps the socket alive. Switching workspace reconnects.
@@ -83,8 +85,8 @@ class ChatSocketManager {
     }
   }
 
-  sendMessage(channelId: string, body: string, mentions: string[] = []): void {
-    this.send({ type: 'message', channelId, body, mentions });
+  sendMessage(channelId: string, body: string, mentions: string[] = [], attachments: string[] = []): void {
+    this.send({ type: 'message', channelId, body, mentions, attachments });
   }
 
   sendTyping(channelId: string): void {
@@ -135,6 +137,7 @@ class ChatSocketManager {
     this.ws.onmessage = (ev) => {
       try {
         const frame = JSON.parse(ev.data) as ChatFrame;
+        if (frame.type === 'presence') this.online = frame.onlineUsers;
         this.listeners.forEach((fn) => fn(frame));
       } catch {
         console.warn('[chat] unparseable frame', ev.data);
@@ -180,6 +183,44 @@ export interface ChatMessage {
   mentions: string[];
   createdAt: string;
   editedAt?: string;
+  attachments?: ChatAttachment[];
+}
+
+export interface ChatAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  kind: 'image' | 'audio' | 'file';
+  size: number;
+}
+
+function authHeaders(token: string): Record<string, string> {
+  const ws = chatSocket.currentWorkspaceId;
+  return { Authorization: `Bearer ${token}`, ...(ws ? { 'X-Workspace-Id': ws } : {}) };
+}
+
+/** Upload one file to a channel; send its id with the next message. */
+export async function uploadAttachment(channelId: string, file: Blob, filename: string, token: string): Promise<ChatAttachment> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  const res = await fetch(`/api/chat/channels/${channelId}/attachments`, { method: 'POST', headers: authHeaders(token), body: form });
+  if (!res.ok) throw new Error(res.status === 413 ? 'Files are limited to 10 MB' : `${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// Attachment bytes need the auth header, so <img>/<audio> get object URLs. Cached per tab.
+const blobCache = new Map<string, Promise<Blob>>();
+export function fetchAttachmentBlob(id: string, token: string): Promise<Blob> {
+  let p = blobCache.get(id);
+  if (!p) {
+    p = fetch(`/api/chat/attachments/${id}`, { headers: authHeaders(token) }).then((r) => {
+      if (!r.ok) throw new Error(`${r.status}`);
+      return r.blob();
+    });
+    p.catch(() => blobCache.delete(id));
+    blobCache.set(id, p);
+  }
+  return p;
 }
 
 export interface ChannelMeta {
@@ -332,22 +373,29 @@ export function useChatFrames<T extends ChatFrame['type']>(
   }, deps);
 }
 
-/** Hook: live messages for a channel (initial load via REST + WS updates). */
+/** Hook: live messages for a channel (initial load via REST + WS updates).
+ *
+ * Re-fetches after a reconnect (Cloud Run cuts sockets; frames sent meanwhile are
+ * lost) and marks the channel read up to the newest message while it is open.
+ */
 export function useChannelMessages(channelId: string | null, token: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [epoch, setEpoch] = useState(0);
 
-  // Initial load
   useEffect(() => {
     if (!channelId || !token) { setMessages([]); return; }
-    setLoading(true);
+    let live = true;
+    setLoading(epoch === 0);
     fetchMessages(channelId, token)
-      .then(setMessages)
-      .catch(() => setMessages([]))
-      .finally(() => setLoading(false));
-  }, [channelId, token]);
+      .then((rows) => { if (live) setMessages(rows); })
+      .catch(() => { if (live && epoch === 0) setMessages([]); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [channelId, token, epoch]);
 
-  // Real-time updates
+  useChatFrames('reconnected', () => setEpoch((n) => n + 1), []);
+
   useChatFrames('message', (frame) => {
     if (frame.channelId !== channelId) return;
     setMessages((prev) => {
@@ -356,12 +404,19 @@ export function useChannelMessages(channelId: string | null, token: string | nul
     });
   }, [channelId]);
 
+  // "Seen": advance the server read cursor whenever the newest visible message changes.
+  const lastId = messages.length ? messages[messages.length - 1].id : null;
+  useEffect(() => {
+    if (!channelId || !token || !lastId || document.visibilityState === 'hidden') return;
+    markRead(channelId, lastId, token).catch(() => {});
+  }, [channelId, token, lastId]);
+
   return { messages, loading };
 }
 
 /** Hook: online presence for the workspace. */
 export function usePresence() {
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>(chatSocket.online);
   useChatFrames('presence', (frame) => setOnlineUsers(frame.onlineUsers));
   return onlineUsers;
 }

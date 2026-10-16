@@ -29,11 +29,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import access, db, ledger
 from app.auth import CurrentUser
 from app.models import ActivityEvent, Product, User, Workspace, WorkspaceMember
-from app.routers.chat import notify_activity, notify_workspace
 from app.schemas import (
     WorkspaceOnboard,
     WorkspaceOut,
 )
+from app.services.realtime import notify_activity, notify_workspace
 from app.workspace_access import workspace_access
 
 _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")

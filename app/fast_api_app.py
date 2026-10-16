@@ -21,6 +21,7 @@ Starter Pack (``app.fast_api_app:app``) so its Makefile and Dockerfile work.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -57,6 +58,7 @@ from app.routers import (
     workspace,
     workspaces,
 )
+from app.services import chat_retention, realtime
 
 
 def _setup_logging() -> None:
@@ -79,7 +81,11 @@ async def lifespan(_: FastAPI):
     """Startup and shutdown hooks."""
     _setup_logging()
     setup_telemetry()
+    await realtime.manager.start_broker()
+    purge = asyncio.create_task(chat_retention.run_forever())
     yield
+    purge.cancel()
+    await realtime.manager.stop_broker()
     await db.dispose()
 
 

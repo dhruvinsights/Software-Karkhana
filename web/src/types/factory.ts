@@ -35,6 +35,7 @@ export type ScreenId =
   | 'members'
   // Experience B: Authenticated Factory Workspace
   | 'workspace_home'
+  | 'team_chat'
   | 'directory_teams'
   | 'team_detail'
   | 'products'

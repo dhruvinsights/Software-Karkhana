@@ -1,5 +1,5 @@
 # Software Karkhana: common tasks. Run `make help`.
-.PHONY: help install db-local migrate seed dev web test lint check-models playground deploy e2e
+.PHONY: help install db-local broker-local migrate seed dev web test lint check-models playground deploy e2e
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -12,6 +12,9 @@ db-local: ## Create local Postgres roles and database (needs Postgres 16 + pgvec
 	sudo -u postgres psql -v ON_ERROR_STOP=1 -c "DO \$$\$$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='karkhana_owner') THEN CREATE ROLE karkhana_owner LOGIN CREATEDB PASSWORD 'karkhana_owner'; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='karkhana_app') THEN CREATE ROLE karkhana_app LOGIN PASSWORD 'karkhana_app'; END IF; END \$$\$$;"
 	sudo -u postgres psql -d template1 -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 	sudo -u postgres createdb -O karkhana_owner karkhana || true
+
+broker-local: ## Start Redpanda (Kafka API) for multi-instance chat; then REALTIME_BROKER_URL=kafka://localhost:19092
+	docker compose -f docker-compose.realtime.yml up -d
 
 migrate: ## Apply migrations locally as the schema owner and seed demo users
 	DATABASE_URL=postgresql+asyncpg://karkhana_owner:karkhana_owner@localhost:5432/karkhana uv run python -m app.scripts.migrate --seed

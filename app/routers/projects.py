@@ -42,7 +42,6 @@ from app.models import (
     WorkspaceMember,
 )
 from app.process import Event, Role
-from app.routers.chat import notify_workspace
 from app.routers.common import advance_or_http, get_or_404
 from app.schemas import (
     ApprovalOut,
@@ -58,6 +57,7 @@ from app.schemas import (
     TaskOut,
 )
 from app.services.evaluation import run_evaluation
+from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
