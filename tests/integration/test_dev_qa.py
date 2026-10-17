@@ -121,6 +121,11 @@ async def test_qa_bug_goes_to_the_developer_and_back(client, fakes):
     assert (await client.post(f"/api/issues/{bid}/verify", headers=as_(PM), json={"result": "pass"})).status_code == 409
     r = await client.post(f"/api/issues/{bid}/start-fix", headers=as_(DEV))
     assert r.json()["state"] == "fixing"
+    # The fix gets a buildable task, so the developer's agent can work on it.
+    fix_task = r.json()["taskId"]
+    assert fix_task
+    board = (await client.get(f"/api/projects/{pid}/dev-board", headers=as_(DEV))).json()
+    assert board["bugs"][0]["taskId"] == fix_task and board["bugs"][0]["run"] is None
     r = await client.post(f"/api/issues/{bid}/mark-fixed", headers=as_(DEV), json={"notes": "done"})
     assert r.status_code == 422
     fixed = {"notes": "Rejected negative percent; retried by hand, got 400."}

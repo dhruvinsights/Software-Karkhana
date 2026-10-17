@@ -372,6 +372,7 @@ const StoryCard: React.FC<{
 const BugRow: React.FC<{ bug: Bug; myId: string; onChange: () => void }> = ({ bug, myId, onChange }) => {
   const [open, setOpen] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [log, setLog] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const actionable = bug.assigneeId === myId || !bug.assigneeId;
@@ -421,6 +422,43 @@ const BugRow: React.FC<{ bug: Bug; myId: string; onChange: () => void }> = ({ bu
           )}
         </div>
       </div>
+      {actionable && bug.state === 'fixing' && bug.taskId && !(bug.run && ACTIVE_RUN.has(bug.run.status)) && (
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              const r = await buildApi.build(bug.taskId!);
+              if (r.status === 'failed') throw new Error(r.error ?? 'The build could not start.');
+              setLog(true);
+              onChange();
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="px-3 py-1.5 bg-[#075BFF] hover:bg-[#1a6bff] text-white rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+        >
+          <Play className="w-3 h-3" /> {bug.run ? 'Build the fix again' : 'Build the fix on my machine'}
+        </button>
+      )}
+      {bug.run && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] text-[#827D8E] flex items-center gap-1.5">
+            {ACTIVE_RUN.has(bug.run.status) && <Loader2 className="w-3 h-3 animate-spin text-[#7aa7ff]" />}
+            Fix run {bug.run.status}
+            {bug.run.phase ? ` · ${PHASE_LABEL[bug.run.phase] ?? bug.run.phase}` : ''}
+            <button onClick={() => setLog((o) => !o)} className="text-[#7aa7ff] hover:text-white cursor-pointer ml-1">
+              {log ? 'hide log' : 'log'}
+            </button>
+          </p>
+          <SuiteBars suites={bug.run.testSuites} compact />
+          {bug.run.error && <ErrorText>{bug.run.error}</ErrorText>}
+          {log && <RunLog runId={bug.run.id} />}
+        </div>
+      )}
       {open && bug.description && (
         <pre className="text-[11px] text-[#B5B1C0] whitespace-pre-wrap bg-black/30 rounded-lg p-3 font-sans">{bug.description}</pre>
       )}

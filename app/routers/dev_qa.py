@@ -207,6 +207,7 @@ async def start_fix(
     issue.status = "in_progress"
     issue.assignee_id = issue.assignee_id or user.id
     issue.updated_at = dt.datetime.now(dt.UTC)
+    await _fix_task(session, issue)
     await ledger.append(
         session,
         actor=ledger.Actor.human(user),
@@ -223,7 +224,44 @@ async def start_fix(
         "id": str(issue.id),
         "status": issue.status,
         "state": rules.bug_state(issue.status, issue.reopen_count),
+        "taskId": str(issue.task_id) if issue.task_id else None,
     }
+
+
+async def _fix_task(session: AsyncSession, bug: Issue) -> None:
+    """A buildable task for the fix, so the developer's agent can work on the bug.
+
+    It lives in the epic of the story the bug was found on. A reopened bug whose
+    earlier fix was merged gets a fresh task: a finished task never runs again.
+    """
+    current = await session.get(Task, bug.task_id) if bug.task_id else None
+    if current is not None and current.status in ("ready", "in_progress"):
+        return
+    story = await session.get(Issue, bug.parent_id) if bug.parent_id else None
+    story_task = (
+        await session.get(Task, story.task_id) if story and story.task_id else None
+    )
+    if story is None or story_task is None:
+        return  # a bug outside the plan is fixed by hand
+    task = Task(
+        project_id=bug.project_id,
+        epic_id=story_task.epic_id,
+        key=issue_rules.key(bug.number),
+        title=f"Fix: {bug.title}"[:200],
+        description=f"QA bug on {issue_rules.key(story.number)} ({story.title}).\n\n{bug.description or ''}"[
+            :8000
+        ],
+        acceptance_criteria=[
+            "Following the bug's steps no longer reproduces it.",
+            "A regression test that failed before the fix passes now.",
+            "Existing unit and integration tests still pass.",
+        ],
+        status="ready",
+        assignee_id=bug.assignee_id,
+    )
+    session.add(task)
+    await session.flush()
+    bug.task_id = task.id
 
 
 @router.post("/api/issues/{issue_id}/mark-fixed")
@@ -477,8 +515,21 @@ def _iso(v: dt.datetime | None) -> str | None:
     return v.isoformat() if v else None
 
 
+def _run_brief(run: Run) -> dict[str, Any]:
+    return {
+        "id": str(run.id),
+        "status": run.status,
+        "phase": run.phase,
+        "testSuites": run.test_suites or [],
+        "error": run.error,
+    }
+
+
 def _bug_out(
-    b: Issue, names: dict[uuid.UUID, str], parent_keys: dict[uuid.UUID, str]
+    b: Issue,
+    names: dict[uuid.UUID, str],
+    parent_keys: dict[uuid.UUID, str],
+    run: Run | None = None,
 ) -> dict[str, Any]:
     return {
         "id": str(b.id),
@@ -496,6 +547,8 @@ def _bug_out(
         "assigneeName": names.get(b.assignee_id) if b.assignee_id else None,
         "reporterName": names.get(b.reporter_id),
         "devCheck": b.dev_check,
+        "taskId": str(b.task_id) if b.task_id else None,
+        "run": _run_brief(run) if run else None,
         "createdAt": _iso(b.created_at),
         "updatedAt": _iso(b.updated_at),
     }
@@ -533,7 +586,7 @@ async def dev_board(
     }
     keys = {s.id: issue_rules.key(s.number) for s in stories}
 
-    task_ids = [s.task_id for s in stories if s.task_id]
+    task_ids = [i.task_id for i in issues if i.task_id]
     latest_run: dict[uuid.UUID, Run] = {}
     for r in (
         await session.scalars(
@@ -621,13 +674,22 @@ async def dev_board(
                 }
                 if pr
                 else None,
-                "bugs": [_bug_out(b, names, keys) for b in bugs if b.parent_id == s.id],
+                "bugs": [
+                    _bug_out(
+                        b, names, keys, latest_run.get(b.task_id) if b.task_id else None
+                    )
+                    for b in bugs
+                    if b.parent_id == s.id
+                ],
             }
         )
     return {
         "projectId": str(project.id),
         "stories": out_stories,
-        "bugs": [_bug_out(b, names, keys) for b in bugs],
+        "bugs": [
+            _bug_out(b, names, keys, latest_run.get(b.task_id) if b.task_id else None)
+            for b in bugs
+        ],
     }
 
 

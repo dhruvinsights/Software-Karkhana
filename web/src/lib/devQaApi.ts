@@ -42,6 +42,9 @@ export interface Bug {
   assigneeName?: string | null;
   reporterName?: string | null;
   devCheck?: ManualCheck | null;
+  /** The fix's buildable task and its latest run (an agent can fix the bug). */
+  taskId?: string | null;
+  run?: { id: string; status: string; phase: string | null; testSuites: TestSuite[]; error?: string | null } | null;
   createdAt?: string;
   updatedAt?: string;
 }
