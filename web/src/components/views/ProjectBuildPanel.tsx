@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Hammer, Laptop, Play, RefreshCw, Terminal, Trash2 } from 'lucide-react';
 import { GlassCard } from '../reactbits/GlassCard';
 import { buildApi, LogLine, Machine, Pairing, RunInfo } from '../../lib/buildApi';
@@ -16,7 +16,53 @@ export const PHASE_LABEL: Record<string, string> = {
 };
 
 /** Connected machines and the one-time command to connect another. */
-export const Machines: React.FC<{ machines: Machine[]; onChange: () => void }> = ({ machines, onChange }) => {
+/** Where this project lives on a machine: the developer decides; empty means the agent's default folder. */
+const FolderSetting: React.FC<{ machine: Machine; projectId: string; onChange: () => void }> = ({ machine, projectId, onChange }) => {
+  const saved = machine.workPaths?.[projectId] ?? '';
+  const [value, setValue] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setValue(saved), [saved]);
+  const save = async (path: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await buildApi.setWorkPath(machine.id, projectId, path);
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="pl-4 space-y-1.5">
+      <label className="text-[11px] text-[#827D8E] block">Folder for this project on {machine.name}</label>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Default (the agent's work folder). Or e.g. ~/code/my-project"
+          aria-label={`Folder for this project on ${machine.name}`}
+          className="flex-1 px-3 py-1.5 bg-[#07070B] border border-white/[0.1] rounded-lg text-xs text-white font-mono placeholder-[#5f5b6b] focus:outline-none focus:border-[#075BFF]"
+        />
+        <button
+          disabled={busy || value.trim() === saved}
+          onClick={() => void save(value.trim())}
+          className="px-3 py-1.5 rounded-lg bg-[#075BFF] text-white text-xs font-medium cursor-pointer disabled:opacity-40"
+        >
+          Save
+        </button>
+      </div>
+      <p className="text-[10px] text-[#5f5b6b]">
+        An existing checkout of this repository is reused; a new or empty folder is cloned into. Anything else is refused, never overwritten.
+      </p>
+      {error && <p className="text-[11px] text-rose-300">{error}</p>}
+    </div>
+  );
+};
+
+export const Machines: React.FC<{ machines: Machine[]; onChange: () => void; projectId?: string }> = ({ machines, onChange, projectId }) => {
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,21 +90,24 @@ export const Machines: React.FC<{ machines: Machine[]; onChange: () => void }> =
         <p className="text-xs text-[#827D8E]">No machine connected. Stories are built on your computer, in your own checkout, with your coding agent.</p>
       )}
       {machines.map((m) => (
-        <div key={m.id} className="flex items-center justify-between text-xs text-[#B5B1C0]">
-          <span className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${m.online ? 'bg-emerald-400' : 'bg-[#4e5668]'}`} />
-            {m.name} <span className="text-[#827D8E]">· {m.harness} · {m.online ? 'online' : 'offline'}</span>
-          </span>
-          <button
-            title="Disconnect"
-            onClick={async () => {
-              await buildApi.revoke(m.id);
-              onChange();
-            }}
-            className="p-1 text-[#827D8E] hover:text-rose-300 cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+        <div key={m.id} className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-[#B5B1C0]">
+            <span className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${m.online ? 'bg-emerald-400' : 'bg-[#4e5668]'}`} />
+              {m.name} <span className="text-[#827D8E]">· {m.harness} · {m.online ? 'online' : 'offline'}</span>
+            </span>
+            <button
+              title="Disconnect"
+              onClick={async () => {
+                await buildApi.revoke(m.id);
+                onChange();
+              }}
+              className="p-1 text-[#827D8E] hover:text-rose-300 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {projectId && <FolderSetting machine={m} projectId={projectId} onChange={onChange} />}
         </div>
       ))}
       {pairing && (
@@ -87,41 +136,158 @@ export const Machines: React.FC<{ machines: Machine[]; onChange: () => void }> =
   );
 };
 
-/** A run's live log: loaded once, then appended as lines stream in. */
+type LogKind = 'read' | 'write' | 'command' | 'thinking' | 'error' | 'status' | 'info';
+
+const KIND_STYLE: Record<LogKind, { label: string; cls: string }> = {
+  read: { label: 'Read', cls: 'text-[#7aa7ff]' },
+  write: { label: 'Write', cls: 'text-emerald-300' },
+  command: { label: 'Run', cls: 'text-amber-300' },
+  thinking: { label: 'Thinking', cls: 'text-[#827D8E]' },
+  error: { label: 'Error', cls: 'text-rose-300' },
+  status: { label: 'Status', cls: 'text-fuchsia-300' },
+  info: { label: 'Info', cls: 'text-[#B5B1C0]' },
+};
+
+const READS = /^(Read|read_file|Glob|Grep|list_files|list_dir|search_files|search|LS|codebase_search)\b/;
+const WRITES = /^(Write|Edit|MultiEdit|NotebookEdit|write_file|replace_in_file|apply_diff|insert_content|write_to_file|edit_file)\b/;
+const COMMANDS = /^(Bash|execute_command|run_command|shell)\b/;
+const STATUS = /(finished:|Credits spent|Built and green|Tests (still )?failing|Sending only|continuing|The tests already pass|new worktree)/i;
+
+function kindOf(l: LogLine): LogKind {
+  if (l.level === 'error') return 'error';
+  if (l.level === 'thinking') return 'thinking';
+  if (WRITES.test(l.message)) return 'write';
+  if (READS.test(l.message)) return 'read';
+  if (COMMANDS.test(l.message)) return 'command';
+  if (STATUS.test(l.message)) return 'status';
+  return 'info';
+}
+
+const pathOf = (m: string) => /"(?:file_path|path|filePath)"\s*:\s*"([^"]+)"/.exec(m)?.[1] ?? null;
+
+/** What the tool call is, in one readable line: Bash shows the command, file tools the path. */
+function summarize(l: LogLine, kind: LogKind): string {
+  if (kind === 'read' || kind === 'write') {
+    const p = pathOf(l.message);
+    if (p) return `${l.message.split(' ')[0]} ${p}`;
+  }
+  if (kind === 'command') {
+    const c = /"command"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(l.message)?.[1];
+    if (c) return `$ ${c.replace(/\\"/g, '"').replace(/\\n/g, '\n')}`;
+  }
+  return l.message;
+}
+
+/**
+ * A run's live log, readable for a developer: tool calls are grouped (reads, writes,
+ * commands), filterable and summarised ("files written", credits so far), and the
+ * whole thing can be copied. Loaded once, then appended as lines stream in.
+ */
 export const RunLog: React.FC<{ runId: string }> = ({ runId }) => {
   const [lines, setLines] = useState<LogLine[]>([]);
-  const end = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<LogKind | 'all'>('all');
+  const [follow, setFollow] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     buildApi.logs(runId).then(setLines).catch(() => {});
   }, [runId]);
   useChatFrames('run_log', (f) => {
     if (f.runId === runId) setLines((prev) => [...prev, ...f.lines]);
   }, [runId]);
+
+  const kinds = useMemo(() => lines.map(kindOf), [lines]);
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    kinds.forEach((k) => (c[k] = (c[k] ?? 0) + 1));
+    return c;
+  }, [kinds]);
+  const written = useMemo(() => {
+    const seen = new Set<string>();
+    lines.forEach((l, i) => {
+      if (kinds[i] === 'write') {
+        const p = pathOf(l.message);
+        if (p) seen.add(p.replace(/^.*\.worktrees\/[^/]+\//, ''));
+      }
+    });
+    return [...seen];
+  }, [lines, kinds]);
+  const spent = useMemo(() => {
+    let total = 0;
+    for (const l of lines) {
+      const m = /finished:.*\$([0-9.]+)/.exec(l.message);
+      if (m) total += Number(m[1]);
+    }
+    return total;
+  }, [lines]);
+  // The agent logs "worktree <path> on <branch>" / "continuing in <path>": the folder on the
+  // developer's machine where the files are being written. Open it to watch them appear.
+  const worktree = lines.map((l) => /^(?:new worktree|continuing in|worktree) (\S+)/.exec(l.message)?.[1]).find(Boolean);
+
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'nearest' });
-  }, [lines.length]);
-  // The agent logs "worktree <path> on <branch>": the folder on the developer's
-  // machine where the files are being written. Open it to watch them appear.
-  const worktree = lines.map((l) => /^worktree (\S+) on /.exec(l.message)?.[1]).find(Boolean);
+    if (follow) box.current?.scrollTo({ top: box.current.scrollHeight });
+  }, [lines.length, filter, follow]);
+
+  const shown = lines.map((l, i) => ({ l, k: kinds[i] })).filter(({ k }) => filter === 'all' || k === filter);
+  const copy = async () => {
+    await navigator.clipboard.writeText(lines.map((l) => `${l.level === 'error' ? '! ' : ''}${l.message}`).join('\n'));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div className="max-h-64 overflow-y-auto bg-black/50 rounded-lg p-3 font-mono text-[11px] space-y-0.5">
-      {worktree && (
-        <p className="pb-1.5 mb-1.5 border-b border-white/[0.06] flex flex-wrap items-center gap-2 font-sans">
-          <span className="text-[#827D8E]">Files are written in</span>
-          <code className="text-[#B5B1C0]">{worktree}</code>
-          <a href={`vscode://file${worktree}`} className="text-[#7aa7ff] hover:text-white">Open in VS Code</a>
-          <button onClick={() => void navigator.clipboard.writeText(worktree)} className="text-[#7aa7ff] hover:text-white cursor-pointer">
-            Copy path
-          </button>
-        </p>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        {(['all', 'write', 'read', 'command', 'thinking', 'error', 'status'] as const).map((k) => {
+          const n = k === 'all' ? lines.length : counts[k] ?? 0;
+          if (k !== 'all' && n === 0) return null;
+          return (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              className={`px-2.5 py-1 rounded-full border cursor-pointer ${filter === k ? 'bg-[#075BFF]/20 border-[#075BFF]/60 text-white' : 'border-white/[0.1] text-[#827D8E] hover:text-white'}`}
+            >
+              {k === 'all' ? 'All' : KIND_STYLE[k].label} {n}
+            </button>
+          );
+        })}
+        <span className="flex-1" />
+        {spent > 0 && <span className="text-fuchsia-300 font-mono">credits so far ${spent.toFixed(2)}</span>}
+        <label className="flex items-center gap-1 text-[#827D8E] cursor-pointer">
+          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> follow
+        </label>
+        <button onClick={() => void copy()} className="px-2.5 py-1 rounded-lg border border-white/[0.1] text-[#B5B1C0] hover:text-white cursor-pointer">
+          {copied ? 'Copied' : 'Copy log'}
+        </button>
+      </div>
+      {written.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 text-[10px]">
+          <span className="text-[#827D8E] self-center">Files written ({written.length}):</span>
+          {written.slice(0, 24).map((p) => (
+            <code key={p} className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300">{p}</code>
+          ))}
+          {written.length > 24 && <span className="text-[#827D8E]">+{written.length - 24} more</span>}
+        </div>
       )}
-      {lines.length === 0 && <p className="text-[#827D8E]">No output yet.</p>}
-      {lines.map((l, i) => (
-        <p key={i} className={l.level === 'error' ? 'text-rose-300' : l.level === 'thinking' ? 'text-[#827D8E]' : 'text-[#B5B1C0]'}>
-          {l.message}
-        </p>
-      ))}
-      <div ref={end} />
+      <div ref={box} className="max-h-96 min-h-24 resize-y overflow-y-auto bg-black/50 rounded-lg p-3 font-mono text-[11px] space-y-1 select-text">
+        {worktree && (
+          <p className="pb-1.5 mb-1.5 border-b border-white/[0.06] flex flex-wrap items-center gap-2 font-sans">
+            <span className="text-[#827D8E]">Files are written in</span>
+            <code className="text-[#B5B1C0]">{worktree}</code>
+            <a href={`vscode://file${worktree}`} className="text-[#7aa7ff] hover:text-white">Open in VS Code</a>
+            <button onClick={() => void navigator.clipboard.writeText(worktree)} className="text-[#7aa7ff] hover:text-white cursor-pointer">
+              Copy path
+            </button>
+          </p>
+        )}
+        {lines.length === 0 && <p className="text-[#827D8E]">No output yet.</p>}
+        {shown.map(({ l, k }, i) => (
+          <p key={i} className={`flex gap-2 ${KIND_STYLE[k].cls} ${k === 'thinking' ? 'italic' : ''}`}>
+            <span className="w-14 shrink-0 opacity-60 uppercase text-[9px] pt-0.5">{KIND_STYLE[k].label}</span>
+            <span className="whitespace-pre-wrap break-words min-w-0">{summarize(l, k)}</span>
+          </p>
+        ))}
+      </div>
     </div>
   );
 };

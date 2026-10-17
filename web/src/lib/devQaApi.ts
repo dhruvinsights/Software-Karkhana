@@ -233,6 +233,10 @@ export const devQaApi = {
   markFixed: (bugId: string, criteria: { text: string; ok: boolean }[], notes: string) =>
     post(`/api/issues/${bugId}/mark-fixed`, { criteria, notes }),
   verify: (bugId: string, result: 'pass' | 'fail', notes: string) => post(`/api/issues/${bugId}/verify`, { result, notes }),
+  branches: (projectId: string) =>
+    call<{ repo: string | null; default: string; branches: string[]; reachable: boolean }>(`/api/projects/${projectId}/branches`),
+  publish: (runId: string, body: { base_branch?: string; branch?: string; title?: string }) =>
+    post<{ number: number; url: string; branch: string; base: string }>(`/api/runs/${runId}/publish`, body),
   rework: (prId: string, reason: string) => post<{ closedOnGitHub: boolean }>(`/api/prs/${prId}/rework`, { reason }),
   requestReviewers: (prId: string, userIds: string[]) =>
     post<{ onGitHub: boolean }>(`/api/prs/${prId}/reviewers`, { user_ids: userIds }),

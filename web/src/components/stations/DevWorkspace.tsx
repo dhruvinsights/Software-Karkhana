@@ -37,6 +37,8 @@ import { buildApi, Machine } from '../../lib/buildApi';
 import { useChatFrames } from '../../lib/chatSocket';
 import { Bug, DevBoard, devQaApi, DevStory, FrontendWorkspace } from '../../lib/devQaApi';
 import { Machines, PHASE_LABEL, RunLog } from '../views/ProjectBuildPanel';
+import { PRDiffViewer } from '../views/PRDiffViewer';
+import { RaisePrModal } from './RaisePr';
 import { StationChannels } from './StationChannels';
 import {
   BugStatePill,
@@ -83,6 +85,11 @@ function steps(s: DevStory): { label: string; state: StepState; hint?: string }[
     { label: 'Code', state: codeState, hint: run?.phase ? PHASE_LABEL[run.phase] ?? run.phase : undefined },
     { label: 'Unit', state: suiteState(unit) },
     { label: 'Integration', state: integ ? suiteState(integ) : unit && unit.status !== 'running' ? 'done' : 'waiting', hint: integ ? undefined : 'No separate integration suite' },
+    {
+      label: 'Raise PR',
+      state: pr ? 'done' : run?.status === 'succeeded' && run.phase === 'built' ? 'current' : 'waiting',
+      hint: pr ? `PR #${pr.number}` : 'Built and green; waiting for you to raise it',
+    },
     {
       label: 'AI review',
       state: !pr ? (run?.phase === 'publishing' ? 'current' : 'waiting') : pr.openComments > 0 ? 'current' : 'done',
@@ -154,19 +161,26 @@ const StoryCard: React.FC<{
   story: DevStory;
   myId: string;
   members: { userId: string; name: string }[];
+  projectId: string;
   onChange: () => void;
-}> = ({ story, myId, members, onChange }) => {
+}> = ({ story, myId, members, projectId, onChange }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState(false);
   const [checking, setChecking] = useState(false);
   const [reworking, setReworking] = useState(false);
+  const [raising, setRaising] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [reason, setReason] = useState('');
   const run = story.run;
   const pr = story.pr;
   const mine = story.assigneeId === myId;
   const running = !!run && ACTIVE_RUN.has(run.status);
-  const canBuild = mine && !!story.taskId && (story.status === 'ready' || story.status === 'in_progress') && !running;
+  const canBuild = mine && !!story.taskId && (story.status === 'ready' || story.status === 'in_progress') && !running && !story.pr;
+  const built = !!run && run.status === 'succeeded' && run.phase === 'built' && !story.pr;
+  const redSuites = !!run && run.testSuites.some((x) => x.status === 'failed' || x.status === 'error');
+  // The next build continues from what is already in the folder; say so.
+  const buildLabel = !run ? 'Build on my machine' : built ? 'Build again' : redSuites ? 'Continue: fix failing tests' : 'Continue';
   const canCheck = mine && !story.devCheck && ['in_progress', 'in_review', 'ready_for_qa', 'in_qa'].includes(story.status) && !!pr;
   const openBugs = story.bugs.filter((b) => b.state !== 'verified' && b.state !== 'wont_fix');
 
@@ -228,7 +242,7 @@ const StoryCard: React.FC<{
               }
               className="px-3 py-1.5 bg-[#075BFF] hover:bg-[#1a6bff] text-white rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              <Play className="w-3 h-3" /> {run ? 'Build again' : 'Build on my machine'}
+              <Play className="w-3 h-3" /> {buildLabel}
             </button>
           )}
           {canCheck && (
@@ -237,6 +251,16 @@ const StoryCard: React.FC<{
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5"
             >
               <ClipboardCheck className="w-3.5 h-3.5" /> I tested it by hand
+            </button>
+          )}
+          {running && run && (
+            <button
+              disabled={busy}
+              onClick={() => act(() => buildApi.stop(run.id))}
+              className="px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-300 hover:bg-rose-500/10 text-xs font-medium cursor-pointer disabled:opacity-50"
+              title="Stop the agent now. Work done so far stays in your folder."
+            >
+              Stop
             </button>
           )}
           {run && (
@@ -252,6 +276,33 @@ const StoryCard: React.FC<{
       </header>
 
       <Pipeline steps={steps(story)} />
+
+      {built && run && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] p-3 space-y-2">
+          <p className="text-xs text-emerald-200">
+            Built and green. <span className="text-[#B5B1C0]">Nothing is pushed yet: review it in your folder or here, then raise the pull request when you are ready.</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setReviewing((r) => !r)}
+              className="px-3 py-1.5 rounded-lg border border-white/[0.12] text-white text-xs cursor-pointer hover:bg-white/[0.05]"
+            >
+              {reviewing ? 'Hide the change' : 'Review the change'}
+            </button>
+            <button
+              onClick={() => setRaising(true)}
+              className="px-3 py-1.5 rounded-lg bg-[#075BFF] hover:bg-[#1a6bff] text-white text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+            >
+              <GitPullRequest className="w-3.5 h-3.5" /> Raise pull request…
+            </button>
+          </div>
+          {reviewing && (
+            <div className="max-h-[60vh] overflow-y-auto pr-1">
+              <PRDiffViewer src={`/api/runs/${run.id}/diff`} token={factoryStore.getState().token ?? ''} />
+            </div>
+          )}
+        </div>
+      )}
 
       {run && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -350,6 +401,19 @@ const StoryCard: React.FC<{
       )}
 
       {log && run && <RunLog runId={run.id} />}
+      {raising && run && (
+        <RaisePrModal
+          projectId={projectId}
+          runId={run.id}
+          storyKey={story.key}
+          storyTitle={story.title}
+          onClose={() => setRaising(false)}
+          onDone={() => {
+            setRaising(false);
+            onChange();
+          }}
+        />
+      )}
       {error && <ErrorText>{error}</ErrorText>}
 
       {checking && (
@@ -682,7 +746,7 @@ export const DevWorkspace: React.FC<{ projectId: string; projectCode: string }> 
             </div>
           ) : (
             (tab === 'mine' ? mine : stories).map((s) => (
-              <StoryCard key={s.id} story={s} myId={myId} members={members} onChange={reload} />
+              <StoryCard key={s.id} story={s} myId={myId} members={members} projectId={projectId} onChange={reload} />
             ))
           )}
         </div>
@@ -714,7 +778,7 @@ export const DevWorkspace: React.FC<{ projectId: string; projectCode: string }> 
         <StationChannels projectId={projectId} projectCode={projectCode} station="developer" stationLabel="Developer" />
       )}
 
-      {tab === 'machines' && <Machines machines={machines} onChange={reload} />}
+      {tab === 'machines' && <Machines machines={machines} onChange={reload} projectId={projectId} />}
 
       <p className="text-[11px] text-[#5f5b6b] flex items-center gap-1.5">
         <MessagesSquare className="w-3 h-3" /> Bugs QA files land in "Bugs from QA" and in your activity feed.
