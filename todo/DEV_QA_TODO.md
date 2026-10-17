@@ -31,10 +31,10 @@ Tick an item only after its check passes. Commit code and this file together.
       manual check and their bugs; plus the project's bug list. Check: integration test.
 
 ## 3. QA agents suggest, people decide
-- [ ] `qa_suggestions` table; the QA agent reads the story, its diff and the code and
+- [x] `qa_suggestions` table; the QA agent reads the story, its diff and the code and
       suggests bugs. Suggestions never become bugs on their own: QA accepts (files the
       bug to the developer) or dismisses with a reason. Check: integration test.
-- [ ] QA queue shows "waiting for the developer's manual check" separately.
+- [x] QA queue shows "waiting for the developer's manual check" separately.
 
 ## 4. Channels inside a station
 - [ ] `chat_channels.station`; create a channel for my station in this project with an
@@ -68,3 +68,4 @@ Tick an item only after its check passes. Commit code and this file together.
 | 2026-10-17 | TODO written; branch created |
 | 2026-10-17 | Runs report unit and integration suites separately, live |
 | 2026-10-18 | Dev accountability: manual checks, bug lifecycle, reviewer requests, dev board |
+| 2026-10-18 | QA agent suggests bugs grounded in code; QA accepts or dismisses; QA board by stage |

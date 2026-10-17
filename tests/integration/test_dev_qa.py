@@ -143,3 +143,101 @@ async def test_qa_bug_goes_to_the_developer_and_back(client, fakes):
     await client.post(f"/api/issues/{bid}/mark-fixed", headers=as_(DEV), json=fixed)
     r = await client.post(f"/api/issues/{bid}/verify", headers=as_(PM), json={"result": "pass"})
     assert r.json()["state"] == "verified"
+
+
+DIFF = """diff --git a/app/discounts.py b/app/discounts.py
+--- a/app/discounts.py
++++ b/app/discounts.py
+@@ -1,2 +1,4 @@
++def apply(total, percent):
++    return total - total * percent / 100
+"""
+
+
+def _suggestions():
+    from app.services.qa_agent import Suggestions
+
+    return Suggestions.model_validate(
+        {
+            "suggestions": [
+                {
+                    "title": "Negative percent increases the total",
+                    "description": "apply() never validates percent; -10 adds 10%.",
+                    "category": "edge_case",
+                    "severity": "P1",
+                    "steps": ["Apply -10 to 100.00"],
+                    "expected": "Rejected with 400",
+                    "evidence": [{"path": "app/discounts.py", "line": 2, "note": "no bounds check"}],
+                },
+                {
+                    "title": "Invented problem",
+                    "description": "Cites a file that does not exist.",
+                    "category": "functional",
+                    "severity": "P2",
+                    "steps": ["x"],
+                    "expected": "y",
+                    "evidence": [{"path": "app/imaginary.py"}],
+                },
+            ]
+        }
+    )
+
+
+async def test_qa_agent_suggests_and_qa_decides(client, fakes, monkeypatch):
+    from app.ai import llm
+    from app.services import qa_agent
+    from app.services.qa_agent import Suggestions
+
+    fake, _ = fakes
+
+    async def generate(*, prompt, schema, system, model=None, temperature=0.3, timeout_s=90.0):
+        if schema is Suggestions:
+            assert "app/discounts.py" in prompt
+            return _suggestions()
+        return await fake.generate(prompt=prompt, schema=schema, system=system)
+
+    async def change_for(session, story):
+        return DIFF
+
+    pid, story = await _story(client)
+    sid = story["id"]
+    # Not built yet: nothing to review.
+    assert (await client.post(f"/api/issues/{sid}/qa-agent", headers=as_(PM))).status_code == 409
+    await _set_status(sid, "ready_for_qa")
+
+    board = (await client.get(f"/api/projects/{pid}/qa-board", headers=as_(PM))).json()
+    assert board["stories"][0]["stage"] == "waiting_dev_check"
+
+    monkeypatch.setattr(llm, "generate_structured", generate)
+    monkeypatch.setattr(qa_agent, "_change_for", change_for)
+    r = await client.post(f"/api/issues/{sid}/qa-agent", headers=as_(PM))
+    assert r.status_code == 202, r.text
+
+    board = (await client.get(f"/api/projects/{pid}/qa-board", headers=as_(PM))).json()
+    row = board["stories"][0]
+    assert row["qaAgent"]["state"] == "ready", row["qaAgent"]
+    assert row["qaAgent"]["suggested"] == 1 and row["qaAgent"]["dropped"] == 1
+    assert row["openSuggestions"] == 1
+    # The agent filed nothing on its own.
+    assert row["bugs"] == []
+
+    [sugg] = (await client.get(f"/api/projects/{pid}/qa-suggestions?status=open", headers=as_(PM))).json()
+    assert sugg["evidence"][0]["path"] == "app/discounts.py"
+    r = await client.post(f"/api/qa-suggestions/{sugg['id']}/dismiss", headers=as_(PM), json={"reason": "no"})
+    assert r.status_code == 422
+    r = await client.post(
+        f"/api/qa-suggestions/{sugg['id']}/accept", headers=as_(PM), json={"priority": "P0", "notes": "Reproduced."}
+    )
+    assert r.status_code == 200, r.text
+    again = await client.post(f"/api/qa-suggestions/{sugg['id']}/accept", headers=as_(PM), json={})
+    assert again.status_code == 409
+
+    dev_board = (await client.get(f"/api/projects/{pid}/dev-board", headers=as_(DEV))).json()
+    [bug] = dev_board["bugs"]
+    assert bug["priority"] == "P0" and bug["assigneeId"] == await _uid(client, DEV)
+    assert "confirmed by" in bug["description"]
+
+    # Running again does not repeat what is already reported.
+    await client.post(f"/api/issues/{sid}/qa-agent", headers=as_(PM))
+    row = (await client.get(f"/api/projects/{pid}/qa-board", headers=as_(PM))).json()["stories"][0]
+    assert row["qaAgent"]["suggested"] == 0

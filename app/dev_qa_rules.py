@@ -64,7 +64,9 @@ def layer_of(labels: list[str] | None, description: str = "") -> str | None:
     return m.group(1) if m else None
 
 
-def check_problem(criteria: list[str], ticked: list[dict[str, Any]], notes: str) -> str | None:
+def check_problem(
+    criteria: list[str], ticked: list[dict[str, Any]], notes: str
+) -> str | None:
     """Why a manual check is not acceptable yet, or ``None``.
 
     Every acceptance criterion must be listed and confirmed, and the notes must
@@ -75,7 +77,9 @@ def check_problem(criteria: list[str], ticked: list[dict[str, Any]], notes: str)
     confirmed = {str(t.get("text", "")).strip() for t in ticked if t.get("ok") is True}
     missing = [c for c in criteria if c.strip() not in confirmed]
     if missing:
-        return f"{len(missing)} acceptance criteria are not confirmed: " + "; ".join(m[:60] for m in missing[:3])
+        return f"{len(missing)} acceptance criteria are not confirmed: " + "; ".join(
+            m[:60] for m in missing[:3]
+        )
     return None
 
 

@@ -646,6 +646,8 @@ class Issue(Base):
     # The developer's manual check (story) or fix confirmation (bug); migration 034.
     dev_check: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     reopen_count: Mapped[int] = mapped_column(Integer, default=0)
+    # The QA agent's last run on this story (migration 035).
+    qa_agent: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -863,3 +865,27 @@ class Release(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class QaSuggestion(Base):
+    """A bug the QA agent suggests; a QA engineer accepts or dismisses it."""
+
+    __tablename__ = "qa_suggestions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    issue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str] = mapped_column(String, default="functional")
+    severity: Mapped[str] = mapped_column(String, default="P2")
+    steps: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    expected: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(String, default="open")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bug_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("issues.id", ondelete="SET NULL"), nullable=True)
+    model: Mapped[str] = mapped_column(String, default="")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()

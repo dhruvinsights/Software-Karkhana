@@ -65,13 +65,17 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 
 async def _issue(session: AsyncSession, issue_id: uuid.UUID) -> Issue:
-    issue = await session.scalar(select(Issue).where(Issue.id == issue_id).with_for_update())
+    issue = await session.scalar(
+        select(Issue).where(Issue.id == issue_id).with_for_update()
+    )
     if issue is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Issue not found.")
     return issue
 
 
-async def _station(session: AsyncSession, user: Any, project_id: uuid.UUID, station: str) -> Project:
+async def _station(
+    session: AsyncSession, user: Any, project_id: uuid.UUID, station: str
+) -> Project:
     project = await access.get_visible_project(session, user, project_id)
     await access.ensure_station(session, user, project, station)
     return project
@@ -109,16 +113,27 @@ async def _tell(
     await session.commit()
     await notify_activity(project.workspace_id, people)
     if email_subject:
-        await email_people(session, people, subject=email_subject, heading=summary, lines=email_lines or [])
+        await email_people(
+            session,
+            people,
+            subject=email_subject,
+            heading=summary,
+            lines=email_lines or [],
+        )
 
 
-def _check_record(user: User, criteria: list[dict[str, Any]], notes: str, kind: str) -> dict[str, Any]:
+def _check_record(
+    user: User, criteria: list[dict[str, Any]], notes: str, kind: str
+) -> dict[str, Any]:
     return {
         "kind": kind,
         "by": str(user.id),
         "byName": user.display_name,
         "at": dt.datetime.now(dt.UTC).isoformat(),
-        "criteria": [{"text": str(c.get("text", ""))[:500], "ok": c.get("ok") is True} for c in criteria][:30],
+        "criteria": [
+            {"text": str(c.get("text", ""))[:500], "ok": c.get("ok") is True}
+            for c in criteria
+        ][:30],
         "notes": notes.strip()[:4000],
     }
 
@@ -134,18 +149,25 @@ class CheckIn(BaseModel):
 
 
 @router.post("/api/issues/{issue_id}/dev-check")
-async def dev_check(issue_id: uuid.UUID, body: CheckIn, session: Session, user: CurrentUser) -> dict[str, Any]:
+async def dev_check(
+    issue_id: uuid.UUID, body: CheckIn, session: Session, user: CurrentUser
+) -> dict[str, Any]:
     """The developer confirms they ran the finished story by hand, criterion by criterion."""
     issue = await _issue(session, issue_id)
     if issue.type != "story":
-        raise HTTPException(status.HTTP_409_CONFLICT, "Manual checks are for stories; use mark-fixed for bugs.")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Manual checks are for stories; use mark-fixed for bugs.",
+        )
     project = await _station(session, user, issue.project_id, "developer")
     if not rules.story_check_allowed(issue.status):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             f"{issue_rules.key(issue.number)} is {issue.status.replace('_', ' ')}; check it once its code is written.",
         )
-    problem = rules.check_problem(list(issue.acceptance_criteria or []), body.criteria, body.notes)
+    problem = rules.check_problem(
+        list(issue.acceptance_criteria or []), body.criteria, body.notes
+    )
     if problem:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     issue.dev_check = _check_record(user, body.criteria, body.notes, "story")
@@ -171,13 +193,17 @@ def _require_bug(issue: Issue) -> None:
 
 
 @router.post("/api/issues/{issue_id}/start-fix")
-async def start_fix(issue_id: uuid.UUID, session: Session, user: CurrentUser) -> dict[str, Any]:
+async def start_fix(
+    issue_id: uuid.UUID, session: Session, user: CurrentUser
+) -> dict[str, Any]:
     """A developer takes the bug (it becomes theirs if nobody had it)."""
     issue = await _issue(session, issue_id)
     _require_bug(issue)
     project = await _station(session, user, issue.project_id, "developer")
     if rules.bug_state(issue.status, issue.reopen_count) not in ("new", "reopened"):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Only a new or reopened bug can be started.")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Only a new or reopened bug can be started."
+        )
     issue.status = "in_progress"
     issue.assignee_id = issue.assignee_id or user.id
     issue.updated_at = dt.datetime.now(dt.UTC)
@@ -193,11 +219,17 @@ async def start_fix(issue_id: uuid.UUID, session: Session, user: CurrentUser) ->
     await session.commit()
     if project.workspace_id:
         await notify_workspace(project.workspace_id, "projects")
-    return {"id": str(issue.id), "status": issue.status, "state": rules.bug_state(issue.status, issue.reopen_count)}
+    return {
+        "id": str(issue.id),
+        "status": issue.status,
+        "state": rules.bug_state(issue.status, issue.reopen_count),
+    }
 
 
 @router.post("/api/issues/{issue_id}/mark-fixed")
-async def mark_fixed(issue_id: uuid.UUID, body: CheckIn, session: Session, user: CurrentUser) -> dict[str, Any]:
+async def mark_fixed(
+    issue_id: uuid.UUID, body: CheckIn, session: Session, user: CurrentUser
+) -> dict[str, Any]:
     """The developer says it is fixed, and how they confirmed it by hand. QA verifies next."""
     issue = await _issue(session, issue_id)
     _require_bug(issue)
@@ -218,7 +250,10 @@ async def mark_fixed(issue_id: uuid.UUID, body: CheckIn, session: Session, user:
         subject_type="issue",
         subject_id=issue.id,
         project_id=project.id,
-        payload={"key": issue_rules.key(issue.number), "notes": issue.dev_check["notes"][:200]},
+        payload={
+            "key": issue_rules.key(issue.number),
+            "notes": issue.dev_check["notes"][:200],
+        },
     )
     await session.commit()
     await _tell(
@@ -227,14 +262,19 @@ async def mark_fixed(issue_id: uuid.UUID, body: CheckIn, session: Session, user:
         user,
         {issue.reporter_id},
         kind="bug_fixed",
-        summary=f"{user.display_name} fixed {issue_rules.key(issue.number)} \"{issue.title}\"; please verify",
+        summary=f'{user.display_name} fixed {issue_rules.key(issue.number)} "{issue.title}"; please verify',
         issue=issue,
         email_subject=f"Verify fix: {issue.title}",
         email_lines=[f"How it was checked: {issue.dev_check['notes']}"],
     )
     if project.workspace_id:
         await notify_workspace(project.workspace_id, "projects")
-    return {"id": str(issue.id), "status": issue.status, "state": "fixed", "devCheck": issue.dev_check}
+    return {
+        "id": str(issue.id),
+        "status": issue.status,
+        "state": "fixed",
+        "devCheck": issue.dev_check,
+    }
 
 
 class VerifyIn(BaseModel):
@@ -245,15 +285,23 @@ class VerifyIn(BaseModel):
 
 
 @router.post("/api/issues/{issue_id}/verify")
-async def verify_fix(issue_id: uuid.UUID, body: VerifyIn, session: Session, user: CurrentUser) -> dict[str, Any]:
+async def verify_fix(
+    issue_id: uuid.UUID, body: VerifyIn, session: Session, user: CurrentUser
+) -> dict[str, Any]:
     """QA confirms the fix (the bug closes) or reopens it back to the developer."""
     issue = await _issue(session, issue_id)
     _require_bug(issue)
     project = await _station(session, user, issue.project_id, "qa")
     if not rules.verify_allowed(issue.status):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Only a bug the developer marked fixed can be verified.")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Only a bug the developer marked fixed can be verified.",
+        )
     if body.result == "fail" and len(body.notes.strip()) < rules.MIN_NOTES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Say what still fails, so the developer can fix it.")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Say what still fails, so the developer can fix it.",
+        )
     now = dt.datetime.now(dt.UTC)
     if body.result == "pass":
         issue.status, issue.closed_at = "done", now
@@ -279,14 +327,18 @@ async def verify_fix(issue_id: uuid.UUID, body: VerifyIn, session: Session, user
             user,
             {issue.assignee_id},
             kind="bug_reopened",
-            summary=f"{user.display_name} reopened {issue_rules.key(issue.number)} \"{issue.title}\"",
+            summary=f'{user.display_name} reopened {issue_rules.key(issue.number)} "{issue.title}"',
             issue=issue,
             email_subject=f"Reopened: {issue.title}",
             email_lines=[f"What still fails: {body.notes.strip()}"],
         )
     if project.workspace_id:
         await notify_workspace(project.workspace_id, "projects")
-    return {"id": str(issue.id), "status": issue.status, "state": rules.bug_state(issue.status, issue.reopen_count)}
+    return {
+        "id": str(issue.id),
+        "status": issue.status,
+        "state": rules.bug_state(issue.status, issue.reopen_count),
+    }
 
 
 # ── Reviewers ─────────────────────────────────────────────────────────────────
@@ -307,7 +359,10 @@ async def _github_login(session: AsyncSession, user_id: uuid.UUID) -> str | None
         async with httpx.AsyncClient(timeout=10) as http:
             r = await http.get(
                 f"{get_settings().github_api_url}/user",
-                headers={"Authorization": f"Bearer {token}", "User-Agent": "software-karkhana"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "software-karkhana",
+                },
             )
         return r.json().get("login") if r.status_code == 200 else None
     except httpx.HTTPError:
@@ -315,7 +370,9 @@ async def _github_login(session: AsyncSession, user_id: uuid.UUID) -> str | None
 
 
 @router.post("/api/prs/{pr_id}/reviewers")
-async def request_reviewers(pr_id: uuid.UUID, body: ReviewersIn, session: Session, user: CurrentUser) -> dict[str, Any]:
+async def request_reviewers(
+    pr_id: uuid.UUID, body: ReviewersIn, session: Session, user: CurrentUser
+) -> dict[str, Any]:
     """Asks project members to review: in-app, email, and on GitHub when their login is known."""
     pr = await session.get(PullRequest, pr_id)
     if pr is None:
@@ -327,24 +384,39 @@ async def request_reviewers(pr_id: uuid.UUID, body: ReviewersIn, session: Sessio
     author = run.requested_by if run else None
     wanted = list(dict.fromkeys(body.user_ids))
     if author in wanted:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The author cannot review their own change.")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The author cannot review their own change.",
+        )
     members = set(
         (
             await session.scalars(
                 select(ProjectMember.user_id).where(
-                    ProjectMember.project_id == project.id, ProjectMember.user_id.in_(wanted)
+                    ProjectMember.project_id == project.id,
+                    ProjectMember.user_id.in_(wanted),
                 )
             )
         ).all()
     )
     outside = [str(u) for u in wanted if u not in members]
     if outside:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Not members of this project: " + ", ".join(outside))
-    people = {u.id: u for u in (await session.scalars(select(User).where(User.id.in_(wanted)))).all()}
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Not members of this project: " + ", ".join(outside),
+        )
+    people = {
+        u.id: u
+        for u in (await session.scalars(select(User).where(User.id.in_(wanted)))).all()
+    }
     now = dt.datetime.now(dt.UTC).isoformat()
     current = {r["userId"]: r for r in (pr.requested_reviewers or [])}
     for uid in wanted:
-        current[str(uid)] = {"userId": str(uid), "name": people[uid].display_name, "by": str(user.id), "at": now}
+        current[str(uid)] = {
+            "userId": str(uid),
+            "name": people[uid].display_name,
+            "by": str(user.id),
+            "at": now,
+        }
     pr.requested_reviewers = list(current.values())
     await ledger.append(
         session,
@@ -353,7 +425,10 @@ async def request_reviewers(pr_id: uuid.UUID, body: ReviewersIn, session: Sessio
         subject_type="pull_request",
         subject_id=pr.id,
         project_id=project.id,
-        payload={"reviewers": [people[u].display_name for u in wanted], "number": pr.number},
+        payload={
+            "reviewers": [people[u].display_name for u in wanted],
+            "number": pr.number,
+        },
     )
     await session.commit()
 
@@ -366,12 +441,18 @@ async def request_reviewers(pr_id: uuid.UUID, body: ReviewersIn, session: Sessio
             try:
                 await gh.request_reviewers(number=pr.number, reviewers=logins)
                 on_github = True
-            except Exception:  # GitHub refusing a reviewer must not undo the request here
-                logger.warning("GitHub reviewer request failed for PR %s", pr.number, exc_info=True)
+            except (
+                Exception
+            ):  # GitHub refusing a reviewer must not undo the request here
+                logger.warning(
+                    "GitHub reviewer request failed for PR %s", pr.number, exc_info=True
+                )
             finally:
                 await gh.aclose()
 
-    story = await session.scalar(select(Issue).where(Issue.task_id == task.id, Issue.type == "story"))
+    story = await session.scalar(
+        select(Issue).where(Issue.task_id == task.id, Issue.type == "story")
+    )
     if story is not None:
         await _tell(
             session,
@@ -379,7 +460,7 @@ async def request_reviewers(pr_id: uuid.UUID, body: ReviewersIn, session: Sessio
             user,
             set(wanted),
             kind="review_requested",
-            summary=f"{user.display_name} asked you to review PR #{pr.number} for {task.key} \"{task.title}\"",
+            summary=f'{user.display_name} asked you to review PR #{pr.number} for {task.key} "{task.title}"',
             issue=story,
             email_subject=f"Review requested: {task.title}",
             email_lines=[f"Pull request: {pr.url}"],
@@ -396,7 +477,9 @@ def _iso(v: dt.datetime | None) -> str | None:
     return v.isoformat() if v else None
 
 
-def _bug_out(b: Issue, names: dict[uuid.UUID, str], parent_keys: dict[uuid.UUID, str]) -> dict[str, Any]:
+def _bug_out(
+    b: Issue, names: dict[uuid.UUID, str], parent_keys: dict[uuid.UUID, str]
+) -> dict[str, Any]:
     return {
         "id": str(b.id),
         "key": issue_rules.key(b.number),
@@ -419,7 +502,9 @@ def _bug_out(b: Issue, names: dict[uuid.UUID, str], parent_keys: dict[uuid.UUID,
 
 
 @router.get("/api/projects/{project_id}/dev-board")
-async def dev_board(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict[str, Any]:
+async def dev_board(
+    project_id: uuid.UUID, session: Session, user: CurrentUser
+) -> dict[str, Any]:
     """Everything the Developer station shows, in one read."""
     project = await access.get_visible_project(session, user, project_id)
     issues = list(
@@ -440,20 +525,28 @@ async def dev_board(project_id: uuid.UUID, session: Session, user: CurrentUser) 
     user_ids = {i.assignee_id for i in issues} | {i.reporter_id for i in issues}
     names = {
         u.id: u.display_name
-        for u in (await session.scalars(select(User).where(User.id.in_([x for x in user_ids if x])))).all()
+        for u in (
+            await session.scalars(
+                select(User).where(User.id.in_([x for x in user_ids if x]))
+            )
+        ).all()
     }
     keys = {s.id: issue_rules.key(s.number) for s in stories}
 
     task_ids = [s.task_id for s in stories if s.task_id]
     latest_run: dict[uuid.UUID, Run] = {}
     for r in (
-        await session.scalars(select(Run).where(Run.task_id.in_(task_ids)).order_by(Run.created_at.desc()))
+        await session.scalars(
+            select(Run).where(Run.task_id.in_(task_ids)).order_by(Run.created_at.desc())
+        )
     ).all():
         latest_run.setdefault(r.task_id, r)
     latest_pr: dict[uuid.UUID, PullRequest] = {}
     for p in (
         await session.scalars(
-            select(PullRequest).where(PullRequest.task_id.in_(task_ids)).order_by(PullRequest.number.desc())
+            select(PullRequest)
+            .where(PullRequest.task_id.in_(task_ids))
+            .order_by(PullRequest.number.desc())
         )
     ).all():
         latest_pr.setdefault(p.task_id, p)
@@ -462,7 +555,8 @@ async def dev_board(project_id: uuid.UUID, session: Session, user: CurrentUser) 
         for c in (
             await session.scalars(
                 select(ReviewComment).where(
-                    ReviewComment.pr_id.in_([p.id for p in latest_pr.values()]), ReviewComment.triage == "open"
+                    ReviewComment.pr_id.in_([p.id for p in latest_pr.values()]),
+                    ReviewComment.triage == "open",
                 )
             )
         ).all():
@@ -473,12 +567,20 @@ async def dev_board(project_id: uuid.UUID, session: Session, user: CurrentUser) 
         run = latest_run.get(s.task_id) if s.task_id else None
         pr = latest_pr.get(s.task_id) if s.task_id else None
         approvals = await _approvals(session, pr) if pr else []
-        approver_names = {
-            u.id: u.display_name
-            for u in (
-                await session.scalars(select(User).where(User.id.in_([a.decided_by for a in approvals])))
-            ).all()
-        } if approvals else {}
+        approver_names = (
+            {
+                u.id: u.display_name
+                for u in (
+                    await session.scalars(
+                        select(User).where(
+                            User.id.in_([a.decided_by for a in approvals])
+                        )
+                    )
+                ).all()
+            }
+            if approvals
+            else {}
+        )
         out_stories.append(
             {
                 "id": str(s.id),
@@ -512,7 +614,9 @@ async def dev_board(project_id: uuid.UUID, session: Session, user: CurrentUser) 
                     "testsPassed": pr.tests_passed,
                     "reviewed": pr.reviewed_at is not None,
                     "openComments": open_comments.get(pr.id, 0),
-                    "approvals": [approver_names.get(a.decided_by, "") for a in approvals],
+                    "approvals": [
+                        approver_names.get(a.decided_by, "") for a in approvals
+                    ],
                     "requestedReviewers": pr.requested_reviewers or [],
                 }
                 if pr
