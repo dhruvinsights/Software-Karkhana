@@ -54,7 +54,13 @@ function logSink(device, jobId) {
 async function buildJob(job, device, { workDir, harness, sandbox }) {
   const runApi = runClient(job.callbackUrl, job.runId, job.runToken);
   const log = logSink(device, job.jobId);
-  const heartbeat = setInterval(() => runApi.progress('coding').catch(() => {}), HEARTBEAT_MS);
+  // The heartbeat repeats the current phase, so it never moves a run backwards.
+  let phase = 'cloning';
+  const setPhase = (p) => {
+    phase = p;
+    return runApi.progress(p);
+  };
+  const heartbeat = setInterval(() => runApi.progress(phase).catch(() => {}), HEARTBEAT_MS);
   let worktree = null;
   try {
     const spec = await runApi.spec();
@@ -62,16 +68,16 @@ async function buildJob(job, device, { workDir, harness, sandbox }) {
     if (!url) throw new Error('The project has no repository.');
     log('info', `${spec.task_key}: ${spec.task_title}`);
 
-    await runApi.progress('cloning');
+    await setPhase('cloning');
     const clone = await ensureClone(url, workDir, spec.base_branch);
     const branch = `karkhana/${spec.task_key.toLowerCase()}-${job.runId.slice(0, 8)}`;
     worktree = await taskWorktree(clone, branch, spec.base_branch, spec.task_key.toLowerCase());
     log('info', `worktree ${worktree} on ${branch} (from origin/${spec.base_branch})`);
 
-    await runApi.progress('coding');
+    await setPhase('coding');
     const summary = await harnessFor(job.harness || harness)(buildPrompt(spec), worktree, log);
 
-    await runApi.progress('validating');
+    await setPhase('validating');
     const suites = await testSuites(worktree);
     const tests = await runSuites(worktree, suites, sandbox, (suite) => runApi.tests(suite));
     for (const r of tests.suites) {
