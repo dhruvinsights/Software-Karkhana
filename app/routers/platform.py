@@ -71,7 +71,7 @@ async def list_prs(
     q = (
         select(PullRequest, Task, Project)
         .join(Task, Task.id == PullRequest.task_id)
-        .join(Project, Project.id == Task.project_id)
+        .join(Project, (Project.id == Task.project_id) & (Project.archived_at.is_(None)))
         .order_by(PullRequest.number.desc())
     )
     if project_id:
@@ -321,7 +321,7 @@ async def verify_learning(
 async def portfolio(session: Session, _: CurrentUser) -> list[dict]:
     """Each project's stage and gate status. Claims nothing beyond the evidence."""
     projects = (
-        await session.scalars(select(Project).order_by(Project.created_at))
+        await session.scalars(select(Project).where(Project.archived_at.is_(None)).order_by(Project.created_at))
     ).all()
     rows = []
     for p in projects:

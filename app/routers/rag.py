@@ -341,6 +341,12 @@ async def list_workspace_members(
                 if m.user_id in user_map
                 else None,
                 "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+                # Same fields as app/routers/workspaces.py, which this route shadows, plus
+                # the workspace access level (owner / admin / reviewer / guide / member).
+                "isOwner": m.is_owner,
+                "access": "owner" if m.is_owner else m.access,
+                "avatar": user_map[m.user_id].avatar_url or "" if m.user_id in user_map else "",
+                "joinedAt": m.joined_at.isoformat() if m.joined_at else None,
             }
             for m in members
             if m.user_id in user_map

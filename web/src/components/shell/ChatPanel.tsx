@@ -329,6 +329,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [showDMPicker, setShowDMPicker] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
+  // Team channels are private: pick who is in it (you're always included).
+  const [newChannelMembers, setNewChannelMembers] = useState<string[]>([]);
+  const [channelError, setChannelError] = useState<string | null>(null);
   const [dmSearch, setDMSearch] = useState('');
   const [tab, setTab] = useState<'channels' | 'dms'>('channels');
 
@@ -339,7 +342,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
 
   // Connect WebSocket on mount
   useEffect(() => {
-    if (token) chatSocket.connect(token);
+    if (token) chatSocket.connect(token, state.activeWorkspaceId.length === 36 ? state.activeWorkspaceId : undefined);
     return () => { /* keep socket alive across unmounts */ };
   }, [token]);
 
@@ -381,9 +384,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
     } finally {
       setLoadingChannels(false);
     }
-  }, [token]);
+  }, [token, state.activeWorkspaceId]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Someone added us to a channel (or created a public one): show it without a reload.
+  useChatFrames('channel_created', () => { reload(); }, [reload]);
+  useChatFrames('reconnected', () => { reload(); }, [reload]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -414,18 +421,19 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
 
   const handleCreateChannel = async () => {
     if (!newChannelName.trim()) return;
+    setChannelError(null);
     try {
-      const ch = await createChannel(newChannelName.trim(), undefined, token);
-      setChannels((prev) => [...prev, ch]);
+      const ch = await createChannel(newChannelName.trim(), undefined, token, newChannelMembers);
+      setChannels((prev) => (prev.some((c) => c.id === ch.id) ? prev : [...prev, ch]));
       setActiveChannelId(ch.id);
       setTab('channels');
-    } catch {
-      // Offline/demo: create locally
-      const ch = factoryStore.createChannel(newChannelName.trim());
-      setChannels((prev) => [...prev, { id: ch.id, name: ch.name, type: 'channel', unreadCount: 0 }]);
-      setActiveChannelId(ch.id);
+    } catch (e) {
+      // No local fallback: a channel only others can't see is worse than an error.
+      setChannelError((e as Error).message.includes('409') ? 'A channel with that name already exists.' : 'Could not create the channel.');
+      return;
     }
     setNewChannelName('');
+    setNewChannelMembers([]);
     setShowNewChannel(false);
   };
 
@@ -535,16 +543,38 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                 ))}
                 {/* New channel */}
                 {showNewChannel ? (
-                  <div style={{ padding: '6px 10px', display: 'flex', gap: 4 }}>
-                    <input
-                      autoFocus
-                      value={newChannelName}
-                      onChange={(e) => setNewChannelName(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleCreateChannel(); if (e.key === 'Escape') setShowNewChannel(false); }}
-                      placeholder="channel-name"
-                      style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#f0f2f5', outline: 'none' }}
-                    />
-                    <button onClick={handleCreateChannel} style={{ background: '#075BFF', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: '#fff', fontSize: 11 }}>Add</button>
+                  <div style={{ padding: '6px 10px' }}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input
+                        autoFocus
+                        value={newChannelName}
+                        onChange={(e) => setNewChannelName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleCreateChannel(); if (e.key === 'Escape') setShowNewChannel(false); }}
+                        placeholder="channel-name"
+                        style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#f0f2f5', outline: 'none' }}
+                      />
+                      <button onClick={handleCreateChannel} style={{ background: '#075BFF', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: '#fff', fontSize: 11 }}>Add</button>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', margin: '8px 2px 4px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Members · private to them
+                    </div>
+                    <div style={{ maxHeight: 140, overflowY: 'auto' }}>
+                      {members.filter((m) => m.id !== state.currentUser?.id).map((m) => {
+                        const on = newChannelMembers.includes(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => setNewChannelMembers((prev) => (on ? prev.filter((x) => x !== m.id) : [...prev, m.id]))}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 7, padding: '4px 4px', background: on ? 'rgba(7,91,255,0.15)' : 'none', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                          >
+                            <Avatar name={m.displayName} src={m.avatarUrl} size={18} />
+                            <span style={{ flex: 1, textAlign: 'left', fontSize: 12, color: on ? '#f0f2f5' : '#d0d4de' }}>{m.displayName}</span>
+                            {on && <span style={{ fontSize: 10, color: '#5b8fff' }}>✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {channelError && <div style={{ fontSize: 11, color: '#fda4af', marginTop: 6 }}>{channelError}</div>}
                   </div>
                 ) : (
                   <button onClick={() => setShowNewChannel(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)' }}>

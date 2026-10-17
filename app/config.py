@@ -62,6 +62,19 @@ class Settings(BaseSettings):
     ollama_embed_model: str = "nomic-embed-text"
     ollama_timeout_s: float = 300.0
 
+    # --- Chat providers (Idea Lab, brainstorm) --------------------------
+    # The UI lets each person pick a provider per chat; this is the default.
+    # Ollama is the local testing default; Gemini, Claude and IBM Bob are
+    # available whenever their credentials are configured.
+    chat_default_provider: Literal["ollama", "gemini", "claude", "bob"] = "ollama"
+    ollama_chat_model: str = "qwen3.8:latest"
+    anthropic_api_key: str | None = Field(default=None, repr=False)
+    claude_model: str = "claude-opus-5-5"
+    # IBM Bob runs through its CLI (`bob run`), which handles auth and signing.
+    bob_api_key: str | None = Field(default=None, repr=False)
+    bob_bin: str | None = None
+    bob_timeout_s: float = 600.0
+
     # --- Google Cloud ---------------------------------------------------
     google_cloud_project: str = Field(default="local-dev")
     region: str = Field(default="us-central1")

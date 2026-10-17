@@ -180,8 +180,10 @@ export interface DashboardWidget {
 export interface TeamMember {
   id: string;
   name: string;
+  displayName?: string;
   email: string;
   avatar: string;
+  avatarUrl?: string;
   roles: FactoryRole[];
   teamId: string;
   timezone: string;
@@ -211,6 +213,14 @@ export interface Product {
   activeProjectCount: number;
   repositories: string[];
   lastActivity: string;
+  problemStatement?: string;
+  targetUsers?: string;
+  settings?: Record<string, any>;
+  keyFeatures?: string[];
+  constraints?: string[];
+  /** Station ids this product's projects use; people are picked per project. */
+  teamSpaces?: string[];
+  reviewerIds?: string[];
 }
 
 export interface ProductKnowledge {
@@ -243,9 +253,20 @@ export interface IdeaAssessment {
   openQuestions: string[];
 }
 
+export interface IdeaEvaluationReport {
+  business_value?: string;
+  market_differentiation?: string;
+  effort_budget?: string;
+  risk_assessment?: string;
+  research_evidence?: string;
+  recommendation?: string;
+  recommendation_rationale?: string;
+}
+
 export interface Idea {
   id: string;
   productId: string;
+  workspaceId?: string;
   title: string;
   problemStatement: string;
   targetUser: string;
@@ -257,8 +278,77 @@ export interface Idea {
   tags: string[];
   createdAt: string;
   updatedAt: string;
-  assessment?: IdeaAssessment;
+  assessment?: any;
+  source?: 'manual' | 'agent';
+  scanId?: string;
+  evidence?: string[];
+  reviewReport?: IdeaEvaluationReport;
   reportHtml?: string;
+}
+
+export interface IdeaScan {
+  id: string;
+  productId: string;
+  status: 'running' | 'done' | 'failed';
+  provider: string;
+  model: string;
+  repoUrl: string;
+  stats?: {
+    totalIdeas?: number;
+    scannedFiles?: number;
+    sampleFiles?: string[];
+  };
+  error?: string;
+  createdAt: string;
+  finishedAt?: string;
+}
+
+export interface IdeaChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  thinking?: string;
+  createdAt: string;
+}
+
+export interface IdeaChat {
+  id: string;
+  productId: string;
+  ideaId?: string;
+  title: string;
+  provider: string;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+  messages?: IdeaChatMessage[];
+}
+
+export interface IdeaReviewItem {
+  id: string;
+  ideaId: string;
+  ideaTitle: string;
+  problemStatement: string;
+  expectedValue: string;
+  complexity: string;
+  tags: string[];
+  evidence?: string[];
+  reviewReport?: IdeaEvaluationReport;
+  productName: string;
+  productId?: string;
+  decision: 'pending' | 'approved' | 'rejected';
+  comment?: string;
+  requestedByName: string;
+  requestedAt: string;
+  decidedAt?: string;
+}
+
+export interface AIProviderInfo {
+  id: 'ollama' | 'gemini' | 'claude' | 'bob';
+  label: string;
+  available: boolean;
+  detail: string;
+  models: string[];
+  defaultModel: string;
 }
 
 export interface ApprovalRequest {
@@ -299,6 +389,8 @@ export interface Project {
   completedTasks: number;
   totalTasks: number;
   createdAt: string;
+  /** Server user id of the creator; the creator may delete the project. */
+  createdBy?: string;
 }
 
 export interface Epic {

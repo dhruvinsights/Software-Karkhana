@@ -22,6 +22,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: { '/api': api, '/healthz': api },
+    // ws: true forwards the chat WebSocket (/api/chat/ws) as well.
+    proxy: { '/api': { target: api, ws: true }, '/healthz': api },
   },
 });

@@ -79,6 +79,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const token = state.token ?? '';
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [copiedProjectLink, setCopiedProjectLink] = useState(false);
   const [projectInviteError, setProjectInviteError] = useState<string | null>(null);
@@ -115,6 +116,21 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
     };
     setComments((prev) => prev.some((c) => c.id === newComment.id) ? prev : [...prev, newComment]);
   }, [selectedProject?.id]);
+
+  const handleDeleteCurrentProject = async () => {
+    if (!selectedProject) return;
+    if (!window.confirm(`Are you sure you want to delete "${selectedProject.name}"? This will permanently archive the project and remove it from DB and cache for all members.`)) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await factoryStore.deleteProject(selectedProject.id);
+    } catch (e: any) {
+      alert(`Failed to delete project: ${e?.message || e}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleSendComment = async () => {
     if (!commentText.trim() || !selectedProject) return;
@@ -290,6 +306,17 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
+          {factoryStore.canDeleteProject(selectedProject) && (
+            <button
+              onClick={handleDeleteCurrentProject}
+              disabled={isDeleting}
+              className="px-3.5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              title="Delete project from DB and cache"
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              <span>Delete Project</span>
+            </button>
+          )}
           <button
             onClick={() => setCreateProjectModalOpen(true)}
             className="px-4 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#075BFF]/20 transition-all cursor-pointer"

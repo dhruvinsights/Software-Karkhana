@@ -14,6 +14,11 @@ export type ChatFrame =
   | { type: 'typing'; channelId: string; userId: string; displayName: string }
   | { type: 'presence'; onlineUsers: string[] }
   | { type: 'project_comment'; id: string; projectId: string; authorId: string; authorName: string; authorAvatar?: string; body: string; mentions: string[]; createdAt: string }
+  | { type: 'channel_created'; channel: { id: string; name: string; visibility: string } }
+  | { type: 'workspace_sync'; scope: 'projects' | 'products' | 'members' }
+  | { type: 'scan_progress'; scanId: string; step: string; percent: number; note?: string }
+  | { type: 'reconnected' }
+  | { type: 'activity' }
   | { type: 'pong' }
   | { type: 'error'; detail: string };
 
@@ -22,18 +27,33 @@ type Listener = (frame: ChatFrame) => void;
 class ChatSocketManager {
   private ws: WebSocket | null = null;
   private token: string | null = null;
+  private workspaceId: string | null = null;
   private listeners = new Set<Listener>();
   private queue: object[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private backoff = 1000; // ms, doubles on each failed attempt (cap 30 s)
   private intentionalClose = false;
+  private hasConnected = false;
 
-  /** Call once after authentication — keeps the socket alive. */
-  connect(token: string): void {
-    if (this.token === token && this.ws?.readyState === WebSocket.OPEN) return;
+  /**
+   * Call once after authentication — keeps the socket alive. Switching workspace reconnects.
+   * Omitting workspaceId keeps the current one, so a caller that doesn't know it can't
+   * move the socket to the user's default workspace by accident.
+   */
+  connect(token: string, workspaceId?: string): void {
+    const ws = workspaceId ?? this.workspaceId;
+    if (this.token === token && this.workspaceId === ws && this.ws && this.ws.readyState <= WebSocket.OPEN) return;
     this.token = token;
+    this.workspaceId = ws;
     this.intentionalClose = false;
+    if (this.ws) {
+      // Replace the old connection without triggering its reconnect loop.
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this._clearTimers();
     this._open();
   }
 
@@ -42,6 +62,10 @@ class ChatSocketManager {
     this._clearTimers();
     this.ws?.close();
     this.ws = null;
+    this.token = null;
+    this.workspaceId = null;
+    this.hasConnected = false;
+    this.queue = [];
   }
 
   /** Subscribe to all incoming frames. Returns an unsubscribe fn. */
@@ -71,6 +95,11 @@ class ChatSocketManager {
     this.send({ type: 'read', channelId, messageId });
   }
 
+  /** The workspace this socket (and every chat REST call) is scoped to. */
+  get currentWorkspaceId(): string | null {
+    return this.workspaceId;
+  }
+
   get isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }
@@ -80,13 +109,17 @@ class ChatSocketManager {
   private _open(): void {
     if (!this.token) return;
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${protocol}://${window.location.host}/api/chat/ws?token=${encodeURIComponent(this.token)}`;
+    const wsParam = this.workspaceId ? `&workspace_id=${encodeURIComponent(this.workspaceId)}` : '';
+    const url = `${protocol}://${window.location.host}/api/chat/ws?token=${encodeURIComponent(this.token)}${wsParam}`;
 
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
       console.log('[chat] WebSocket connected');
       this.backoff = 1000; // reset back-off on successful connect
+      // Frames sent while we were down are lost; tell listeners to re-sync.
+      if (this.hasConnected) this.listeners.forEach((fn) => fn({ type: 'reconnected' }));
+      this.hasConnected = true;
       // Flush queued frames
       while (this.queue.length > 0) {
         const frame = this.queue.shift()!;
@@ -169,11 +202,15 @@ export interface WorkspaceMember {
 
 /** Fetch JSON with auth token from factoryStore. */
 async function apiFetch<T>(path: string, token: string, opts?: RequestInit): Promise<T> {
+  // Scope every chat call to the workspace on screen; without it the server
+  // falls back to the user's first workspace and lists the wrong channels.
+  const ws = chatSocket.currentWorkspaceId;
   const res = await fetch(path, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
+      ...(ws ? { 'X-Workspace-Id': ws } : {}),
       ...(opts?.headers ?? {}),
     },
   });
@@ -197,12 +234,31 @@ export async function fetchDMs(token: string): Promise<ChannelMeta[]> {
   return apiFetch<ChannelMeta[]>('/api/chat/dms', token);
 }
 
-/** Create a #channel. */
-export async function createChannel(name: string, description: string | undefined, token: string): Promise<ChannelMeta> {
+/** Create a #channel. Team channels are private to the members you add. */
+export async function createChannel(
+  name: string,
+  description: string | undefined,
+  token: string,
+  memberIds: string[] = [],
+  visibility: 'private' | 'public' = 'private',
+): Promise<ChannelMeta> {
   return apiFetch<ChannelMeta>('/api/chat/channels', token, {
     method: 'POST',
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify({ name, description, member_ids: memberIds, visibility }),
   });
+}
+
+/** Unread totals for the header badges: activity, plus messages across channels and DMs. */
+export async function fetchUnreadCounts(token: string): Promise<{ activity: number; chat: number }> {
+  const [activity, channels, dms] = await Promise.all([
+    apiFetch<{ read: boolean }[]>('/api/chat/activity', token),
+    apiFetch<ChannelMeta[]>('/api/chat/channels', token),
+    apiFetch<ChannelMeta[]>('/api/chat/dms', token),
+  ]);
+  return {
+    activity: activity.filter((a) => !a.read).length,
+    chat: [...channels, ...dms].reduce((n, c) => n + (c.unreadCount || 0), 0),
+  };
 }
 
 /** Open or return existing DM with a user. */
