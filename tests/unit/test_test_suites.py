@@ -28,6 +28,11 @@ def test_jest_summary():
     assert parse_counts(out) == {"passed": 9, "failed": 1, "skipped": 2, "total": 12}
 
 
+def test_ctest_summary():
+    out = "      Start  3: memory_store\n92% tests passed, 1 tests failed out of 12\n"
+    assert parse_counts(out) == {"passed": 11, "failed": 1, "skipped": 0, "total": 12}
+
+
 def test_no_summary():
     assert parse_counts("Traceback ...") == {}
 

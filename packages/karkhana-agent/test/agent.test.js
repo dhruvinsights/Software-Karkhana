@@ -87,6 +87,7 @@ test('counts come from pytest and Jest summaries', async () => {
   const { parseCounts } = await import('../src/testrun.js');
   assert.deepEqual(parseCounts('== 1 failed, 4 passed, 2 skipped in 1s =='), { passed: 4, failed: 1, skipped: 2, total: 7 });
   assert.deepEqual(parseCounts('Tests:       2 failed, 10 passed, 12 total'), { passed: 10, failed: 2, skipped: 0, total: 12 });
+  assert.deepEqual(parseCounts('100% tests passed, 0 tests failed out of 9'), { passed: 9, failed: 0, skipped: 0, total: 9 });
   assert.deepEqual(parseCounts('boom'), {});
 });
 

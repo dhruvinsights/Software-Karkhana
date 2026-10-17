@@ -30,14 +30,19 @@ from app.schemas import SuiteReport
 _ORDER = {"unit": 0, "integration": 1, "e2e": 2}
 
 _PYTEST = re.compile(r"(\d+) (passed|failed|skipped|errors?|xfailed|xpassed)")
+_CTEST = re.compile(r"(\d+)% tests passed, (\d+) tests? failed out of (\d+)")
 _JEST = re.compile(
     r"Tests:\s+(?:(\d+) failed, )?(?:(\d+) skipped, )?(?:(\d+) passed, )?(\d+) total"
 )
 
 
 def parse_counts(output: str) -> dict[str, int]:
-    """Passed/failed/skipped/total from the last pytest or Jest summary in ``output``."""
+    """Passed/failed/skipped/total from the last pytest, Jest or CTest summary in ``output``."""
     tail = output[-4000:]
+    ctest = _CTEST.findall(tail)
+    if ctest:
+        _pct, failed, total = (int(x) for x in ctest[-1])
+        return {"passed": total - failed, "failed": failed, "skipped": 0, "total": total}
     jest = _JEST.findall(tail)
     if jest:
         failed, skipped, passed, total = (int(x or 0) for x in jest[-1])

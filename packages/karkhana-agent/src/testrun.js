@@ -95,9 +95,15 @@ export async function testSuites(worktree) {
   return [{ name: 'tests', argv: base }];
 }
 
-/** Passed/failed/skipped/total from the last pytest or Jest summary line. */
+/** Passed/failed/skipped/total from the last pytest, Jest or CTest summary line. */
 export function parseCounts(output) {
   const tail = output.slice(-4000);
+  const ctest = [...tail.matchAll(/(\d+)% tests passed, (\d+) tests? failed out of (\d+)/g)].pop();
+  if (ctest) {
+    const failed = Number(ctest[2]);
+    const total = Number(ctest[3]);
+    return { passed: total - failed, failed, skipped: 0, total };
+  }
   const jest = [...tail.matchAll(/Tests:\s+(?:(\d+) failed, )?(?:(\d+) skipped, )?(?:(\d+) passed, )?(\d+) total/g)].pop();
   if (jest) {
     const [failed, skipped, passed, total] = jest.slice(1).map((x) => Number(x ?? 0));
