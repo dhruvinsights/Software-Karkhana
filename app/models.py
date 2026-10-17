@@ -537,6 +537,8 @@ class ChatChannel(Base):
     # 'public': every workspace member; 'private': chat_channel_members only.
     visibility: Mapped[str] = mapped_column(String, default="public")
     project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    # The project station (team space) the channel belongs to (migration 036).
+    station: Mapped[str | None] = mapped_column(String, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()

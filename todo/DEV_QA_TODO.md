@@ -37,7 +37,7 @@ Tick an item only after its check passes. Commit code and this file together.
 - [x] QA queue shows "waiting for the developer's manual check" separately.
 
 ## 4. Channels inside a station
-- [ ] `chat_channels.station`; create a channel for my station in this project with an
+- [x] `chat_channels.station`; create a channel for my station in this project with an
       audience (my team, the project, or linked to the whole workspace); link later.
       Check: integration test.
 
@@ -69,3 +69,4 @@ Tick an item only after its check passes. Commit code and this file together.
 | 2026-10-17 | Runs report unit and integration suites separately, live |
 | 2026-10-18 | Dev accountability: manual checks, bug lifecycle, reviewer requests, dev board |
 | 2026-10-18 | QA agent suggests bugs grounded in code; QA accepts or dismisses; QA board by stage |
+| 2026-10-18 | Station channels: team / project / linked to workspace |

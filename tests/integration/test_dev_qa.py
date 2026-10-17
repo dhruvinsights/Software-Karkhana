@@ -241,3 +241,41 @@ async def test_qa_agent_suggests_and_qa_decides(client, fakes, monkeypatch):
     await client.post(f"/api/issues/{sid}/qa-agent", headers=as_(PM))
     row = (await client.get(f"/api/projects/{pid}/qa-board", headers=as_(PM))).json()["stories"][0]
     assert row["qaAgent"]["suggested"] == 0
+
+
+async def test_station_channels_and_linking_to_the_workspace(client, fakes):
+    from tests.integration.test_golden_path import LEAD
+
+    pid, _story_row = await _story(client)
+    ws = (await client.get(f"/api/projects/{pid}", headers=as_(PM))).json()["project"]["workspace_id"]
+
+    def _in(who):
+        return {**as_(who), "X-Workspace-Id": ws}
+
+    def names(rows):
+        return {c["name"] for c in rows}
+
+    name = f"dev-{uuid.uuid4().hex[:6]}"
+    bad = await client.post(
+        "/api/chat/channels", headers=_in(DEV), json={"name": name, "audience": "team", "project_id": pid}
+    )
+    assert bad.status_code == 422
+    r = await client.post(
+        "/api/chat/channels",
+        headers=_in(DEV),
+        json={"name": name, "project_id": pid, "station": "developer", "audience": "team"},
+    )
+    assert r.status_code == 201, r.text
+    ch = r.json()
+    assert ch["station"] == "developer" and ch["visibility"] == "private"
+    # The developer team (DEV, and PM who holds every station) is in; LEAD is not on the project.
+    assert name in names((await client.get("/api/chat/channels", headers=_in(PM))).json())
+    assert name not in names((await client.get("/api/chat/channels", headers=_in(LEAD))).json())
+
+    # Linking (by its creator, or a project lead or manager) makes it a workspace
+    # channel everyone can find.
+    r = await client.post(f"/api/chat/channels/{ch['id']}/link", headers=_in(DEV))
+    assert r.status_code == 200 and r.json()["visibility"] == "public"
+    rows = (await client.get("/api/chat/channels", headers=_in(LEAD))).json()
+    linked = next(c for c in rows if c["name"] == name)
+    assert linked["projectId"] == pid and linked["station"] == "developer"
