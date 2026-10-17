@@ -35,7 +35,8 @@ from google.genai import types
 
 from app.agents.ollama_llm import OllamaLlm
 from app.agents.tools import Workspace, make_tools
-from app.ai import compression
+from app.ai import compression, llm
+from app.ai.providers import bob
 from app.config import get_settings
 from app.schemas import ReviewOutput
 
@@ -170,6 +171,15 @@ async def run_coder(
             "earlier runs; follow decisions, do not repeat finished work):\n"
             + "\n".join(context)
         )
+    if get_settings().llm_provider == "bob":
+        # Bob is itself a coding agent with file tools, so it works on the
+        # checkout directly. It runs inside the worker, which holds no secrets.
+        out = await bob.run(
+            f"{CODER_INSTRUCTION}\n\n{message}",
+            workspace_dir=str(ws.root),
+            max_turns=60,
+        )
+        return out.text
     summary, _ = await _run(build_coder(ws), message, max_llm_calls=40)
     return summary
 
@@ -180,6 +190,10 @@ async def run_reviewer(diff: str, *, title: str) -> ReviewOutput:
 
     shown = number_diff(diff) or diff
     message = f"STORY: {title}\n\nDIFF:\n```\n{shown[:60_000]}\n```"
+    if get_settings().llm_provider == "bob":
+        return await llm.generate_structured(
+            prompt=message, schema=ReviewOutput, system=REVIEWER_INSTRUCTION
+        )
     final, state = await _run(build_reviewer(), message, max_llm_calls=3)
     raw = state.get("review") or final
     if isinstance(raw, dict):

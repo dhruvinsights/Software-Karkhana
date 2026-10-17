@@ -42,10 +42,10 @@ class Settings(BaseSettings):
     )
 
     # --- Model providers -----------------------------------------------
-    # Two providers only: Gemini (hosted) and Ollama (local). Chat and
-    # embeddings are chosen independently, so you can run Gemini for text and
-    # Ollama's nomic-embed-text for vectors.
-    llm_provider: Literal["gemini", "ollama"] = "gemini"
+    # Chat: Gemini (hosted), Ollama (local) or IBM Bob (its CLI). Embeddings:
+    # Gemini or Ollama. They are chosen independently, so you can run Bob for
+    # text and Ollama's nomic-embed-text for vectors.
+    llm_provider: Literal["gemini", "ollama", "bob"] = "gemini"
     embed_provider: Literal["gemini", "ollama"] = "gemini"
 
     # Gemini through a Google AI Studio key (GEMINI_API_KEY), or through
@@ -174,6 +174,12 @@ class Settings(BaseSettings):
     # Aggressive mode only: allow the Kompress ML text compressor if its model
     # is already cached locally (offline mode never downloads it).
     headroom_kompress: bool = False
+
+    # --- Repository context (repomix) -------------------------------------
+    # Pinned so a repomix release cannot change what the models see.
+    repomix_cmd: str = "npx --yes repomix@1.18.1"
+    # How much packed code goes into one prompt (about 4 characters per token).
+    repo_context_budget_chars: int = 160_000
 
     # --- Shared context --------------------------------------------------
     # Directory of Markdown context files kept in Git (TeamContext-style).

@@ -129,6 +129,25 @@ class IdeaScan(Base):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class RepoSnapshot(Base):
+    """A product's repository at one commit, packed by repomix (migration 027)."""
+
+    __tablename__ = "repo_snapshots"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    repo_url: Mapped[str] = mapped_column(String)
+    commit_sha: Mapped[str] = mapped_column(String)
+    tree: Mapped[str] = mapped_column(Text)
+    files: Mapped[dict[str, str]] = mapped_column(JSONB)
+    file_count: Mapped[int] = mapped_column(Integer)
+    chars: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = _now()
+
+
 class Idea(Base):
     """A feature idea under validation with AI feasibility radar and reviewer approval."""
 

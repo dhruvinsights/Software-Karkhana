@@ -22,20 +22,24 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import db
+from app import db, reports
 from app import workspace_access as wa
-from app.ai import chat
-from app.ai.idea_agents import evaluate_idea_comprehensive, run_codebase_scan
+from app.ai import chat, llm
+from app.ai.idea_agents import run_codebase_scan
 from app.auth import CurrentUser
-from app.models import Idea, IdeaChat, IdeaChatMessage, IdeaScan, Product
+from app.config import get_settings
+from app.models import Idea, IdeaChat, IdeaChatMessage, IdeaScan, Product, User
+from app.services import idea_report
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["idea_lab"])
@@ -63,10 +67,8 @@ async def get_ai_providers(_: CurrentUser) -> list[dict[str, Any]]:
 
 
 class IdeaScanPayload(BaseModel):
-    """Which provider and repository an idea scan should use."""
+    """Optionally a repository URL to scan instead of the product's own."""
 
-    provider: str = "ollama"
-    model: str | None = None
     repo_url: str | None = None
 
 
@@ -107,13 +109,15 @@ async def trigger_idea_scan(
             detail="Repository URL is required for codebase scan. Set it in Product Setup.",
         )
 
+    if (product.settings or {}).get("repositoryUrl") != str(repo_url).strip():
+        product.settings = {**(product.settings or {}), "repositoryUrl": str(repo_url).strip()}
     scan = IdeaScan(
         id=uuid.uuid4(),
         product_id=product.id,
         workspace_id=product.workspace_id,
         status="running",
-        provider=payload.provider,
-        model=payload.model or "default",
+        provider=get_settings().llm_provider,
+        model=llm.chat_model_name(),
         repo_url=str(repo_url).strip(),
         started_by=user.id,
         stats={"totalIdeas": 0},
@@ -127,9 +131,6 @@ async def trigger_idea_scan(
         scan_id=scan.id,
         product_id=product.id,
         workspace_id=product.workspace_id,
-        repo_url=scan.repo_url,
-        provider=payload.provider,  # type: ignore
-        model=payload.model,
         started_by_id=user.id,
     )
 
@@ -444,40 +445,67 @@ Bold key terms. Keep tone direct, sharp, and highly technical, but fully structu
     }
 
 
-# ── Idea Evaluation & Reviews ──────────────────────────────────────────────────
+# ── Idea Evaluation Report ─────────────────────────────────────────────────────
 
 
-@router.post("/api/ideas/{idea_id}/evaluate")
+async def _idea_for(
+    session: AsyncSession, user: Any, idea_id: uuid.UUID, *, write: bool
+) -> Idea:
+    idea = await session.get(Idea, idea_id)
+    if idea is None or idea.workspace_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Idea not found.")
+    ws = await wa.workspace_access(session, user, idea.workspace_id)
+    if write:
+        ws.require_write()
+    return idea
+
+
+@router.post("/api/ideas/{idea_id}/evaluate", status_code=status.HTTP_202_ACCEPTED)
 async def evaluate_idea_endpoint(
-    idea_id: str,
+    idea_id: uuid.UUID,
     session: Session,
     user: CurrentUser,
-    provider: str = "ollama",
-    model: str | None = None,
+    background: BackgroundTasks,
 ) -> dict[str, Any]:
-    """Generates an executive evaluation report for an Idea prior to reviewer sign-off."""
-    try:
-        idea_uuid = uuid.UUID(idea_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid idea ID.") from None
-
-    idea = await session.get(Idea, idea_uuid)
-    if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found.")
-
-    product = await session.get(Product, idea.product_id) if idea.product_id else None
-    if idea.workspace_id:
-        ws = await wa.workspace_access(session, user, idea.workspace_id)
-        ws.require_write()
-
-    report = await evaluate_idea_comprehensive(
-        idea, product, provider=provider, model=model
-    )  # type: ignore
-    idea.review_report = report
-    session.add(idea)
+    """Starts the evaluation report; ``workspace_sync: ideas`` fires when it is done."""
+    idea = await _idea_for(session, user, idea_id, write=True)
+    if (idea.review_report or {}).get("status") == "running":
+        raise HTTPException(status.HTTP_409_CONFLICT, "A report is already being written.")
+    idea.review_report = {"status": "running", "startedAt": dt.datetime.now(dt.UTC).isoformat()}
     await session.commit()
+    background.add_task(idea_report.run, idea.id, user.id)
+    return {"ideaId": str(idea.id), "status": "running"}
 
-    return {
-        "ideaId": str(idea.id),
-        "report": report,
-    }
+
+async def _report_html(session: AsyncSession, idea: Idea) -> str:
+    stored = idea.review_report or {}
+    if stored.get("status") != "ready":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This idea has no finished report yet.")
+    product = await session.get(Product, idea.product_id) if idea.product_id else None
+    author = await session.get(User, idea.author_id) if idea.author_id else None
+    return reports.idea_report_html(
+        idea=idea,
+        product=product,
+        author=(author.display_name or author.email) if author else None,
+        stored=stored,
+    )
+
+
+@router.get("/api/ideas/{idea_id}/report.html", response_class=HTMLResponse)
+async def idea_report_page(idea_id: uuid.UUID, session: Session, user: CurrentUser) -> HTMLResponse:
+    """The finished report as a printable HTML page (for the in-app preview)."""
+    idea = await _idea_for(session, user, idea_id, write=False)
+    return HTMLResponse(await _report_html(session, idea))
+
+
+@router.get("/api/ideas/{idea_id}/report.pdf")
+async def idea_report_pdf(idea_id: uuid.UUID, session: Session, user: CurrentUser) -> Response:
+    """The finished report as an A4 PDF."""
+    idea = await _idea_for(session, user, idea_id, write=False)
+    pdf = await reports.to_pdf(await _report_html(session, idea), title=idea.title)
+    filename = re.sub(r"[^A-Za-z0-9]+", "-", idea.title).strip("-")[:80] or "idea"
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}-evaluation.pdf"'},
+    )

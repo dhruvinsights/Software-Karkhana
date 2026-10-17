@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from app.ai import compression
 from app.ai.errors import ModelError
-from app.ai.providers import gemini, ollama
+from app.ai.providers import bob, gemini, ollama
 from app.config import get_settings
 
 __all__ = [
@@ -42,10 +42,17 @@ __all__ = [
 T = TypeVar("T", bound=BaseModel)
 
 
+def _provider():
+    """The chat provider module selected by ``LLM_PROVIDER``."""
+    return {"ollama": ollama, "bob": bob}.get(get_settings().llm_provider, gemini)
+
+
 def chat_model_name() -> str:
     """The model id that ``generate_structured`` will use right now."""
     s = get_settings()
-    return s.ollama_model if s.llm_provider == "ollama" else s.gemini_model
+    return {"ollama": s.ollama_model, "bob": "ibm-bob"}.get(
+        s.llm_provider, s.gemini_model
+    )
 
 
 def embed_model_name() -> str:
@@ -70,7 +77,7 @@ async def generate_structured(
     The prompt is compressed with Headroom first (``app.ai.compression``); the
     system instruction is sent verbatim.
     """
-    provider = ollama if get_settings().llm_provider == "ollama" else gemini
+    provider = _provider()
     prompt, _ = await compression.acompress_prompt(
         prompt, kind=f"structured:{schema.__name__}", model=model or chat_model_name()
     )
@@ -85,8 +92,9 @@ async def generate_structured(
 
 
 def text_configured() -> bool:
-    """True when the chat provider is worth calling (Ollama, or Gemini with credentials)."""
-    return get_settings().llm_provider == "ollama" or gemini.configured()
+    """True when the chat provider is worth calling (Ollama, or Bob/Gemini with credentials)."""
+    provider = get_settings().llm_provider
+    return provider == "ollama" or (bob if provider == "bob" else gemini).configured()
 
 
 async def generate_text(
@@ -106,7 +114,7 @@ async def generate_text(
     Raises:
         ModelError: On timeout, API error or an empty reply.
     """
-    provider = ollama if get_settings().llm_provider == "ollama" else gemini
+    provider = _provider()
     messages, _ = await compression.acompress_messages(
         messages, kind=kind, model=model or chat_model_name()
     )
