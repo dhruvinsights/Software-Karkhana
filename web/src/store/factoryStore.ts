@@ -488,12 +488,15 @@ export const factoryStore = {
               code: pr.settings?.code || `PRJ-${pr.id.substring(0, 4).toUpperCase()}`,
               description: pr.settings?.description || pr.idea_text || 'Active engineering project deliverable.',
               status: pr.stage_status === 'submitted' ? 'planning' : 'development',
-              phase: 'Sprint 1',
+              phase: pr.stage || '',
               health: 'healthy',
               leadId: pr.lead_id || state.currentUser?.id || 'usr-lead',
               teamsAssigned: ['tm-core'],
-              targetReleaseDate: pr.settings?.target_release_date || '2026-12-31',
-              repositoryUrl: pr.settings?.repository_url || 'github.com/org/repo',
+              targetReleaseDate: pr.settings?.target_release_date || '',
+              repositoryUrl:
+                pr.settings?.repository_url ||
+                state.products.find((p) => p.id === pr.product_id)?.settings?.repositoryUrl ||
+                '',
               milestonesCount: 1,
               completedTasks: 0,
               totalTasks: 0,
@@ -521,11 +524,23 @@ export const factoryStore = {
             complexity: i.complexity || 'Medium',
             tags: i.tags || [],
             assessment: i.assessment,
+            source: i.source,
+            evidence: i.evidence || [],
+            reviewReport: i.reviewReport ?? null,
+            promotedProjectId: i.promotedProjectId || undefined,
+            workspaceId: i.workspaceId || undefined,
             createdAt: i.createdAt,
             updatedAt: i.updatedAt,
           }));
         }
       }
+
+      // Counts on the product cards come from what was just loaded.
+      state.products = state.products.map((p) => ({
+        ...p,
+        activeIdeaCount: state.ideas.filter((i) => i.productId === p.id && i.status !== 'rejected').length,
+        activeProjectCount: state.projects.filter((pr) => pr.productId === p.id).length,
+      }));
 
       // 6. Members and my access level in this workspace
       if (memberRows) {

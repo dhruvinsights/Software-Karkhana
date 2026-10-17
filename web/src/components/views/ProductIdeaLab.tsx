@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles,
-  Bot,
   Send,
   Plus,
   RefreshCw,
-  FolderGit2,
-  CheckCircle2,
-  Clock,
   ArrowRight,
   Shield,
   FileCode,
@@ -15,21 +11,13 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
-  AlertCircle,
   MessageSquare,
-  Cpu,
   Bookmark,
-  Layers,
-  ChevronDown,
   X,
   Play,
-  Download,
   Eye,
-  Users,
   LayoutGrid,
   FileText,
-  UserCheck,
-  ChevronUp,
 } from 'lucide-react';
 import { FactoryState, factoryStore } from '../../store/factoryStore';
 import { AIProviderInfo, Idea, IdeaChat, IdeaChatMessage, IdeaScan } from '../../types/factory';
@@ -38,7 +26,9 @@ import { ThoughtLine } from '../reactbits/ThoughtLine';
 import { BorderGlow } from '../reactbits/BorderGlow';
 import { IdeaApprovalPanel } from './IdeaApprovalPanel';
 import { fetchGitHubStatus, startGitHubDeviceFlow, pollGitHubDeviceFlow, saveGitHubTokenDirect, GitHubStatus } from '../../lib/githubApi';
-import { chatSocket } from '../../lib/chatSocket';
+import { chatSocket, useChatFrames } from '../../lib/chatSocket';
+import { reportLabel, startIdeaReport } from '../../lib/ideaReports';
+import { IdeaReportModal } from '../workspace/IdeaReportModal';
 import { MarkdownMessage } from '../MarkdownMessage';
 
 const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
@@ -87,12 +77,8 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
 
   // Right panel tab
   const [rightTab, setRightTab] = useState<'overview' | 'ideas' | 'projects' | 'reports'>('ideas');
-  // Reports saved from chat
-  const [reports, setReports] = useState<{ id: string; title: string; ideaTitle: string; createdAt: string; htmlContent: string }[]>([]);
-  const [previewReport, setPreviewReport] = useState<{ title: string; htmlContent: string } | null>(null);
   // Reviewer assignment per idea
   const [ideaReviewers, setIdeaReviewers] = useState<Record<string, string>>({});
-  const [generatingReportId, setGeneratingReportId] = useState<string | null>(null);
 
   // Modals & Panels
   const [githubStatus, setGithubStatus] = useState<GitHubStatus>({ connected: false });
@@ -100,8 +86,7 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
   const [patInput, setPatInput] = useState('');
   const [deviceFlow, setDeviceFlow] = useState<{ user_code: string; verification_uri: string; device_code: string; interval: number } | null>(null);
   const [reviewModalIdea, setReviewModalIdea] = useState<Idea | null>(null);
-  const [evalModalIdea, setEvalModalIdea] = useState<Idea | null>(null);
-  const [evaluatingIdeaId, setEvaluatingIdeaId] = useState<string | null>(null);
+  const [reportIdea, setReportIdea] = useState<Idea | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const repoUrl = activeProduct?.settings?.repositoryUrl || '';
@@ -346,11 +331,7 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
       const res = await fetch(`/api/products/${activeProduct.id}/idea-scans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          provider: selectedProvider,
-          model: selectedModel,
-          repo_url: repoUrl,
-        }),
+        body: JSON.stringify({ repo_url: repoUrl }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -363,22 +344,32 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
     }
   };
 
-  // Actions: Evaluate Idea
-  const handleEvaluateIdea = async (idea: Idea) => {
+  const reloadIdeas = () => {
+    if (!token || !activeProduct) return;
+    fetch(`/api/ideas?product_id=${activeProduct.id}&workspace_id=${state.activeWorkspaceId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => setIdeas(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
+
+  // The server writes the report in the background and announces it with
+  // workspace_sync "ideas"; until then the card shows that it is being written.
+  useChatFrames('workspace_sync', (frame) => {
+    if (frame.scope === 'ideas') reloadIdeas();
+  }, [token, activeProduct?.id]);
+
+  const handleReport = async (idea: Idea) => {
     if (!token) return;
-    setEvaluatingIdeaId(idea.id);
+    if (idea.reviewReport?.status === 'ready') {
+      setReportIdea(idea);
+      return;
+    }
+    if (idea.reviewReport?.status === 'running') return;
     try {
-      const res = await fetch(`/api/ideas/${idea.id}/evaluate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setIdeas((prev) => prev.map((i) => (i.id === idea.id ? { ...i, reviewReport: data.report } : i)));
-      setEvalModalIdea({ ...idea, reviewReport: data.report });
+      await startIdeaReport(idea.id, token);
+      setIdeas((prev) => prev.map((i) => (i.id === idea.id ? { ...i, reviewReport: { status: 'running' } } : i)));
     } catch (e) {
-      console.error(e);
-    } finally {
-      setEvaluatingIdeaId(null);
+      alert((e as Error).message);
     }
   };
 
@@ -386,11 +377,7 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
   // closes, pull the ideas again so the cards show where each one now stands.
   const closeReviewModal = () => {
     setReviewModalIdea(null);
-    if (!token || !activeProduct) return;
-    fetch(`/api/ideas?product_id=${activeProduct.id}&workspace_id=${state.activeWorkspaceId}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((data) => setIdeas(Array.isArray(data) ? data : []))
-      .catch(() => {});
+    reloadIdeas();
   };
 
   // Actions: Start GitHub Device Flow
@@ -467,105 +454,7 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
   };
 
   const workspaceMembers = state.members || [];
-
-  // ── Generate Report: sends a structured prompt to chat, AI replies with HTML report ──
-  const handleGenerateReport = async (idea: Idea) => {
-    if (!activeProduct || !token) return;
-    setGeneratingReportId(idea.id);
-    setRightTab('ideas');
-
-    // Ensure a chat exists
-    let chatId = activeChatId;
-    if (!chatId) {
-      try {
-        const r = await fetch(`/api/products/${activeProduct.id}/idea-chats`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ title: `Report: ${idea.title}`, provider: selectedProvider, model: selectedModel }),
-        });
-        const chat: IdeaChat = await r.json();
-        setChats((p) => [chat, ...p]);
-        setActiveChatId(chat.id);
-        chatId = chat.id;
-      } catch { setGeneratingReportId(null); return; }
-    }
-
-    const prompt = `Generate a professional, comprehensive evaluation report for the following product idea. Format it as clean HTML with inline styles using a white/light theme (white background, dark text) suitable for PDF export. Structure it like a consulting report with these sections:
-
-1. **Executive Summary** — 2-3 sentence overview and recommendation
-2. **Problem Statement** — What user pain is being solved
-3. **Strategic Value** — Business case, market opportunity, expected ROI
-4. **Technical Feasibility** — Complexity rating, architecture notes, key risks
-5. **Effort & Resource Estimate** — Timeline and team size
-6. **Risk Assessment** — Top 3 risks with mitigation
-7. **Recommendation** — Approve / Needs More Evidence / Reject with rationale
-
-**Idea:** ${idea.title}
-**Problem:** ${idea.problemStatement}
-**Expected Value:** ${idea.expectedValue}
-**Complexity:** ${idea.complexity}
-**Tags:** ${idea.tags?.join(', ') || 'N/A'}
-
-Return ONLY the HTML report wrapped in a single <div> tag with inline styles. Make it clean, professional, and easy to read. After the HTML, on a new line write: REPORT_TITLE: ${idea.title} Evaluation Report`;
-
-    // Inject user message into chat UI
-    const userMsg: IdeaChatMessage = { id: `rpt-${Date.now()}`, role: 'user', content: `📄 Generate evaluation report for: **${idea.title}**`, createdAt: new Date().toISOString() };
-    setMessages((p) => [...p, userMsg]);
-    setIsThinking(true);
-    setThinkingSteps(['Structuring executive summary', 'Analysing feasibility', 'Drafting recommendations', 'Formatting PDF-ready report']);
-
-    try {
-      const res = await fetch(`/api/idea-chats/${chatId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content: prompt, provider: selectedProvider, model: selectedModel }),
-      });
-      const assistantMsg: IdeaChatMessage = await res.json();
-      setMessages((p) => [...p, assistantMsg]);
-
-      // Extract HTML content from response for report storage
-      const html = assistantMsg.content.match(/<div[\s\S]*<\/div>/i)?.[0] || '';
-      const titleMatch = assistantMsg.content.match(/REPORT_TITLE:\s*(.+)/);
-      const reportTitle = titleMatch?.[1]?.trim() || `${idea.title} — Report`;
-
-      if (html) {
-        const newReport = {
-          id: `report-${Date.now()}`,
-          title: reportTitle,
-          ideaTitle: idea.title,
-          createdAt: new Date().toISOString(),
-          htmlContent: html,
-        };
-        setReports((p) => [newReport, ...p]);
-        // Show success message in chat
-        const savedMsg: IdeaChatMessage = {
-          id: `rpt-saved-${Date.now()}`,
-          role: 'assistant',
-          content: `✅ **Report saved!** Go to the **Reports** tab in the right panel to preview, download, or send for review.`,
-          createdAt: new Date().toISOString(),
-        };
-        setMessages((p) => [...p, savedMsg]);
-        // Switch to reports tab
-        setTimeout(() => setRightTab('reports'), 800);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsThinking(false);
-      setThinkingSteps([]);
-      setGeneratingReportId(null);
-    }
-  };
-
-  // Download report as PDF (via browser print to PDF) or HTML file
-  const handleDownloadReport = (report: { title: string; htmlContent: string }) => {
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${report.title}</title><style>body{font-family:'Segoe UI',sans-serif;color:#111;background:#fff;max-width:860px;margin:40px auto;padding:0 32px;}h1,h2,h3{font-weight:700;}h1{font-size:28px;color:#0a0a1a;border-bottom:3px solid #075BFF;padding-bottom:12px;}h2{font-size:18px;color:#1a1a2e;margin-top:28px;border-left:4px solid #075BFF;padding-left:10px;}p{line-height:1.7;margin:8px 0;}ul{margin:8px 0 8px 20px;}li{margin:4px 0;}.badge{display:inline-block;padding:3px 10px;border-radius:9999px;font-size:12px;font-weight:600;background:#e8f0fe;color:#075BFF;}</style></head><body>${report.htmlContent}</body></html>`;
-    const blob = new Blob([fullHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${report.title.replace(/[^a-z0-9]/gi, '-')}.html`;
-    a.click(); URL.revokeObjectURL(url);
-  };
+  const reportedIdeas = ideas.filter((i) => i.reviewReport);
 
   return (
     <div className="relative flex flex-col w-full h-full overflow-hidden bg-[#0A0A0F] text-[#F6F5FA]">
@@ -870,7 +759,7 @@ Return ONLY the HTML report wrapped in a single <div> tag with inline styles. Ma
                     : 'text-[#827D8E] hover:text-white'
                 }`}
               >
-                {tab === 'ideas' ? `Ideas (${ideas.length})` : tab === 'reports' ? `Reports (${reports.length})` : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'ideas' ? `Ideas (${ideas.length})` : tab === 'reports' ? `Reports (${reportedIdeas.length})` : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </div>
@@ -969,16 +858,15 @@ Return ONLY the HTML report wrapped in a single <div> tag with inline styles. Ma
                               <span>Chat</span>
                             </button>
                             <button
-                              onClick={() => handleGenerateReport(idea)}
-                              disabled={generatingReportId === idea.id}
-                              title="Generate AI Report"
-                              className="p-1.5 hover:bg-white/[0.08] text-[#A7ACB8] hover:text-white rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                              onClick={() => handleReport(idea)}
+                              disabled={idea.reviewReport?.status === 'running'}
+                              title={idea.reviewReport?.status === 'failed' ? idea.reviewReport.error : 'Evaluation report grounded in the code'}
+                              className="p-1.5 hover:bg-white/[0.08] text-[#A7ACB8] hover:text-white rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60"
                             >
-                              {generatingReportId === idea.id
+                              {idea.reviewReport?.status === 'running'
                                 ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#5B8FFF]" />
-                                : <Sparkles className="w-3.5 h-3.5 text-[#5B8FFF]" />
-                              }
-                              <span>{generatingReportId === idea.id ? 'Generating...' : 'Report'}</span>
+                                : <FileText className="w-3.5 h-3.5 text-[#5B8FFF]" />}
+                              <span>{reportLabel(idea.reviewReport)}</span>
                             </button>
                           </div>
                           <button
@@ -1110,36 +998,37 @@ Return ONLY the HTML report wrapped in a single <div> tag with inline styles. Ma
             {/* ── REPORTS TAB ── */}
             {rightTab === 'reports' && (
               <div className="space-y-3">
-                {reports.length === 0 ? (
+                {reportedIdeas.length === 0 ? (
                   <div className="text-center py-12 px-4 border border-dashed border-white/10 rounded-2xl space-y-2">
                     <FileText className="w-7 h-7 text-[#4e5668] mx-auto" />
-                    <p className="text-xs text-[#4e5668]">No reports yet. Click "Report" on any idea to generate one.</p>
+                    <p className="text-xs text-[#4e5668]">No reports yet. Click "Evaluate" on any idea.</p>
                   </div>
                 ) : (
-                  reports.map((report) => (
-                    <div key={report.id} className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.07] space-y-3 hover:bg-white/[0.05] transition-colors">
-                      <div>
-                        <p className="text-xs font-semibold text-white leading-snug">{report.title}</p>
-                        <p className="text-[10px] text-[#4e5668] mt-0.5">{report.ideaTitle} · {new Date(report.createdAt).toLocaleDateString()}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
+                  reportedIdeas.map((idea) => {
+                    const r = idea.reviewReport!;
+                    return (
+                      <div key={idea.id} className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.07] space-y-2">
+                        <p className="text-xs font-semibold text-white leading-snug">{idea.title}</p>
+                        {r.status === 'ready' && r.report && r.meta ? (
+                          <p className="text-[11px] text-[#A7ACB8]">
+                            <span className="text-white font-medium">{r.report.verdict}</span> · {r.meta.overallScore.toFixed(1)}/10 · size {r.report.size} · {new Date(r.meta.generatedAt).toLocaleDateString()}
+                          </p>
+                        ) : (
+                          <p className={`text-[11px] ${r.status === 'failed' ? 'text-rose-400' : 'text-[#827D8E]'}`}>
+                            {r.status === 'failed' ? `Failed: ${r.error}` : 'Writing report…'}
+                          </p>
+                        )}
                         <button
-                          onClick={() => setPreviewReport({ title: report.title, htmlContent: report.htmlContent })}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-white/[0.06] hover:bg-white/[0.1] text-[#A7ACB8] hover:text-white rounded-lg text-[11px] cursor-pointer transition-colors"
+                          onClick={() => handleReport(idea)}
+                          disabled={r.status === 'running'}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-[#075BFF]/15 hover:bg-[#075BFF]/25 text-[#5B8FFF] rounded-lg text-[11px] cursor-pointer disabled:opacity-60"
                         >
                           <Eye className="w-3 h-3" />
-                          <span>Preview</span>
-                        </button>
-                        <button
-                          onClick={() => handleDownloadReport(report)}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-[#075BFF]/15 hover:bg-[#075BFF]/25 text-[#5B8FFF] rounded-lg text-[11px] cursor-pointer transition-colors"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Download</span>
+                          <span>{reportLabel(r)}</span>
                         </button>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
@@ -1147,43 +1036,6 @@ Return ONLY the HTML report wrapped in a single <div> tag with inline styles. Ma
           </div>
         </aside>
 
-        {/* Report Preview Modal */}
-        {previewReport && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 animate-fade-in"
-            onClick={() => setPreviewReport(null)}
-          >
-            <div
-              className="w-full max-w-4xl h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-gray-50 shrink-0">
-                <p className="text-sm font-semibold text-gray-800">{previewReport.title}</p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDownloadReport(previewReport)}
-                    className="k-btn-primary flex items-center gap-1.5 px-3 py-1.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-lg text-xs font-medium cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download</span>
-                  </button>
-                  <button
-                    onClick={() => setPreviewReport(null)}
-                    className="p-1.5 hover:bg-gray-200 text-gray-500 hover:text-gray-800 rounded-lg cursor-pointer transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 overflow-auto p-6 bg-white">
-                <div
-                  className="prose prose-sm max-w-none text-gray-800"
-                  dangerouslySetInnerHTML={{ __html: previewReport.htmlContent }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* MODAL: GitHub Connection */}
@@ -1295,61 +1147,8 @@ Return ONLY the HTML report wrapped in a single <div> tag with inline styles. Ma
         </div>
       )}
 
-      {/* MODAL: Evaluation Report Display */}
-      {evalModalIdea && evalModalIdea.reviewReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-6 animate-fade-in overflow-y-auto">
-          <div className="w-full max-w-2xl bg-[#111118] border border-white/[0.15] rounded-2xl p-7 space-y-6 shadow-2xl my-8">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
-              <div>
-                <span className="text-[11px] font-mono text-[#075BFF] uppercase tracking-wider">Executive Feasibility Audit</span>
-                <h3 className="text-xl font-semibold text-white mt-0.5">{evalModalIdea.title}</h3>
-              </div>
-              <button onClick={() => setEvalModalIdea(null)} className="text-[#827D8E] hover:text-white cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs leading-relaxed text-[#D1D5DB]">
-              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1">
-                <div className="font-semibold text-blue-400 font-mono uppercase text-[10px]">Business Value & ROI</div>
-                <p>{evalModalIdea.reviewReport.business_value}</p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1">
-                <div className="font-semibold text-[#5B8FFF] font-mono uppercase text-[10px]">Market & Competitor Moat</div>
-                <p>{evalModalIdea.reviewReport.market_differentiation}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1">
-                  <div className="font-semibold text-amber-400 font-mono uppercase text-[10px]">Effort & Budget</div>
-                  <p>{evalModalIdea.reviewReport.effort_budget}</p>
-                </div>
-                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1">
-                  <div className="font-semibold text-rose-400 font-mono uppercase text-[10px]">Risk Assessment</div>
-                  <p>{evalModalIdea.reviewReport.risk_assessment}</p>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[#075BFF]/10 border border-[#075BFF]/30 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white font-mono uppercase text-[10px]">Recommendation</span>
-                  <span className="font-bold text-emerald-400">{evalModalIdea.reviewReport.recommendation}</span>
-                </div>
-                <p className="text-white/90">{evalModalIdea.reviewReport.recommendation_rationale}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setEvalModalIdea(null)}
-                className="px-5 py-2 bg-white/[0.08] hover:bg-white/[0.14] text-white rounded-xl text-xs font-medium cursor-pointer"
-              >
-                Close Report
-              </button>
-            </div>
-          </div>
-        </div>
+      {reportIdea && (
+        <IdeaReportModal ideaId={reportIdea.id} title={reportIdea.title} token={token} onClose={() => setReportIdea(null)} />
       )}
     </div>
   );

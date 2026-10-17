@@ -44,8 +44,8 @@ import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { IdeaApprovalPanel } from './IdeaApprovalPanel';
-import { PrdViewerModal } from '../workspace/PrdViewerModal';
-import { buildPrdFromIdea, openPrdPrintPreview, downloadPrdHtml, PrdDocumentData } from '../../lib/prdPdfExport';
+import { IdeaReportModal } from '../workspace/IdeaReportModal';
+import { downloadIdeaReportPdf, reportLabel, startIdeaReport } from '../../lib/ideaReports';
 
 interface ProductWorkspaceViewProps {
   state: FactoryState;
@@ -72,7 +72,7 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
   // Modals
   const [proposeIdeaModalOpen, setProposeIdeaModalOpen] = useState(false);
   const [reviewModalIdea, setReviewModalIdea] = useState<Idea | null>(null);
-  const [viewingPrd, setViewingPrd] = useState<PrdDocumentData | null>(null);
+  const [reportIdea, setReportIdea] = useState<Idea | null>(null);
   const [createAdrModalOpen, setCreateAdrModalOpen] = useState(false);
 
   // New Idea Form State
@@ -114,48 +114,14 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
     return proj?.productId === activeProduct.id;
   });
 
-  // Default architectural decisions if none exist
-  const displayAdrs: { code: string; title: string; status: string; context: string; decision: string }[] = useMemo(() => {
-    if (productAdrs.length > 0) {
-      return productAdrs.map((a) => ({
-        code: `ADR-${String(a.number).padStart(3, '0')}`,
-        title: a.title,
-        status: a.status.toUpperCase(),
-        context: a.context,
-        decision: a.decision,
-      }));
-    }
-    return [
-      {
-        code: 'ADR-001',
-        title: 'Microservices Boundaries & C4 Container Architecture',
-        status: 'ACCEPTED',
-        context: `Ensure modular scalability and independent deployability across ${activeProduct.name} service lines.`,
-        decision: 'Adopt clean domain-driven service boundaries with async messaging and shared schema registry.',
-      },
-      {
-        code: 'ADR-002',
-        title: 'Real-Time WebSocket & Redis Pub/Sub Event Bus',
-        status: 'ACCEPTED',
-        context: 'Sub-second state synchronization and live activity broadcast across station terminals.',
-        decision: 'Use FastAPI WebSocket connection managers backed by Redis channel replication.',
-      },
-      {
-        code: 'ADR-003',
-        title: 'PostgreSQL with Row-Level Security & pgvector Persistence',
-        status: 'ACCEPTED',
-        context: 'Enterprise multi-tenant isolation, cryptographic audit ledger, and semantic RAG search.',
-        decision: 'Enforce tenant isolation via PostgreSQL RLS policies and pgvector embedding indexes.',
-      },
-      {
-        code: 'ADR-004',
-        title: 'Multi-Signature Quorum Verification for Production Promotion',
-        status: 'ACCEPTED',
-        context: 'Zero-trust release discipline requiring multi-role sign-off before cloud deployment.',
-        decision: 'Require cryptographically verified approvals from Lead Architect, AppSec, and QA leads.',
-      },
-    ];
-  }, [productAdrs, activeProduct.name]);
+  const displayAdrs = productAdrs.map((a) => ({
+    code: `ADR-${String(a.number).padStart(3, '0')}`,
+    title: a.title,
+    status: a.status.toUpperCase(),
+    context: a.context,
+    decision: a.decision,
+  }));
+  const reportedIdeas = enrolledIdeas.filter((i) => i.reviewReport?.status === 'ready');
 
   // Filtered Ideas
   const filteredIdeas = useMemo(() => {
@@ -212,26 +178,28 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
     setProposeIdeaModalOpen(false);
   };
 
-  const handleOpenPrd = (idea: Idea) => {
-    const prd = buildPrdFromIdea(
-      idea,
-      activeProduct,
-      state.currentUser?.display_name || 'Workspace Lead',
-      [],
-      productAdrs,
-    );
-    setViewingPrd(prd);
+  // Ready: open it. Not written yet: start it; the store re-syncs when it is done.
+  const handleReport = async (idea: Idea) => {
+    const token = state.token ?? '';
+    if (idea.reviewReport?.status === 'ready') {
+      setReportIdea(idea);
+      return;
+    }
+    if (idea.reviewReport?.status === 'running') return;
+    try {
+      await startIdeaReport(idea.id, token);
+      factoryStore.syncSessionFromServer();
+    } catch (e) {
+      alert((e as Error).message);
+    }
   };
 
-  const handleExportPrdPdf = (idea: Idea) => {
-    const prd = buildPrdFromIdea(
-      idea,
-      activeProduct,
-      state.currentUser?.display_name || 'Workspace Lead',
-      [],
-      productAdrs,
-    );
-    openPrdPrintPreview(prd);
+  const handleDownloadReport = async (idea: Idea) => {
+    try {
+      await downloadIdeaReportPdf(idea.id, idea.title, state.token ?? '');
+    } catch (e) {
+      alert((e as Error).message);
+    }
   };
 
   return (
@@ -243,11 +211,9 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
         state={state}
       />
 
-      <PrdViewerModal
-        isOpen={!!viewingPrd}
-        onClose={() => setViewingPrd(null)}
-        prd={viewingPrd}
-      />
+      {reportIdea && (
+        <IdeaReportModal ideaId={reportIdea.id} title={reportIdea.title} token={state.token ?? ''} onClose={() => setReportIdea(null)} />
+      )}
 
       {/* Review / Approvals Modal */}
       {reviewModalIdea && (
@@ -486,10 +452,10 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
           </div>
           <div className="space-y-1">
             <div className="text-xs uppercase font-mono tracking-wider text-[#827D8E] font-medium">
-              ADRs & PRDs
+              Docs & reports
             </div>
             <div className="text-3xl sm:text-4xl font-light tracking-tight text-white font-sans">
-              {displayAdrs.length + productDocs.length}
+              {displayAdrs.length + reportedIdeas.length + productDocs.length}
             </div>
           </div>
         </div>
@@ -528,7 +494,7 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
-          <span>Specifications, ADRs & PRDs ({displayAdrs.length + productDocs.length})</span>
+          <span>Docs, ADRs & reports ({displayAdrs.length + reportedIdeas.length + productDocs.length})</span>
         </button>
       </div>
 
@@ -724,25 +690,27 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
                           <span>Review & Approvals</span>
                         </button>
 
-                        {/* View PRD Spec */}
+                        {/* Evaluation report (written by the server, grounded in the repository) */}
                         <button
-                          onClick={() => handleOpenPrd(idea)}
-                          className="px-3 py-1.5 rounded-lg bg-[#075BFF]/10 hover:bg-[#075BFF]/20 text-[#5B8FFF] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer border border-[#075BFF]/25"
-                          title="View Product Requirements Document"
+                          onClick={() => handleReport(idea)}
+                          disabled={idea.reviewReport?.status === 'running'}
+                          className="px-3 py-1.5 rounded-lg bg-[#075BFF]/10 hover:bg-[#075BFF]/20 text-[#5B8FFF] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer border border-[#075BFF]/25 disabled:opacity-60"
+                          title={idea.reviewReport?.status === 'failed' ? idea.reviewReport.error : 'Evaluation report'}
                         >
                           <FileText className="w-3.5 h-3.5" />
-                          <span>View PRD</span>
+                          <span>{reportLabel(idea.reviewReport)}</span>
                         </button>
 
-                        {/* Export PRD PDF */}
-                        <button
-                          onClick={() => handleExportPrdPdf(idea)}
-                          className="k-btn-primary px-3 py-1.5 rounded-lg bg-[#075BFF] hover:bg-[#075BFF]/90 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-[#075BFF]/20"
-                          title="Download / Print PRD as PDF"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>Export PDF</span>
-                        </button>
+                        {idea.reviewReport?.status === 'ready' && (
+                          <button
+                            onClick={() => handleDownloadReport(idea)}
+                            className="k-btn-primary px-3 py-1.5 rounded-lg bg-[#075BFF] hover:bg-[#075BFF]/90 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-[#075BFF]/20"
+                            title="Download the evaluation report as PDF"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>PDF</span>
+                          </button>
+                        )}
 
                         {/* Brainstorm in IdeaQ */}
                         <button
@@ -825,83 +793,50 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'docs' && (
         <div className="space-y-8">
-          {/* PRD Documents Section */}
+          {/* Evaluation reports */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-[#075BFF]" />
-                  <span>Product Requirements Documents (PRDs)</span>
-                </h3>
-                <p className="text-xs text-[#827D8E]">
-                  Complete architectural specifications and requirement documents ready for export and sign-off.
-                </p>
-              </div>
-
-              {enrolledIdeas.length > 0 && (
-                <button
-                  onClick={() => handleOpenPrd(enrolledIdeas[0])}
-                  className="k-btn-primary px-3.5 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-[#075BFF]/20"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Generate PRD PDF</span>
-                </button>
-              )}
+            <div>
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#075BFF]" />
+                <span>Idea evaluation reports</span>
+              </h3>
+              <p className="text-xs text-[#827D8E]">
+                Written from the repository and reviewed before approval. PRDs are drafted when an approved idea becomes a project.
+              </p>
             </div>
 
-            {enrolledIdeas.length === 0 ? (
+            {reportedIdeas.length === 0 ? (
               <GlassCard className="p-8 text-center space-y-2">
                 <FileText className="w-8 h-8 text-[#827D8E] mx-auto" />
-                <p className="text-xs text-[#827D8E]">No PRDs generated yet. Propose an idea to generate its PRD.</p>
+                <p className="text-xs text-[#827D8E]">No reports yet. Use "Evaluate" on an idea.</p>
               </GlassCard>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {enrolledIdeas.map((idea) => {
-                  const prdData = buildPrdFromIdea(
-                    idea,
-                    activeProduct,
-                    state.currentUser?.display_name || 'Workspace Lead',
-                    [],
-                    productAdrs,
-                  );
-
+                {reportedIdeas.map((idea) => {
+                  const r = idea.reviewReport!;
                   return (
-                    <SpotlightCard
-                      key={idea.id}
-                      className="p-5 space-y-4 border border-white/[0.08]"
-                      spotlightColor="rgba(7, 91, 255, 0.12)"
-                    >
+                    <SpotlightCard key={idea.id} className="p-5 space-y-4 border border-white/[0.08]" spotlightColor="rgba(7, 91, 255, 0.12)">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-mono font-semibold text-[#075BFF] uppercase">
-                            {prdData.id} · v{prdData.version}
-                          </span>
-                          <h4 className="text-base font-semibold text-white">{prdData.title}</h4>
-                        </div>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                          {prdData.status}
+                        <h4 className="text-base font-semibold text-white">{idea.title}</h4>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 whitespace-nowrap">
+                          {r.report?.verdict} · {r.meta?.overallScore.toFixed(1)}
                         </span>
                       </div>
-
-                      <p className="text-xs text-[#827D8E] line-clamp-2">{prdData.executiveSummary}</p>
-
-                      <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
-                        <span className="text-[11px] text-[#827D8E]">{prdData.functionalRequirements.length} Functional Specs</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setViewingPrd(prdData)}
-                            className="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[#B5B1C0] hover:text-white text-xs font-medium transition-colors cursor-pointer"
-                          >
-                            View PRD
-                          </button>
-                          <button
-                            onClick={() => openPrdPrintPreview(prdData)}
-                            className="k-btn-primary px-3 py-1.5 rounded-lg bg-[#075BFF] hover:bg-[#075BFF]/90 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <Printer className="w-3 h-3" />
-                            <span>PDF</span>
-                          </button>
-                        </div>
+                      <p className="text-xs text-[#827D8E] line-clamp-3">{r.report?.executive_summary}</p>
+                      <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/[0.06]">
+                        <button
+                          onClick={() => setReportIdea(idea)}
+                          className="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-[#B5B1C0] hover:text-white text-xs font-medium transition-colors cursor-pointer"
+                        >
+                          Read
+                        </button>
+                        <button
+                          onClick={() => handleDownloadReport(idea)}
+                          className="k-btn-primary px-3 py-1.5 rounded-lg bg-[#075BFF] hover:bg-[#075BFF]/90 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Printer className="w-3 h-3" />
+                          <span>PDF</span>
+                        </button>
                       </div>
                     </SpotlightCard>
                   );
