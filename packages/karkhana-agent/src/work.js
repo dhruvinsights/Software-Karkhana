@@ -4,7 +4,7 @@ import { deviceClient, runClient } from './api.js';
 import { buildTask } from './build.js';
 import { commit, ensureClone, ensureCloneAt, expandPath, stagedDiff, taskWorktree, workState } from './git.js';
 import { DEFAULT_LIMITS, FIX_LIMITS, harnessFor } from './harness.js';
-import { runSuites, testSuites } from './testrun.js';
+import { preflightSuites, runSuites, testSuites } from './testrun.js';
 
 const HEARTBEAT_MS = 60_000;
 
@@ -33,7 +33,7 @@ function logSink(device, jobId) {
 
 const TERMINAL = new Set(['failed', 'cancelled', 'timed_out', 'succeeded']);
 
-const realDeps = () => ({ testSuites, runSuites, workState, stagedDiff, commit });
+const realDeps = () => ({ testSuites, runSuites, preflightSuites, preflight: preflightSuites, workState, stagedDiff, commit });
 
 /** Reads the caps from the environment: KARKHANA_MAX_COST_USD, KARKHANA_MAX_TURNS. */
 function capsFromEnv(env = process.env) {

@@ -192,3 +192,56 @@ test('the developer picks the folder: reused when it is the repository, refused 
   assert.equal(repoSlug('git@github.com:Acme/App.git'), 'acme/app');
   assert.equal(repoSlug('https://github.com/Acme/App'), 'acme/app');
 });
+
+test('the tool a suite starts picks its sandbox image, even in a repo that also has package.json', async () => {
+  const { sandboxImage, toolOf } = await import('../src/testrun.js');
+  const d = await tmp();
+  await writeFile(join(d, 'package.json'), '{}');
+  assert.match(await sandboxImage(d, ['python3', '-m', 'pytest', '-q']), /astral-sh\/uv/);
+  assert.match(await sandboxImage(d, ['uv', 'run', 'pytest']), /astral-sh\/uv/);
+  assert.equal(await sandboxImage(d, ['npm', 'test']), 'node:22-slim');
+  assert.equal(await sandboxImage(d, ['sh', '-c', 'cmake -B build && ctest']), null); // no safe guess: the developer names one
+  await mkdir(join(d, '.karkhana'));
+  await writeFile(join(d, '.karkhana', 'agent.json'), JSON.stringify({ image: 'my/cpp:1' }));
+  assert.equal(await sandboxImage(d, ['cmake']), 'my/cpp:1'); // the repository's own choice wins
+  assert.equal(toolOf(['sh', '-c', 'cmake -S . -B build && ctest']), 'cmake');
+  assert.equal(toolOf(['/usr/bin/python3', '-m', 'pytest']), 'python3');
+});
+
+test('missing test tooling is found before the coding agent is paid for', async () => {
+  const { preflightSuites } = await import('../src/testrun.js');
+  const d = await tmp();
+  const problem = await preflightSuites(d, [{ name: 'unit', argv: ['definitely-not-a-real-tool-xyz', 'test'] }], 'none');
+  assert.match(problem, /not installed on this machine/);
+  assert.equal(await preflightSuites(d, [{ name: 'unit', argv: ['node', '-v'] }], 'none'), null);
+
+  const f = await fixture();
+  const h = fakeHarness(writeFeature);
+  const out = await buildTask({
+    spec, worktree: f.wt.path, baseBranch: 'main', resumed: false, sandbox: 'docker', log: quiet, report: async () => {},
+    commitMessage: 'x', deps: { ...realGit, ...fakeSuites(0), preflight: async () => 'The sandbox image node:22-slim has no `python3`.', harness: h },
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.kind, 'sandbox');
+  assert.match(out.error, /Nothing was started/);
+  assert.equal(h.calls.length, 0); // not a single credit spent
+});
+
+test('a suite that cannot start is never sent to the agent as a failing test', async () => {
+  const f = await fixture();
+  const h = fakeHarness(writeFeature);
+  const suites = {
+    testSuites: async () => [{ name: 'unit', argv: ['x'] }],
+    runSuites: async () => ({
+      code: 127, output: 'no python3', label: 'docker node:22-slim: python3 -m pytest',
+      suites: [{ suite: 'unit', status: 'error', infra: true, note: 'The sandbox image node:22-slim has no `python3`.', command: 'x' }],
+    }),
+  };
+  const out = await buildTask({
+    spec, worktree: f.wt.path, baseBranch: 'main', resumed: false, sandbox: 'docker', log: quiet, report: async () => {},
+    commitMessage: 'x', deps: { ...realGit, ...suites, harness: h },
+  });
+  assert.equal(out.kind, 'sandbox');
+  assert.equal(h.calls.length, 1); // it coded once; the fix rounds were not wasted on an environment problem
+  assert.match(out.error, /could not run/);
+});

@@ -38,6 +38,15 @@ export async function buildTask({ spec, worktree, baseBranch, resumed, sandbox, 
   const suites = await deps.testSuites(worktree);
   const test = () => deps.runSuites(worktree, suites, sandbox, report);
   const outcome = (extra) => ({ cost, agentCalls, summary, result, suites: result?.suites ?? [], ...extra });
+  // A suite that cannot run is the test environment's problem: never something to pay the agent to fix.
+  const envProblem = (r) => {
+    const bad = r?.suites.find((s) => s.infra);
+    return bad ? outcome({ ok: false, kind: 'sandbox', error: `The ${bad.suite} tests could not run: ${bad.note}` }) : null;
+  };
+
+  // Before anything costs money: can the tests run here at all?
+  const blocked = await deps.preflight?.(worktree, suites, sandbox);
+  if (blocked) return outcome({ ok: false, kind: 'sandbox', error: `Nothing was started. ${blocked}` });
 
   try {
     let state = null;
@@ -49,6 +58,8 @@ export async function buildTask({ spec, worktree, baseBranch, resumed, sandbox, 
       } else {
         log('info', `continuing: ${state.files.length}${state.more ? '+' : ''} file(s) already changed. Running the tests first; the coding agent is only called if something fails.`);
         result = await test();
+        const stuck = envProblem(result);
+        if (stuck) return stuck;
         if (result.code === 0) {
           needAgent = false;
           log('info', 'The tests already pass, so nothing is redone and no credits are spent.');
@@ -64,6 +75,8 @@ export async function buildTask({ spec, worktree, baseBranch, resumed, sandbox, 
       cost += first.cost ?? 0;
       summary = first.summary ?? '';
       result = await test();
+      const stuck = envProblem(result);
+      if (stuck) return stuck;
       for (let round = 1; round <= MAX_FIX_ROUNDS && result.code !== 0; round += 1) {
         if (signal?.aborted) return outcome({ ok: false, kind: 'cancelled', error: 'Stopped by the developer. The work so far is kept.' });
         log('info', `Tests failing: ${names(result)}. Sending only the failures back to the agent (round ${round} of ${MAX_FIX_ROUNDS}).`);
@@ -72,6 +85,8 @@ export async function buildTask({ spec, worktree, baseBranch, resumed, sandbox, 
         cost += fix.cost ?? 0;
         summary = fix.summary || summary;
         result = await test();
+        const stuckAfterFix = envProblem(result);
+        if (stuckAfterFix) return stuckAfterFix;
       }
     }
   } catch (err) {
