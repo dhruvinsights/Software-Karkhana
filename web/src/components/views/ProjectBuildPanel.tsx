@@ -100,8 +100,21 @@ export const RunLog: React.FC<{ runId: string }> = ({ runId }) => {
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'nearest' });
   }, [lines.length]);
+  // The agent logs "worktree <path> on <branch>": the folder on the developer's
+  // machine where the files are being written. Open it to watch them appear.
+  const worktree = lines.map((l) => /^worktree (\S+) on /.exec(l.message)?.[1]).find(Boolean);
   return (
     <div className="max-h-64 overflow-y-auto bg-black/50 rounded-lg p-3 font-mono text-[11px] space-y-0.5">
+      {worktree && (
+        <p className="pb-1.5 mb-1.5 border-b border-white/[0.06] flex flex-wrap items-center gap-2 font-sans">
+          <span className="text-[#827D8E]">Files are written in</span>
+          <code className="text-[#B5B1C0]">{worktree}</code>
+          <a href={`vscode://file${worktree}`} className="text-[#7aa7ff] hover:text-white">Open in VS Code</a>
+          <button onClick={() => void navigator.clipboard.writeText(worktree)} className="text-[#7aa7ff] hover:text-white cursor-pointer">
+            Copy path
+          </button>
+        </p>
+      )}
       {lines.length === 0 && <p className="text-[#827D8E]">No output yet.</p>}
       {lines.map((l, i) => (
         <p key={i} className={l.level === 'error' ? 'text-rose-300' : l.level === 'thinking' ? 'text-[#827D8E]' : 'text-[#B5B1C0]'}>
