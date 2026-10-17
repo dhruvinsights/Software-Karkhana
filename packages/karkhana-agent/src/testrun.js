@@ -120,6 +120,7 @@ export function parseCounts(output) {
  * may be null). The exit code is the first failing suite's, else 0.
  */
 export async function runSuites(worktree, suites, sandbox = 'none', report = null) {
+  if (sandbox === 'docker') await assertDockerSeesWorktree(worktree);
   // A lost progress report never stops the tests.
   const tell = async (suite) => {
     try {
@@ -154,4 +155,24 @@ export async function runSuites(worktree, suites, sandbox = 'none', report = nul
     label: results.map((r) => r.command).join(' && '),
     suites: results,
   };
+}
+
+/**
+ * Docker Desktop mounts only shared folders; anything else shows up empty and
+ * every test "fails" for a reason that has nothing to do with the code. Fail
+ * early with the fix instead.
+ */
+export async function assertDockerSeesWorktree(worktree) {
+  const image = await sandboxImage(worktree);
+  const out = await run('docker', ['run', '--rm', '-v', `${worktree}:/work`, image, 'ls', '-A', '/work'], {
+    cwd: worktree,
+    timeoutMs: 10 * 60_000,
+  });
+  if (out.code !== 0) throw new Error(`docker could not start the test sandbox: ${(out.stderr || out.stdout).trim().slice(-300)}`);
+  if (!out.stdout.trim()) {
+    throw new Error(
+      `Docker cannot see ${worktree} (it is not a shared folder). Use --dir under your home folder, ` +
+        'add the folder in Docker Desktop → Settings → Resources → File sharing, or run with --sandbox none.',
+    );
+  }
 }
