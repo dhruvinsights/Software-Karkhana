@@ -12,10 +12,11 @@ const HELP = `karkhana-agent: build Software Karkhana stories on this machine
   karkhana-agent login --server <url> --code <XXXX-XXXX> [--name <name>] [--harness bob|claude]
       Connects this machine. Get the code from Software Karkhana: Developer → Connect a machine.
 
-  karkhana-agent work [--dir <path>] [--harness bob|claude] [--once]
+  karkhana-agent work [--dir <path>] [--harness bob|claude] [--sandbox docker|none] [--once]
       Waits for builds you start in Software Karkhana. Each story is coded in its own
       git worktree under <path> (default ${DEFAULT_WORK_DIR}), tested, committed locally,
-      and sent back for review and a pull request.
+      and sent back for review and a pull request. Tests run in a Docker sandbox when Docker
+      is available (read-only filesystem, only the worktree mounted, non-root, CPU/memory limits).
 
   karkhana-agent status     Shows the connection.
   karkhana-agent logout     Forgets this machine's token (revoke it in the app too).
@@ -44,14 +45,18 @@ async function login(args) {
 async function startWork(args) {
   const { values } = parseArgs({
     args,
-    options: { dir: { type: 'string' }, harness: { type: 'string' }, once: { type: 'boolean', default: false } },
+    options: { dir: { type: 'string' }, harness: { type: 'string' }, sandbox: { type: 'string' }, once: { type: 'boolean', default: false } },
   });
   const config = await loadConfig();
   if (!config) throw new Error('not connected; run `karkhana-agent login` first');
   const harness = values.harness || config.harness || 'bob';
   if (!(await has('git'))) throw new Error('git is not installed');
   if (!(await has(harness))) throw new Error(`${harness} is not installed or not on PATH`);
-  return work(config, { workDir: resolve(values.dir || DEFAULT_WORK_DIR), harness, once: values.once });
+  // Tests run the agent's code: sandbox them in Docker whenever Docker is available.
+  const sandbox = values.sandbox || ((await has('docker')) ? 'docker' : 'none');
+  if (!['docker', 'none'].includes(sandbox)) throw new Error('--sandbox must be docker or none');
+  if (sandbox === 'docker' && !(await has('docker'))) throw new Error('docker is not installed');
+  return work(config, { workDir: resolve(values.dir || DEFAULT_WORK_DIR), harness, sandbox, once: values.once });
 }
 
 async function status() {

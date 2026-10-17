@@ -268,14 +268,19 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
                 status.HTTP_503_SERVICE_UNAVAILABLE, "GitHub is not configured"
             )
         try:
-            failing = await pipelines.ci_blockers(gh, pr.head_sha)
-            if failing:
-                raise HTTPException(
-                    status.HTTP_409_CONFLICT, "Cannot merge: CI is not green: " + "; ".join(failing)
+            remote = await gh.get_pull_request(number=pr.number)
+            if remote.get("merged"):
+                # Merged on GitHub already (a retry after a failure here): record it.
+                merge_sha = remote.get("merge_commit_sha") or ""
+            else:
+                failing = await pipelines.ci_blockers(gh, pr.head_sha)
+                if failing:
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT, "Cannot merge: CI is not green: " + "; ".join(failing)
+                    )
+                merge_sha = await gh.merge(
+                    number=pr.number, title=f"{task.key}: {task.title}"
                 )
-            merge_sha = await gh.merge(
-                number=pr.number, title=f"{task.key}: {task.title}"
-            )
         finally:
             await gh.aclose()
 
@@ -309,6 +314,8 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
         await advance_if_legal(
             session, project, Event.MERGED, actor=actor, payload={"pr": pr.number}
         )
+    # GitHub has merged: record that before the slower, optional learning step.
+    await session.commit()
     learning = await memory.capture_on_merge(
         session, pr=pr, task=task, actor=ledger.Actor.ai("memory-curator")
     )

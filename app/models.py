@@ -140,6 +140,7 @@ class RepoSnapshot(Base):
     commit_sha: Mapped[str] = mapped_column(String)
     tree: Mapped[str] = mapped_column(Text)
     files: Mapped[dict[str, str]] = mapped_column(JSONB)
+    paths: Mapped[list[str]] = mapped_column(JSONB, default=list)  # git ls-files (031)
     file_count: Mapped[int] = mapped_column(Integer)
     chars: Mapped[int] = mapped_column(Integer)
     created_by: Mapped[uuid.UUID | None] = mapped_column(

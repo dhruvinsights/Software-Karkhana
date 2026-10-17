@@ -157,6 +157,7 @@ async def take_snapshot(
     token = token or get_settings().github_token
     async with checkout(url, token) as repo_dir:
         sha = (await _run("git", "rev-parse", "HEAD", cwd=repo_dir)).strip()
+        tracked = [p for p in (await _run("git", "ls-files", "-z", cwd=repo_dir)).split("\0") if p]
         tree, files = await pack(repo_dir)
     snap = RepoSnapshot(
         id=uuid.uuid4(),
@@ -166,6 +167,7 @@ async def take_snapshot(
         commit_sha=sha,
         tree=tree,
         files=files,
+        paths=tracked,
         file_count=len(files),
         chars=sum(map(len, files.values())),
         created_by=user_id,
@@ -244,7 +246,8 @@ def known_path(snapshot: RepoSnapshot, cited: str) -> bool:
     path = path.split(":", 1)[0].split("#", 1)[0].rstrip("/")
     if not path:
         return False
-    if path in snapshot.files:
+    known = snapshot.paths or list(snapshot.files)  # snapshots before 031 have no paths
+    if path in known:
         return True
     prefix = path + "/"
-    return any(f.startswith(prefix) for f in snapshot.files)
+    return any(f.startswith(prefix) for f in known)

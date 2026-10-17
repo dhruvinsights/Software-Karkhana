@@ -51,7 +51,7 @@ function logSink(device, jobId) {
   return log;
 }
 
-async function buildJob(job, device, { workDir, harness }) {
+async function buildJob(job, device, { workDir, harness, sandbox }) {
   const runApi = runClient(job.callbackUrl, job.runId, job.runToken);
   const log = logSink(device, job.jobId);
   const heartbeat = setInterval(() => runApi.progress('coding').catch(() => {}), HEARTBEAT_MS);
@@ -73,13 +73,13 @@ async function buildJob(job, device, { workDir, harness }) {
 
     await runApi.progress('validating');
     const argv = await testCommand(worktree);
-    log('info', `running ${argv.join(' ')}`);
-    const tests = await runTests(worktree, argv);
+    const tests = await runTests(worktree, argv, sandbox);
+    log('info', `ran ${tests.label}`);
     log(tests.code === 0 ? 'output' : 'error', `tests exit ${tests.code}`);
 
     const patch = await stagedDiff(worktree);
     if (!patch.trim()) {
-      await runApi.complete({ ok: false, error: 'The agent made no changes.', test_exit_code: tests.code, test_output: tests.output, test_command: argv.join(' ') });
+      await runApi.complete({ ok: false, error: 'The agent made no changes.', test_exit_code: tests.code, test_output: tests.output, test_command: tests.label });
       return { ok: false, worktree, error: 'no changes' };
     }
     await commit(worktree, `${spec.task_key}: ${spec.task_title}\n\nKarkhana run ${job.runId}`);
@@ -87,7 +87,7 @@ async function buildJob(job, device, { workDir, harness }) {
     await runApi.complete({
       ok: true,
       patch,
-      test_command: argv.join(' '),
+      test_command: tests.label,
       test_exit_code: tests.code,
       test_output: tests.output,
       summary: summary.slice(0, 4000) || null,
@@ -105,14 +105,14 @@ async function buildJob(job, device, { workDir, harness }) {
 }
 
 /** Claims and builds jobs until stopped (Ctrl+C) or, with `once`, after one job. */
-export async function work(config, { workDir, harness, once = false }) {
+export async function work(config, { workDir, harness, sandbox, once = false }) {
   const device = deviceClient(config.server, config.token);
   let stopping = false;
   process.once('SIGINT', () => {
     stopping = true;
     console.log('\nstopping after the current job…');
   });
-  console.log(`karkhana-agent on ${hostname()}: waiting for work from ${config.server} (Ctrl+C to stop)`);
+  console.log(`karkhana-agent on ${hostname()}: waiting for work from ${config.server}; tests run ${sandbox === 'docker' ? 'in a Docker sandbox' : 'directly on this machine (no sandbox)'} (Ctrl+C to stop)`);
   while (!stopping) {
     let claimed;
     try {
@@ -126,7 +126,7 @@ export async function work(config, { workDir, harness, once = false }) {
     if (!claimed?.job) continue;
     const job = claimed.job;
     console.log(`\n▶ ${job.taskKey} ${job.taskTitle} (${job.projectName})`);
-    const result = await buildJob(job, device, { workDir, harness });
+    const result = await buildJob(job, device, { workDir, harness, sandbox });
     await device
       .finish(job.jobId, { status: result.ok ? 'succeeded' : 'failed', error: result.error ?? null, worktree: result.worktree })
       .catch(() => {});

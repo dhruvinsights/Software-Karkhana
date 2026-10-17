@@ -429,7 +429,8 @@ class GitHubOAuth:
     """
 
     BASE = "https://github.com"
-    SCOPES = "repo,read:org"
+    # workflow: the DevOps station commits GitHub Actions files.
+    SCOPES = "repo,workflow,read:org"
 
     def __init__(self, client_id: str) -> None:
         self._client_id = client_id

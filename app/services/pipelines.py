@@ -48,10 +48,9 @@ class Stack:
 
 def detect(snapshot: RepoSnapshot) -> Stack:
     """Reads the stack from the repository snapshot."""
-    files = snapshot.files
-    pyproject = files.get("pyproject.toml", "")
-    if "uv.lock" in snapshot.tree and pyproject:
-        return Stack("python-uv", ruff=bool(re.search(r"\bruff\b", pyproject)), docker="Dockerfile" in files)
+    pyproject = snapshot.files.get("pyproject.toml", "")
+    if "uv.lock" in snapshot.paths and pyproject:
+        return Stack("python-uv", ruff=bool(re.search(r"\bruff\b", pyproject)), docker="Dockerfile" in snapshot.paths)
     raise UnsupportedStack(
         "Karkhana has a pipeline template for Python projects managed with uv (pyproject.toml and uv.lock). "
         "Add the workflow by hand for this repository."

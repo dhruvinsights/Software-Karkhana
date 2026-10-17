@@ -26,6 +26,7 @@ import datetime as dt
 import uuid
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -34,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import access, db, ledger
 from app.auth import CurrentUser
 from app.integrations import github
-from app.models import Project, ProjectMember, PullRequest, Release, Task
+from app.models import Product, Project, ProjectMember, PullRequest, Release, Task
 from app.notifications import email_people
 from app.services import pipelines, releases, repo_context, repos
 from app.services.realtime import notify_workspace
@@ -102,18 +103,28 @@ async def pipeline_status(project_id: uuid.UUID, session: Session, user: Current
 async def propose_pipeline(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict[str, Any]:
     """Opens a PR that adds GitHub Actions CI (and release) for the repository's stack."""
     project = await _project(session, user, project_id, "devops")
-    product_snapshot = None
-    if project.product_id:
-        product_snapshot = await repo_context.latest(session, project.product_id)
-    if product_snapshot is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "The repository has not been read yet; run an Idea Lab scan.")
+    product = await session.get(Product, project.product_id) if project.product_id else None
+    if product is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The project has no product repository.")
     try:
-        stack = pipelines.detect(product_snapshot)
+        # The pipeline must fit the repository as it is now, not as it was scanned.
+        snapshot = await repo_context.take_snapshot(session, product, user.id)
+        stack = pipelines.detect(snapshot)
+    except repo_context.RepoContextError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not read the repository: {exc}") from exc
     except pipelines.UnsupportedStack as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     gh, base = await _github(session, project, user)
     try:
         pr = await pipelines.propose(gh, stack, base)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (403, 404) and "/contents/.github/workflows/" in str(exc.request.url):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "GitHub refused to write workflow files: the connected GitHub token needs the 'workflow' "
+                "scope. Reconnect GitHub (or run `gh auth refresh -s workflow`) and try again.",
+            ) from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"GitHub error {exc.response.status_code}.") from exc
     finally:
         await gh.aclose()
     setup = {"number": pr.number, "url": pr.url, "status": "open", "stack": stack.kind, "by": str(user.id)}

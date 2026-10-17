@@ -50,3 +50,13 @@ test('has() finds executables on PATH without running them', async () => {
   assert.equal(await has('node'), true);
   assert.equal(await has('definitely-not-a-real-binary-xyz'), false);
 });
+
+test('the sandbox mounts only the worktree, read-only root, non-root, with limits', async () => {
+  const { dockerArgs } = await import('../src/testrun.js');
+  const args = dockerArgs('/w/iss-4', 'img:1', ['uv', 'run', 'pytest', '-q']);
+  assert.deepEqual(args.slice(0, 3), ['run', '--rm', '--read-only']);
+  assert.ok(args.includes('--memory') && args.includes('--pids-limit') && args.includes('no-new-privileges'));
+  assert.equal(args.filter((a) => a === '-v').length, 1);
+  assert.ok(args.includes('/w/iss-4:/work'));
+  assert.deepEqual(args.slice(-5), ['img:1', 'uv', 'run', 'pytest', '-q']);
+});

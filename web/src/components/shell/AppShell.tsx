@@ -46,7 +46,6 @@ import { WorkspaceInviteModal } from '../workspace/WorkspaceInviteModal';
 import { WorkspaceAdminPanel } from '../workspace/WorkspaceAdminPanel';
 import { LiquidEther } from '../reactbits/LiquidEther';
 import { chatSocket, fetchUnreadCounts } from '../../lib/chatSocket';
-import { ComingSoonBadge } from '../views/StationBanners';
 
 interface AppShellProps {
   state: FactoryState;
@@ -205,16 +204,16 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
       items: [
         { station: 'qa', id: 'qa_dashboard' as ScreenId, label: 'QA Verification', icon: CheckCircle2 },
         { station: 'security', id: 'security_dashboard' as ScreenId, label: 'Security & AppSec', icon: Shield },
-        { station: 'devops', id: 'pipeline_studio' as ScreenId, label: 'CI/CD Pipelines', icon: Server, soon: true },
-        { station: 'release', id: 'release_dashboard' as ScreenId, label: 'Releases & Canary', icon: Radio, soon: true },
+        { station: 'devops', id: 'pipeline_studio' as ScreenId, label: 'CI/CD Pipelines', icon: Server },
+        { station: 'release', id: 'release_dashboard' as ScreenId, label: 'Releases', icon: Radio },
       ],
     },
     {
       title: 'Knowledge',
       items: [
-        { id: 'feedback_inbox' as ScreenId, label: 'Incidents & Triage', icon: Activity, soon: true },
-        { id: 'knowledge_hub' as ScreenId, label: 'Knowledge Base', icon: BookOpen, soon: true },
-        { id: 'rule_governance' as ScreenId, label: 'Factory Governance', icon: Sliders, soon: true },
+        { id: 'feedback_inbox' as ScreenId, label: 'Incidents', icon: Activity },
+        { id: 'knowledge_hub' as ScreenId, label: 'Knowledge Base', icon: BookOpen },
+        { id: 'rule_governance' as ScreenId, label: 'Factory Governance', icon: Sliders },
       ],
     },
   ];
@@ -253,13 +252,12 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
   const renderNavItem = (item: (typeof navSections)[number]['items'][number]) => {
                 const Icon = item.icon;
                 const isActive = state.currentScreen === item.id;
-                const soon = (item as { soon?: boolean }).soon;
                 const count = (item as { count?: number }).count;
                 return (
                   <button
                     key={item.id}
                     onClick={() => factoryStore.setScreen(item.id)}
-                    title={sidebarCollapsed ? item.label : (soon ? 'Coming soon: preview with sample data, not saved to the server' : undefined)}
+                    title={sidebarCollapsed ? item.label : undefined}
                     className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2.5 rounded-lg text-[15px] font-medium transition-all group ${
                       isActive
                         ? 'bg-neutral-800 text-white shadow-xs'
@@ -270,13 +268,11 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
                       <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-300'}`} />
                       {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                     </div>
-                    {!sidebarCollapsed && (soon ? (
-                      <ComingSoonBadge />
-                    ) : count !== undefined && count > 0 ? (
+                    {!sidebarCollapsed && count !== undefined && count > 0 && (
                       <span className={`text-[12px] font-mono ${isActive ? 'text-neutral-300' : 'text-neutral-400'}`}>
                         {count}
                       </span>
-                    ) : null)}
+                    )}
                   </button>
                 );
   };

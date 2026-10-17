@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from pydantic import BaseModel, Field
@@ -11,7 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import llm
-from app.models import Issue, Project, TestScenario, User
+from app.ai.errors import ModelError
+from app.models import Issue, Project, PullRequest, Run, TestScenario, User
+from app.services import repo_context
 
 SYSTEM = (
     "You are a senior QA engineer. From one finished story and its acceptance "
@@ -23,7 +26,9 @@ SYSTEM = (
 
 SCRIPT_SYSTEM = (
     "You write one pytest test function. Use the `requests` library against the "
-    "module variable BASE_URL. Include real assertions on status code and body. "
+    "module variable BASE_URL. Call ONLY the endpoints listed under ENDPOINTS, "
+    "with the exact paths and methods shown; create any data you need through "
+    "them first. Include real assertions on status code and body. "
     "Reply with the Python code only, no explanation, no code fence. Example:\n"
     "def test_expired_code_rejected():\n"
     "    r = requests.post(f'{BASE_URL}/cart/discount', json={'code': 'OLD10'})\n"
@@ -41,6 +46,30 @@ def strip_fence(text: str) -> str:
     return t.strip()
 
 
+_ROUTE = re.compile(r"""@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']""")
+_CALL = re.compile(r"""requests\.(get|post|put|patch|delete)\(\s*f?["']\{BASE_URL\}([^"'?]*)""")
+
+
+def routes(*texts: str) -> set[tuple[str, str]]:
+    """``(METHOD, path)`` of every FastAPI route declared in ``texts``."""
+    return {(m.upper(), path) for text in texts for m, path in _ROUTE.findall(text)}
+
+
+def _template_re(path: str) -> re.Pattern[str]:
+    return re.compile("^" + re.sub(r"\\\{[^}]*\\\}", "[^/]+", re.escape(path)) + "/?$")
+
+
+def script_problems(code: str, allowed: set[tuple[str, str]]) -> list[str]:
+    """Calls in ``code`` to endpoints the application does not have."""
+    patterns = [(method, _template_re(path)) for method, path in allowed]
+    problems = []
+    for method, path in _CALL.findall(code):
+        concrete = re.sub(r"\{[^}]*\}", "1", path)  # f-string holes stand for ids
+        if not any(m == method.upper() and rx.match(concrete) for m, rx in patterns):
+            problems.append(f"{method.upper()} {path} is not an endpoint of this application")
+    return problems
+
+
 def looks_runnable(code: str) -> bool:
     """A real test has a def, an assert and is valid Python."""
     if "def test_" not in code or "assert" not in code:
@@ -52,26 +81,39 @@ def looks_runnable(code: str) -> bool:
     return True
 
 
-async def write_script(issue_text: str, d: DraftScenario) -> str:
-    """Asks for the test code of one scenario. Empty when the reply is not runnable."""
+async def write_script(
+    issue_text: str, d: DraftScenario, allowed: set[tuple[str, str]], code: str = ""
+) -> str:
+    """The test code of one scenario, calling only real endpoints. Empty when it cannot be made so.
+
+    ``code`` is the application source (compressed): request models and
+    response shapes come from it, so bodies use the real field names.
+    """
+    endpoints = "\n".join(f"- {m} {p}" for m, p in sorted(allowed)) or "- (none found)"
     ask = (
-        f"{issue_text}\n\nScenario: {d.title}\nSteps:\n"
+        (f"APPLICATION CODE (use its request models' exact field names):\n{code}\n\n" if code else "")
+        + f"{issue_text}\n\nENDPOINTS:\n{endpoints}\n\nScenario: {d.title}\nSteps:\n"
         + "\n".join(f"- {x}" for x in d.steps)
         + f"\nExpected: {d.expected_result}"
     )
-    try:
-        code = strip_fence(
-            await llm.generate_text(
-                messages=[{"role": "user", "content": ask}],
-                system=SCRIPT_SYSTEM,
-                kind="qa-script",
-                temperature=0.2,
-                timeout_s=120,
+    for _attempt in range(2):
+        try:
+            code = strip_fence(
+                await llm.generate_text(
+                    messages=[{"role": "user", "content": ask}],
+                    system=SCRIPT_SYSTEM,
+                    kind="qa-script",
+                    temperature=0.2,
+                    timeout_s=120,
+                )
             )
-        )
-    except Exception:
-        return ""
-    return code if looks_runnable(code) else ""
+        except ModelError:
+            return ""
+        problems = script_problems(code, allowed) if looks_runnable(code) else ["it is not a runnable pytest test"]
+        if not problems:
+            return code
+        ask += "\n\nYour previous script was rejected: " + "; ".join(problems) + f"\nPrevious script:\n{code}"
+    return ""
 
 
 class DraftScenario(BaseModel):
@@ -102,21 +144,46 @@ def clean(d: DraftScenario) -> DraftScenario:
     return d
 
 
-def prompt_for(issue: Issue, project: Project) -> str:
-    """The story, as the model should read it."""
+def prompt_for(issue: Issue, project: Project, implementation: str = "") -> str:
+    """The story and, when known, the change that implemented it."""
     criteria = "\n".join(f"- {c}" for c in issue.acceptance_criteria or []) or "- (none written)"
     return (
         f"Project: {project.name}\nStory {issue.number}: {issue.title}\n\n"
         f"Description:\n{issue.description or '(none)'}\n\nAcceptance criteria:\n{criteria}"
+        + (f"\n\nIMPLEMENTATION (the merged change; test what it really does):\n{implementation}" if implementation else "")
     )
+
+
+async def _implementation(
+    session: AsyncSession, project: Project, issue: Issue
+) -> tuple[str, set[tuple[str, str]], str]:
+    """The merged diff for the story, every endpoint the application has, and its compressed code."""
+    patch = ""
+    if issue.task_id:
+        patch = (
+            await session.scalar(
+                select(Run.patch)
+                .join(PullRequest, PullRequest.run_id == Run.id)
+                .where(PullRequest.task_id == issue.task_id, PullRequest.status == "merged")
+                .order_by(PullRequest.merged_at.desc())
+                .limit(1)
+            )
+        ) or ""
+    code, rendered = "", ""
+    if project.product_id and (snap := await repo_context.latest(session, project.product_id)):
+        code = "\n".join(snap.files.values())
+        rendered = repo_context.render(snap, 30_000)
+    added = "\n".join(line[1:] for line in patch.splitlines() if line.startswith("+"))
+    return patch[:40_000], routes(code, added), rendered
 
 
 async def synthesize_for_issue(
     session: AsyncSession, project: Project, issue: Issue, user: User
 ) -> list[TestScenario]:
     """Drafts and saves scenarios for one story. Replaces nothing; titles already present are skipped."""
+    implementation, allowed, code = await _implementation(session, project, issue)
     draft = await llm.generate_structured(
-        prompt=prompt_for(issue, project),
+        prompt=prompt_for(issue, project, implementation),
         schema=DraftScenarios,
         system=SYSTEM,
         temperature=0.3,
@@ -135,7 +202,7 @@ async def synthesize_for_issue(
     for d in map(clean, draft.scenarios):
         if d.title.lower() in have:
             continue
-        d.automation_script = await write_script(story, d)
+        d.automation_script = await write_script(f"{story}\n\nCHANGE:\n{implementation}", d, allowed, code)
         row = TestScenario(
             id=uuid.uuid4(),
             project_id=project.id,
