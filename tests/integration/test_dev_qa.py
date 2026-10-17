@@ -344,3 +344,12 @@ async def test_everyone_on_the_project_can_build_until_limited(client, fakes):
     )
     mine = (await client.get(f"/api/projects/{pid}/access", headers=as_(DEV))).json()
     assert not mine["limited"] and "security" in mine["stations"]
+
+
+async def test_building_without_a_machine_is_refused_up_front(client, fakes):
+    pid, story = await _story(client)
+    r = await client.post(f"/api/tasks/{story['taskId']}/runs", headers=as_(DEV), json={"backend": "device"})
+    assert r.status_code == 409 and "No machine is online for" in r.text
+    # Nothing was recorded: the story is still Ready to build.
+    board = (await client.get(f"/api/projects/{pid}/dev-board", headers=as_(DEV))).json()
+    assert board["stories"][0]["run"] is None

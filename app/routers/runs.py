@@ -107,6 +107,18 @@ async def start_run(
     await access.ensure_station(session, user, project, "developer")
     workspace_role = await access.effective_role(session, user, project.workspace_id)
     my_role = Role.LEAD if workspace_role == Role.LEAD else Role.DEVELOPER
+    if body is not None and body.backend == "device":
+        from app.services import devices as agent_devices
+
+        # Refuse up front instead of recording a run that fails at once. Work goes
+        # to the requester's own machine, never to one paired as someone else.
+        if await agent_devices.build_device(session, user.id) is None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"No machine is online for {user.display_name}. Open Developer → Machines → "
+                "Connect a machine, run the login command it shows, then `karkhana-agent work`. "
+                "A machine connected as someone else does not take your work.",
+            )
     if task.status != "ready":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
