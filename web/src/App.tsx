@@ -27,7 +27,7 @@ const ProjectScoped = lazy(() => import('./components/views/WorkspaceScreens').t
 const KnowledgeScreen = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.KnowledgeScreen })));
 const GovernanceScreen = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.GovernanceScreen })));
 const IncidentsPanel = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.IncidentsPanel })));
-const ProjectDesignPanel = lazy(() => import('./components/views/ProjectDesignPanel').then((m) => ({ default: m.ProjectDesignPanel })));
+const DesignerDashboardView = lazy(() => import('./components/views/DesignerDashboardView').then((m) => ({ default: m.DesignerDashboardView })));
 const ProjectBuildPanel = lazy(() => import('./components/views/ProjectBuildPanel').then((m) => ({ default: m.ProjectBuildPanel })));
 const ProjectPipelinePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectPipelinePanel })));
 const ProjectReleasePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectReleasePanel })));
@@ -229,7 +229,7 @@ export default function App() {
       case 'flow_map':
       case 'design_review':
       case 'design_tokens':
-        return <ProjectScoped state={state} title="Design" render={(id) => <ProjectDesignPanel projectId={id} canDesign />} />;
+        return <ProjectScoped state={state} title="Design" render={(id) => <DesignerDashboardView projectId={id} />} />;
 
       case 'architecture_dashboard':
       case 'system_design':

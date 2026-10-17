@@ -223,6 +223,38 @@ class Settings(BaseSettings):
     github_client_id: str | None = None
     github_client_secret: str | None = Field(default=None, repr=False)
 
+    # --- Google Stitch (designer dashboard) -------------------------------
+    # Off unless STITCH_ENABLED=true. The key is a Stitch API key (Stitch →
+    # Settings → API keys) held in Secret Manager as `stitch-api-key`; it is
+    # used only server-side and only sent to STITCH_MCP_URL. Only people on a
+    # project's design station can reach any Stitch endpoint.
+    stitch_enabled: bool = False
+    stitch_api_key: str | None = Field(default=None, repr=False)
+    stitch_mcp_url: str = "https://stitch.googleapis.com/mcp"
+    stitch_default_model: Literal["GEMINI_3_FLASH", "GEMINI_3_1_PRO"] = "GEMINI_3_FLASH"
+    # Generation can take several minutes; Stitch asks callers not to retry.
+    stitch_timeout_s: float = 600.0
+    # Generate + edit + variant calls per workspace per rolling 24 hours. The
+    # Stitch account behind the key has its own monthly limit; keep the sum of
+    # workspace budgets under it.
+    stitch_daily_limit_per_workspace: int = 40
+    # Hosts Stitch's signed download URLs may point at (suffix match, HTTPS).
+    stitch_asset_hosts: str = (
+        "googleusercontent.com,usercontent.google.com,googleapis.com,gstatic.com"
+    )
+    stitch_max_html_bytes: int = 2_000_000
+    stitch_max_screenshot_bytes: int = 6_000_000
+
+    @property
+    def stitch_asset_host_list(self) -> list[str]:
+        """``stitch_asset_hosts`` split into a list."""
+        return [h.strip() for h in self.stitch_asset_hosts.split(",") if h.strip()]
+
+    @property
+    def stitch_configured(self) -> bool:
+        """Enabled and holding a key."""
+        return bool(self.stitch_enabled and self.stitch_api_key)
+
     # --- Web -------------------------------------------------------------
     static_dir: str = "web/dist"
     allow_origins: list[str] = Field(default_factory=list)
@@ -254,6 +286,14 @@ class Settings(BaseSettings):
             )
         if self.session_jwt_secret and self.session_jwt_secret == self.run_hmac_secret:
             raise ValueError("SESSION_JWT_SECRET must differ from RUN_HMAC_SECRET.")
+        # The Stitch key is only ever sent to this URL: HTTPS, except a local
+        # test double in dev mode.
+        stitch_url = self.stitch_mcp_url.lower()
+        if not stitch_url.startswith("https://") and not (
+            self.auth_mode == "dev"
+            and stitch_url.startswith(("http://localhost", "http://127.0.0.1"))
+        ):
+            raise ValueError("STITCH_MCP_URL must use https.")
         # The API service stores OAuth tokens; jobs (worker, migrate) do not.
         if on_cloud_run_service and not self.token_encryption_keys:
             raise ValueError(

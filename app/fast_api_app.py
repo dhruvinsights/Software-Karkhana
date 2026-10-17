@@ -59,6 +59,7 @@ from app.routers import (
     reviews,
     runs,
     stations,
+    stitch,
     workspace,
     workspaces,
 )
@@ -134,6 +135,7 @@ def create_app() -> FastAPI:
         workspaces.router,
         context.router,
         stations.router,
+        stitch.router,
     ):
         app.include_router(r)
 
