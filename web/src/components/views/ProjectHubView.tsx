@@ -49,6 +49,7 @@ import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { ProjectPlanPanel } from './ProjectPlanPanel';
+import { ProjectDesignPanel } from './ProjectDesignPanel';
 import { stationsApi, useStationList, ApiTestScenario } from '../../lib/stationsApi';
 
 /** Server-side QA scenario count for the project card. */
@@ -458,6 +459,11 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
           projectName={selectedProject.name}
           canEdit={!!accessInfo && (accessInfo.canManage || accessInfo.isLead)}
         />
+      )}
+
+      {/* Design: contracts and screens, approved by the design station */}
+      {activeStationTab === 'design' && (
+        <ProjectDesignPanel projectId={selectedProject.id} canDesign={myStations.includes('design')} />
       )}
 
       {/* Tab 2: Product & Epics */}

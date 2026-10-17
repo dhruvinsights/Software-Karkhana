@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft, Check, Copy, ListTree, MessageSquare, Radio, Shield, Sparkles, Terminal,
-  CheckCircle2, Users, Workflow,
+  CheckCircle2, PenTool, Users, Workflow,
 } from 'lucide-react';
 import { createInvite } from '../../lib/invites';
 import { GlassCard } from '../reactbits/GlassCard';
 
 export type StationTab =
-  | 'overview' | 'plan' | 'product' | 'architecture' | 'developer' | 'qa' | 'devops'
+  | 'overview' | 'plan' | 'design' | 'product' | 'architecture' | 'developer' | 'qa' | 'devops'
   | 'security' | 'team_access' | 'comments';
 
 export interface ProjectMemberRow {
@@ -33,6 +33,7 @@ interface StationDef {
 
 export const STATIONS: StationDef[] = [
   { tab: 'plan', station: 'product', title: 'Plan', blurb: 'Epics and stories from the approved idea', Icon: ListTree, tone: 'text-[#7aa7ff]' },
+  { tab: 'design', station: 'design', title: 'Design', blurb: 'API contracts and screen prototypes', Icon: PenTool, tone: 'text-fuchsia-300' },
   { tab: 'product', station: 'product', title: 'Product', blurb: 'Requirements, scope and approvals', Icon: Sparkles, tone: 'text-amber-400' },
   { tab: 'architecture', station: 'architecture', title: 'Architecture', blurb: 'Decisions and design reviews', Icon: Workflow, tone: 'text-[#5B8FFF]' },
   { tab: 'developer', station: 'developer', title: 'Developer', blurb: 'Tasks, agent runs and pull requests', Icon: Terminal, tone: 'text-[#5B8FFF]' },

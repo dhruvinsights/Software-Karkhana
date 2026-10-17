@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Project documents (PRD, ERD) drafted by AI: read, print and re-draft.
+"""Project documents drafted by AI.
 
-Approval is part of approving the plan (``POST /api/projects/{id}/plan/approve``),
-so the documents and the backlog a team builds against are approved together.
+The PRD and ERD are approved together with the plan; the design spec is
+approved by the design station and then handed to developers.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import uuid
 from typing import Annotated, Any
@@ -29,10 +30,21 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, db, reports
+from app import access, db, ledger, reports
 from app.auth import CurrentUser
-from app.models import Epic, Product, Project, ProjectDocument, Task, User
-from app.services import project_docs
+from app.models import (
+    ContextEntry,
+    Epic,
+    Product,
+    Project,
+    ProjectDocument,
+    ProjectMember,
+    Task,
+    User,
+)
+from app.notifications import email_people
+from app.services import design, project_docs
+from app.services.realtime import notify_workspace
 
 router = APIRouter(tags=["project_docs"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]
@@ -130,3 +142,72 @@ async def redraft(
         raise HTTPException(status.HTTP_409_CONFLICT, "The plan is being drafted right now.")
     background.add_task(project_docs.run, project.id)
     return {"status": "running"}
+
+
+@router.post("/api/projects/{project_id}/design", status_code=status.HTTP_202_ACCEPTED)
+async def draft_design(
+    project_id: uuid.UUID, session: Session, user: CurrentUser, background: BackgroundTasks
+) -> dict[str, Any]:
+    """The design station drafts the next design spec version from the approved plan."""
+    project = await access.get_visible_project(session, user, project_id)
+    await access.ensure_station(session, user, project, "design")
+    if ((project.docs_status or {}).get("design") or {}).get("state") == "running":
+        raise HTTPException(status.HTTP_409_CONFLICT, "The design is being drafted right now.")
+    background.add_task(design.run, project.id, user.id)
+    return {"status": "running"}
+
+
+@router.post("/api/projects/{project_id}/documents/design/approve")
+async def approve_design(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict[str, Any]:
+    """The designer signs off the latest design; developers get the handoff."""
+    project = await access.get_visible_project(session, user, project_id)
+    await access.ensure_station(session, user, project, "design")
+    doc = (await _latest(session, project.id)).get("design")
+    if doc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There is no design to approve.")
+    if doc.status == "approved":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Design v{doc.version} is already approved.")
+    doc.status, doc.approved_by, doc.approved_at = "approved", user.id, dt.datetime.now(dt.UTC)
+    spec = doc.content
+    contracts = "; ".join(f"{c['method']} {c['path']} ({', '.join(c['story_keys'])})" for c in spec["api_contracts"])
+    session.add(
+        ContextEntry(
+            project_id=project.id,
+            kind="handoff",
+            title=f"Design v{doc.version} approved by {user.display_name}"[:140],
+            body=(
+                f"{spec['overview']}\nContracts: {contracts or 'none'}.\n"
+                f"Screens: {', '.join(s['name'] for s in spec['screens']) or 'none'}.\n"
+                "Handoff notes: " + " ".join(spec["handoff_notes"])
+            )[:4000],
+            author_label=user.display_name,
+            author_kind="human",
+        )
+    )
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="design.approved",
+        subject_type="project",
+        subject_id=project.id,
+        project_id=project.id,
+        payload={"version": doc.version, "contracts": len(spec["api_contracts"]), "screens": len(spec["screens"])},
+    )
+    developers = (
+        await session.scalars(
+            select(ProjectMember.user_id).where(
+                ProjectMember.project_id == project.id, ProjectMember.stations.contains(["developer"])
+            )
+        )
+    ).all()
+    await session.commit()
+    if project.workspace_id:
+        await notify_workspace(project.workspace_id, "projects")
+    await email_people(
+        session,
+        [d for d in developers if d != user.id],
+        subject=f"Design ready to build: {project.name}",
+        heading=f"{user.display_name} approved the design for {project.name}",
+        lines=[spec["overview"], "Open the project's Design station for the API contracts and screens."],
+    )
+    return _doc_out(doc)
