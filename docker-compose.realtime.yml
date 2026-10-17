@@ -1,0 +1,32 @@
+# Kafka-compatible broker for cross-instance chat fan-out (Redpanda: single
+# binary, Kafka API, no ZooKeeper). Start: `make broker-local`, then run the
+# API with REALTIME_BROKER_URL=kafka://localhost:19092.
+# Topic retention is 90 days to match CHAT_RETENTION_DAYS (Postgres is the record).
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 5s
+      retries: 20
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: >
+      rpk topic create karkhana-realtime -X brokers=redpanda:9092
+      -p 6 -c retention.ms=7776000000 --if-not-exists
+volumes:
+  redpanda-data:
