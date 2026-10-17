@@ -48,12 +48,12 @@ Tick an item only after its check passes. Commit code and this file together.
       Frontend stories and their agent jobs land there automatically.
 
 ## 6. UI
-- [ ] Dev workspace screen: My stories pipeline (code → unit → integration → AI review
+- [x] Dev workspace screen: My stories pipeline (code → unit → integration → AI review
       and PR → reviewers → manual check → ready for QA), Bugs from QA, Frontend & design,
       Channels, Machines.
-- [ ] QA workspace screen: queue by stage, scenarios, QA agent suggestions to triage,
+- [x] QA workspace screen: queue by stage, scenarios, QA agent suggestions to triage,
       bugs to verify, sign-off, Channels.
-- [ ] `tsc -b` and `vite build` pass.
+- [x] `tsc -b` and `vite build` pass.
 
 ## 7. End to end on a new backend-only project
 - [ ] Backend-only repository on GitHub, product + idea group + launch in Karkhana.
@@ -71,3 +71,4 @@ Tick an item only after its check passes. Commit code and this file together.
 | 2026-10-18 | QA agent suggests bugs grounded in code; QA accepts or dismisses; QA board by stage |
 | 2026-10-18 | Station channels: team / project / linked to workspace |
 | 2026-10-18 | Frontend workspace API; coding runs get their story's design slice |
+| 2026-10-18 | Dev and QA workspace screens with channels; mounted in project and standalone screens |

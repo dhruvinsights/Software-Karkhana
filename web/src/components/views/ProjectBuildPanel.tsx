@@ -6,7 +6,7 @@ import { planApi, PlanIssue } from '../../lib/planApi';
 import { useChatFrames } from '../../lib/chatSocket';
 import { factoryStore } from '../../store/factoryStore';
 
-const PHASE_LABEL: Record<string, string> = {
+export const PHASE_LABEL: Record<string, string> = {
   queued: 'Waiting for your machine',
   cloning: 'Preparing the worktree',
   coding: 'Agent is coding',
@@ -16,7 +16,7 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 /** Connected machines and the one-time command to connect another. */
-const Machines: React.FC<{ machines: Machine[]; onChange: () => void }> = ({ machines, onChange }) => {
+export const Machines: React.FC<{ machines: Machine[]; onChange: () => void }> = ({ machines, onChange }) => {
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +84,32 @@ const Machines: React.FC<{ machines: Machine[]; onChange: () => void }> = ({ mac
       )}
       {error && <p className="text-xs text-rose-300">{error}</p>}
     </GlassCard>
+  );
+};
+
+/** A run's live log: loaded once, then appended as lines stream in. */
+export const RunLog: React.FC<{ runId: string }> = ({ runId }) => {
+  const [lines, setLines] = useState<LogLine[]>([]);
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    buildApi.logs(runId).then(setLines).catch(() => {});
+  }, [runId]);
+  useChatFrames('run_log', (f) => {
+    if (f.runId === runId) setLines((prev) => [...prev, ...f.lines]);
+  }, [runId]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'nearest' });
+  }, [lines.length]);
+  return (
+    <div className="max-h-64 overflow-y-auto bg-black/50 rounded-lg p-3 font-mono text-[11px] space-y-0.5">
+      {lines.length === 0 && <p className="text-[#827D8E]">No output yet.</p>}
+      {lines.map((l, i) => (
+        <p key={i} className={l.level === 'error' ? 'text-rose-300' : l.level === 'thinking' ? 'text-[#827D8E]' : 'text-[#B5B1C0]'}>
+          {l.message}
+        </p>
+      ))}
+      <div ref={end} />
+    </div>
   );
 };
 

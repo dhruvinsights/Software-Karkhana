@@ -18,7 +18,6 @@ const ExecutivePortfolioView = lazy(() => import('./components/views/ExecutivePo
 const ProjectHubView = lazy(() => import('./components/views/ProjectHubView').then((m) => ({ default: m.ProjectHubView })));
 const PlanningRoadmapView = lazy(() => import('./components/views/PlanningRoadmapView').then((m) => ({ default: m.PlanningRoadmapView })));
 const ArchitectureStudioView = lazy(() => import('./components/views/ArchitectureStudioView').then((m) => ({ default: m.ArchitectureStudioView })));
-const QAVerificationView = lazy(() => import('./components/views/QAVerificationView').then((m) => ({ default: m.QAVerificationView })));
 const SecurityAppSecView = lazy(() => import('./components/views/SecurityAppSecView').then((m) => ({ default: m.SecurityAppSecView })));
 const WorkflowAdminView = lazy(() => import('./components/views/WorkflowAdminView').then((m) => ({ default: m.WorkflowAdminView })));
 const ProductWorkspaceView = lazy(() => import('./components/views/ProductWorkspaceView').then((m) => ({ default: m.ProductWorkspaceView })));
@@ -28,7 +27,8 @@ const KnowledgeScreen = lazy(() => import('./components/views/WorkspaceScreens')
 const GovernanceScreen = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.GovernanceScreen })));
 const IncidentsPanel = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.IncidentsPanel })));
 const ProjectDesignPanel = lazy(() => import('./components/views/ProjectDesignPanel').then((m) => ({ default: m.ProjectDesignPanel })));
-const ProjectBuildPanel = lazy(() => import('./components/views/ProjectBuildPanel').then((m) => ({ default: m.ProjectBuildPanel })));
+const DevWorkspace = lazy(() => import('./components/stations/DevWorkspace').then((m) => ({ default: m.DevWorkspace })));
+const QAWorkspace = lazy(() => import('./components/stations/QAWorkspace').then((m) => ({ default: m.QAWorkspace })));
 const ProjectPipelinePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectPipelinePanel })));
 const ProjectReleasePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectReleasePanel })));
 const PRReviewPanel = lazy(() => import('./components/views/PRReviewPanel'));
@@ -256,7 +256,7 @@ export default function App() {
             title="Engineering"
             render={(id) => (
               <div className="space-y-6">
-                <ProjectBuildPanel projectId={id} />
+                <DevWorkspace projectId={id} projectCode={state.projects.find((p) => p.id === id)?.code ?? 'prj'} />
                 <PRReviewPanel projectId={id} token={state.token ?? ''} />
               </div>
             )}
@@ -270,7 +270,13 @@ export default function App() {
       case 'automation_workspace':
       case 'defects':
       case 'qa_signoff':
-        return <QAVerificationView state={state} />;
+        return (
+          <ProjectScoped
+            state={state}
+            title="QA"
+            render={(id) => <QAWorkspace projectId={id} projectCode={state.projects.find((p) => p.id === id)?.code ?? 'prj'} />}
+          />
+        );
 
       case 'security_dashboard':
       case 'assessment_builder':
