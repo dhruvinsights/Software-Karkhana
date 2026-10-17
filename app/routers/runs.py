@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, agent_memory, ledger, publisher
+from app import access, agent_memory, knowledge_graph, ledger, publisher
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
@@ -265,6 +265,12 @@ async def run_spec(
         ContextNote(kind="memory", title="Project memory", body=m, author="mem0")
         for m in await agent_memory.recall(
             run.project_id, f"{task.title}\n{task.description}", role="developer"
+        )
+    ]
+    notes += [
+        ContextNote(kind="graph", title=t, body=b, author="knowledge-graph")
+        for t, b in await knowledge_graph.task_context_notes(
+            project.workspace_id, task.id, f"{task.title}\n{task.description}"
         )
     ]
     target = await repos.for_project(session, project.id)
