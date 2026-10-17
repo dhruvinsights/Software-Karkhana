@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft, Check, Copy, ListTree, MessageSquare, Radio, Shield, Sparkles, Terminal,
-  CheckCircle2, PenTool, Users, Workflow,
+  CheckCircle2, PenTool, Rocket, Users, Workflow,
 } from 'lucide-react';
 import { createInvite } from '../../lib/invites';
 import { GlassCard } from '../reactbits/GlassCard';
 
 export type StationTab =
-  | 'overview' | 'plan' | 'design' | 'product' | 'architecture' | 'developer' | 'qa' | 'devops'
+  | 'overview' | 'plan' | 'design' | 'product' | 'architecture' | 'developer' | 'qa' | 'devops' | 'release'
   | 'security' | 'team_access' | 'comments';
 
 export interface ProjectMemberRow {
@@ -39,6 +39,7 @@ export const STATIONS: StationDef[] = [
   { tab: 'developer', station: 'developer', title: 'Developer', blurb: 'Tasks, agent runs and pull requests', Icon: Terminal, tone: 'text-[#5B8FFF]' },
   { tab: 'qa', station: 'qa', title: 'QA', blurb: 'Test scenarios and release gates', Icon: CheckCircle2, tone: 'text-emerald-400' },
   { tab: 'devops', station: 'devops', title: 'CI/CD', blurb: 'Pipelines and canary releases', Icon: Radio, tone: 'text-blue-400' },
+  { tab: 'release', station: 'release', title: 'Release', blurb: 'Release records, approval and GitHub Releases', Icon: Rocket, tone: 'text-emerald-300' },
   { tab: 'security', station: 'security', title: 'Security', blurb: 'Findings, exceptions and governance', Icon: Shield, tone: 'text-rose-400' },
   { tab: 'comments', station: null, title: 'Discussion', blurb: 'Comments and @mentions', Icon: MessageSquare, tone: 'text-[#5B8FFF]' },
   { tab: 'team_access', station: null, title: 'Team and access', blurb: 'Invite people, set stations', Icon: Users, tone: 'text-[#5B8FFF]' },

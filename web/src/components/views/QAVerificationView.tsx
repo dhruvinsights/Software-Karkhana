@@ -66,6 +66,17 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
     }
   };
 
+  // QA's gate: the server refuses unless every scenario of the story passed.
+  const handleSignoff = async (item: QaQueueItem) => {
+    setWriteError(null);
+    try {
+      const done = await stationsApi.qaSignoff(item.id);
+      setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, status: done.status } : q)));
+    } catch (e) {
+      setWriteError((e as Error).message);
+    }
+  };
+
   const handleCreateManualTest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTestTitle.trim() || !selectedProject || scenarios.offline) return;
@@ -339,6 +350,16 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
                       <div className="text-xs text-slate-400">{item.acceptanceCriteria.length} acceptance criteria</div>
                     )}
                   </div>
+                  <div className="flex gap-2 shrink-0">
+                  {item.status !== 'done' && item.scenarios > 0 && (
+                    <button
+                      onClick={() => void handleSignoff(item)}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Sign off</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => void handleGenerate(item)}
                     disabled={generatingFor !== null || scenarios.offline}
@@ -347,6 +368,7 @@ export const QAVerificationView: React.FC<QAVerificationViewProps> = ({ state })
                     {generatingFor === item.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                     <span>{generatingFor === item.id ? 'Drafting…' : item.scenarios ? 'Draft more' : 'Generate tests'}</span>
                   </button>
+                  </div>
                 </div>
               ))}
             </div>

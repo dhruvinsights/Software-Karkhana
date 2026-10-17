@@ -92,6 +92,7 @@ export const stationsApi = {
   qaQueue: (projectId: string) => call<QaQueueItem[]>(`/api/projects/${projectId}/qa-queue`),
   /** AI drafts manual scenarios and an automation script for one finished story. */
   synthesizeScenarios: (issueId: string) => post<ApiTestScenario[]>(`/api/issues/${issueId}/test-scenarios`, {}),
+  qaSignoff: (issueId: string) => post<{ id: string; status: string }>(`/api/issues/${issueId}/qa-signoff`, {}),
 
   listFindings: (projectId: string) => call<ApiSecurityFinding[]>(`/api/projects/${projectId}/security-findings`),
   createFinding: (

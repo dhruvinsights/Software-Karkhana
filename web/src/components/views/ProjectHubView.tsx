@@ -51,6 +51,8 @@ import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { ProjectPlanPanel } from './ProjectPlanPanel';
 import { ProjectDesignPanel } from './ProjectDesignPanel';
 import { ProjectBuildPanel } from './ProjectBuildPanel';
+import { ProjectPipelinePanel, ProjectReleasePanel } from './ProjectDeliveryPanels';
+import { QAVerificationView } from './QAVerificationView';
 import { stationsApi, useStationList, ApiTestScenario } from '../../lib/stationsApi';
 
 /** Server-side QA scenario count for the project card. */
@@ -555,42 +557,14 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
         </div>
       )}
 
-      {/* Tab 5: QA & Verification */}
-      {activeStationTab === 'qa' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">QA Verification & Defect Gates</h2>
-            <button
-              onClick={() => factoryStore.setScreen('qa_dashboard')}
-              className="k-btn-secondary px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
-            >
-              Open QA Matrix →
-            </button>
-          </div>
+      {/* QA: the queue of finished stories, scenarios and sign-off */}
+      {activeStationTab === 'qa' && <QAVerificationView state={state} />}
 
-          <GlassCard className="p-6 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Test Suites & Unlazy Gates</h3>
-            <p className="text-xs text-slate-400">
-              Deterministic verification guarantees that agent claims are validated against actual exit codes.
-            </p>
-          </GlassCard>
-        </div>
-      )}
+      {/* CI/CD: GitHub Actions pipeline */}
+      {activeStationTab === 'devops' && <ProjectPipelinePanel projectId={selectedProject.id} />}
 
-      {/* Tab 6: CI/CD & Canary */}
-      {activeStationTab === 'devops' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">CI/CD Pipelines & Infrastructure</h2>
-            <button
-              onClick={() => factoryStore.setScreen('pipeline_studio')}
-              className="k-btn-secondary px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
-            >
-              Open Pipeline DAGs →
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Release: release records and the release gate */}
+      {activeStationTab === 'release' && <ProjectReleasePanel projectId={selectedProject.id} />}
 
       {/* Tab 7: AppSec */}
       {activeStationTab === 'security' && (

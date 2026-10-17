@@ -365,6 +365,58 @@ class GitHub:
         r.raise_for_status()
         return r.json().get("sha", "")
 
+    async def update_branch(self, *, number: int) -> None:
+        """Brings the PR branch up to date with its base (so new checks run)."""
+        r = await self._http.put(f"/pulls/{number}/update-branch", json={})
+        if r.status_code not in (202, 422):  # 422: already up to date
+            r.raise_for_status()
+
+    # ── Branches, files, tags and releases ─────────────────────────────────
+
+    async def branch_sha(self, branch: str) -> str:
+        """The commit a branch points at."""
+        r = await self._http.get(f"/git/ref/heads/{branch}")
+        r.raise_for_status()
+        return r.json()["object"]["sha"]
+
+    async def create_branch(self, *, name: str, sha: str) -> None:
+        """Creates ``name`` at ``sha``; an existing branch is moved there."""
+        r = await self._http.post("/git/refs", json={"ref": f"refs/heads/{name}", "sha": sha})
+        if r.status_code == 422:
+            r = await self._http.patch(f"/git/refs/heads/{name}", json={"sha": sha, "force": True})
+        r.raise_for_status()
+
+    async def put_file(self, *, path: str, content: str, branch: str, message: str) -> None:
+        """Creates or replaces one file on ``branch`` in a single commit."""
+        existing = await self._http.get(f"/contents/{path}", params={"ref": branch})
+        body: dict[str, Any] = {
+            "message": message,
+            "content": base64.b64encode(content.encode()).decode(),
+            "branch": branch,
+        }
+        if existing.status_code == 200:
+            body["sha"] = existing.json()["sha"]
+        r = await self._http.put(f"/contents/{path}", json=body)
+        r.raise_for_status()
+
+    async def list_workflow_runs(self, *, branch: str | None = None, per_page: int = 10) -> list[dict[str, Any]]:
+        """Recent GitHub Actions runs, newest first."""
+        params: dict[str, Any] = {"per_page": per_page}
+        if branch:
+            params["branch"] = branch
+        r = await self._http.get("/actions/runs", params=params)
+        r.raise_for_status()
+        return r.json().get("workflow_runs", [])
+
+    async def create_release(self, *, tag: str, target: str, name: str, body: str) -> dict[str, Any]:
+        """Tags ``target`` and publishes a GitHub Release with ``body`` as notes."""
+        r = await self._http.post(
+            "/releases",
+            json={"tag_name": tag, "target_commitish": target, "name": name, "body": body},
+        )
+        r.raise_for_status()
+        return r.json()
+
 
 # ── OAuth Device Flow ─────────────────────────────────────────────────────────
 

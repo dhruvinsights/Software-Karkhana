@@ -31,9 +31,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, db, ledger
+from app import access, db, issue_rules, ledger
 from app.auth import CurrentUser
 from app.models import Adr, Issue, Project, SecurityFinding, TestScenario, User
+from app.services import qa_gate
 
 router = APIRouter(tags=["stations"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]
@@ -465,7 +466,31 @@ async def update_scenario(
             extra={"title": scenario.title},
             status_fields=frozenset({"status", "actual_result", "evidence_uri"}),
         )
+        if "status" in changes and scenario.issue_id:
+            await qa_gate.record_result(session, scenario, user)
     return _scenario_out(scenario, await _names(session, [scenario]))
+
+
+@router.post("/api/issues/{issue_id}/qa-signoff")
+async def qa_signoff(issue_id: uuid.UUID, session: Session, user: CurrentUser) -> dict[str, Any]:
+    """QA signs a story off: every scenario for it has passed, so it is Done."""
+    issue = await _record_for(session, Issue, issue_id, "Issue")
+    await _project_for(session, user, issue.project_id, "qa")
+    problem = await qa_gate.signoff_problem(session, issue)
+    if problem:
+        raise HTTPException(status.HTTP_409_CONFLICT, problem)
+    issue.status, issue.closed_at = "done", dt.datetime.now(dt.UTC)
+    issue.updated_at = issue.closed_at
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="qa.signed_off",
+        subject_type="issue",
+        subject_id=issue.id,
+        project_id=issue.project_id,
+        payload={"key": issue_rules.key(issue.number)},
+    )
+    return {"id": str(issue.id), "status": issue.status}
 
 
 # ── Security findings ────────────────────────────────────────────────────────

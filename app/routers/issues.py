@@ -243,6 +243,10 @@ async def update_issue(
     problem = issue_rules.validate(type_=body.type, priority=body.priority, status=body.status)
     if problem:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
+    if body.status == "done" and issue.type == "story" and issue.source == "plan":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "A planned story is Done only through QA sign-off."
+        )
 
     changes: dict[str, Any] = {}
     if assigning:

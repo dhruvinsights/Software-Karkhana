@@ -827,3 +827,25 @@ class AgentJobLog(Base):
     level: Mapped[str] = mapped_column(String, default="info")  # info | thinking | output | error
     message: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = _now()
+
+
+class Release(Base):
+    """A release record: what ships, its evidence, and who approved it (030)."""
+
+    __tablename__ = "releases"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    version: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="draft")  # draft | published
+    manifest: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    blockers: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    commit_sha: Mapped[str] = mapped_column(String, default="")
+    release_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

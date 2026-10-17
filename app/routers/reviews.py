@@ -41,7 +41,7 @@ from app.schemas import (
     PullRequestOut,
     TriageIn,
 )
-from app.services import plan, repos
+from app.services import pipelines, plan, repos
 from app.services.realtime import notify_workspace
 
 router = APIRouter(prefix="/api", tags=["reviews"])
@@ -101,20 +101,6 @@ async def _author(session: AsyncSession, pr: PullRequest) -> uuid.UUID | None:
     return run.requested_by if run else None
 
 
-async def ci_blockers(gh: github.GitHub, sha: str) -> list[str]:
-    """GitHub statuses and check runs on the head commit that are not green."""
-    combined = await gh.get_combined_status(sha=sha)
-    blockers = [
-        f"{st['context']} is {st['state']}"
-        for st in combined.get("statuses", [])
-        if st.get("state") != "success"
-    ]
-    for run in await gh.list_check_runs(sha=sha):
-        if run.get("status") != "completed":
-            blockers.append(f"{run.get('name')} is still running")
-        elif run.get("conclusion") not in ("success", "neutral", "skipped"):
-            blockers.append(f"{run.get('name')} {run.get('conclusion')}")
-    return blockers
 
 
 async def _pr_out(session: AsyncSession, pr: PullRequest) -> PullRequestOut:
@@ -282,7 +268,7 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
                 status.HTTP_503_SERVICE_UNAVAILABLE, "GitHub is not configured"
             )
         try:
-            failing = await ci_blockers(gh, pr.head_sha)
+            failing = await pipelines.ci_blockers(gh, pr.head_sha)
             if failing:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT, "Cannot merge: CI is not green: " + "; ".join(failing)
