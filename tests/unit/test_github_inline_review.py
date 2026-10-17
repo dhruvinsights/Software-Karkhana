@@ -111,3 +111,28 @@ async def test_without_a_diff_lines_are_posted_as_given():
     )
     await gh.aclose()
     assert sent[0]["comments"][0]["line"] == 5
+
+
+async def test_request_reviewers_strips_at_and_skips_empty():
+    sent: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append((request.url.path, json.loads(request.read())))
+        return httpx.Response(201, json={})
+
+    gh = _client(handler)
+    await gh.request_reviewers(number=3, reviewers=["@alice", " bob ", ""])
+    await gh.request_reviewers(number=3, reviewers=["", " "])
+    await gh.aclose()
+    assert sent == [
+        ("/repos/org/repo/pulls/3/requested_reviewers", {"reviewers": ["alice", "bob"]})
+    ]
+
+
+def test_number_diff_prefixes_new_file_line_numbers():
+    from app.review.diff import number_diff
+
+    shown = number_diff(DIFF)
+    assert "=== app/pay.py (modified) ===" in shown
+    assert "   11 +    assert amount >= 0" in shown
+    assert "   10      total = amount * 100" in shown

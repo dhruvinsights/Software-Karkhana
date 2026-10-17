@@ -177,10 +177,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="button"
                 onClick={() => handlePersonaLogin('product_manager', 'pm@karkhana.dev', 'Sarah Lin')}
-                className="p-2.5 bg-[#101422] hover:bg-[#141a2e] border border-purple-500/20 hover:border-purple-500/40 rounded-xl text-left transition-all"
+                className="p-2.5 bg-[#101422] hover:bg-[#141a2e] border border-[#075BFF]/25 hover:border-[#075BFF]/25 rounded-xl text-left transition-all"
               >
                 <div className="text-xs font-bold text-white">Sarah Lin</div>
-                <div className="text-[10px] text-purple-400 font-mono">Product Manager</div>
+                <div className="text-[10px] text-[#5B8FFF] font-mono">Product Manager</div>
               </button>
               <button
                 type="button"

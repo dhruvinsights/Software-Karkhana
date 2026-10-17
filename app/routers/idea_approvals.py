@@ -46,8 +46,8 @@ from app.models import (
     WorkspaceMember,
 )
 from app.process import Role
-from app.routers.chat import notify_activity
 from app.services.evaluation import run_evaluation
+from app.services.realtime import notify_activity
 
 router = APIRouter(prefix="/api", tags=["idea_flow"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]

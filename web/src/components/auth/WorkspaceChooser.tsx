@@ -82,7 +82,7 @@ export const WorkspaceChooser: React.FC<WorkspaceChooserProps> = ({
       {/* Header bar */}
       <div className="max-w-4xl mx-auto w-full flex items-center justify-between pb-6 border-b border-white/[0.08] relative z-10">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#075bff] to-cyan-500 flex items-center justify-center font-bold text-white text-sm shadow-md">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#075bff] to-[#075BFF] flex items-center justify-center font-bold text-white text-sm shadow-md">
             SK
           </div>
           <div>
@@ -156,12 +156,12 @@ export const WorkspaceChooser: React.FC<WorkspaceChooserProps> = ({
                   className="p-4 sm:p-5 bg-[#0a0d16]/90 border border-white/10 hover:border-[#075bff]/50 rounded-2xl flex items-center justify-between cursor-pointer transition-all hover:scale-[1.01] group shadow-lg"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#10172e] to-[#141e3d] border border-white/10 flex items-center justify-center text-lg font-bold text-cyan-400 group-hover:border-[#075bff]/50 transition-colors shadow-inner">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#10172e] to-[#141e3d] border border-white/10 flex items-center justify-center text-lg font-bold text-[#5B8FFF] group-hover:border-[#075bff]/50 transition-colors shadow-inner">
                       {ws.name.substring(0, 2).toUpperCase()}
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm sm:text-base font-semibold text-white group-hover:text-cyan-300 transition-colors">
+                        <h3 className="text-sm sm:text-base font-semibold text-white group-hover:text-[#5B8FFF] transition-colors">
                           {ws.name}
                         </h3>
                         {ws.is_owner && (
@@ -195,14 +195,14 @@ export const WorkspaceChooser: React.FC<WorkspaceChooserProps> = ({
           {/* Create new workspace action tile */}
           <div
             onClick={onCreateNewWorkspace}
-            className="p-4 sm:p-5 bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/15 hover:border-cyan-500/40 rounded-2xl flex items-center justify-between cursor-pointer transition-all group mt-4"
+            className="p-4 sm:p-5 bg-white/[0.02] hover:bg-white/[0.05] border border-dashed border-white/15 hover:border-[#075BFF]/25 rounded-2xl flex items-center justify-between cursor-pointer transition-all group mt-4"
           >
             <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform">
+              <div className="w-10 h-10 rounded-xl bg-[#075BFF]/10 border border-[#075BFF]/25 flex items-center justify-center text-[#5B8FFF] group-hover:scale-105 transition-transform">
                 <Plus className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-xs sm:text-sm font-semibold text-white group-hover:text-cyan-300 transition-colors">
+                <h4 className="text-xs sm:text-sm font-semibold text-white group-hover:text-[#5B8FFF] transition-colors">
                   Create a new workspace
                 </h4>
                 <p className="text-[11px] text-slate-400">

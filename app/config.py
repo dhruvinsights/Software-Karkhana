@@ -135,6 +135,8 @@ class Settings(BaseSettings):
     github_token: str | None = Field(default=None, repr=False)
     github_repo: str | None = None  # "owner/name" of the demo repo
     github_base_branch: str = "main"
+    # Comma-separated GitHub logins asked to review every PR Karkhana opens.
+    github_reviewers: str = ""
     github_api_url: str = "https://api.github.com"
     # Comma-separated Fernet keys for encrypting stored OAuth tokens; the first
     # encrypts, all decrypt (rotation). Required outside AUTH_MODE=dev. See
@@ -148,6 +150,12 @@ class Settings(BaseSettings):
     # plain-diff mode. "adk" uses the built-in ADK reviewer agent.
     review_engine: Literal["pr_agent", "adk"] = "adk"
     pr_agent_python: str | None = None  # Python of the isolated pr-agent venv.
+
+    # --- Agent memory (mem0, isolated venv; see scripts/setup_mem0.sh) ----
+    mem0_python: str | None = None
+    mem0_store: Literal["qdrant", "pgvector"] = "qdrant"
+    mem0_path: str = ".mem0/store"  # local file store when mem0_store=qdrant
+    mem0_dsn: str | None = None  # libpq DSN when mem0_store=pgvector
     review_timeout_s: float = 300.0
 
     # --- Context compression (Headroom) ----------------------------------
@@ -183,6 +191,15 @@ class Settings(BaseSettings):
     ledger_anchor_bucket: str | None = None
     ledger_anchor_prefix: str = "ledger-anchors"
     ledger_anchor_path: str = ".ledger-anchors.jsonl"
+
+    # --- Chat -------------------------------------------------------------
+    # Messages older than this are purged hourly (migration 023).
+    chat_retention_days: int = 90
+    # Cross-instance fan-out for chat/activity frames, via `broadcaster`.
+    # Unset: in-process only (one API instance, dev, tests).
+    # Kafka/Redpanda: "kafka://redpanda:9092". Redis also works: "redis://host:6379".
+    realtime_broker_url: str | None = None
+    realtime_topic: str = "karkhana-realtime"
 
     # --- Email (Resend) --------------------------------------------------
     # Used for transactional email (invites, notifications, magic links).

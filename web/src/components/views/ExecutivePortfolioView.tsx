@@ -114,7 +114,7 @@ export const ExecutivePortfolioView: React.FC<ExecutivePortfolioViewProps> = ({ 
           <button
             onClick={handleBatchApproveAll}
             disabled={batchLoading}
-            className="px-5 py-2.5 rounded-xl bg-[#075BFF] hover:bg-[#075BFF]/90 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#075BFF]/20 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            className="k-btn-primary px-5 py-2.5 rounded-xl bg-[#075BFF] hover:bg-[#075BFF]/90 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#075BFF]/20 transition-all cursor-pointer shrink-0 disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" />
             <span>{batchLoading ? 'Signing Quorum...' : `Batch Sign All (${pendingApprovals.length}) Gates`}</span>
@@ -262,7 +262,7 @@ export const ExecutivePortfolioView: React.FC<ExecutivePortfolioViewProps> = ({ 
                     selectedApproval.onApprove();
                     setApprovalComment('');
                   }}
-                  className="px-6 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-medium flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+                  className="k-btn-primary px-6 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-medium flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
                   <span>Grant Executive Sign-off</span>

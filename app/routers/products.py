@@ -41,12 +41,12 @@ from app.models import (
     Project,
     WorkspaceMember,
 )
-from app.routers.chat import notify_activity, notify_workspace
 from app.schemas import (
     DocumentExtractRequest,
     DocumentExtractResponse,
     ExtractedProductSpec,
 )
+from app.services.realtime import notify_activity, notify_workspace
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["products_and_ideas"])

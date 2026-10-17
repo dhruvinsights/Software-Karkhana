@@ -128,7 +128,7 @@ async def test_outsiders_cannot_see_or_raise_issues_and_bad_values_are_rejected(
         await client.post(f"/api/projects/{pid}/issues", headers=as_(DIR), json={"title": "Sneaky issue"})
     ).status_code == 404
     r = await client.post(
-        f"/api/projects/{pid}/issues", headers=as_(PM), json={"title": "Bad type", "type": "epic"}
+        f"/api/projects/{pid}/issues", headers=as_(PM), json={"title": "Bad type", "type": "saga"}
     )
     assert r.status_code == 422
     r = await client.post(f"/api/projects/{pid}/issues", headers=as_(PM), json={"title": "ok issue"})

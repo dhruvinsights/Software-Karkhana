@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Hash, MessageSquare, Plus, Search, Send, Volume2, VolumeX,
-  X, ChevronDown, AtSign, Circle, Loader2, Mic, MicOff,
+  X, ChevronDown, AtSign, Circle, Loader2, Mic, MicOff, Maximize2,
 } from 'lucide-react';
 import { factoryStore } from '../../store/factoryStore';
 import {
@@ -12,7 +12,6 @@ import {
   fetchWorkspaceMembers,
   createChannel,
   openDM,
-  markRead,
   useChatFrames,
   useChannelMessages,
   usePresence,
@@ -23,7 +22,52 @@ import {
 } from '../../lib/chatSocket';
 
 interface ChatPanelProps {
-  onClose: () => void;
+  /** 'panel': quick-peek drawer on the right. 'page': full-screen workspace view. */
+  variant?: 'panel' | 'page';
+  onClose?: () => void;
+  /** Panel only: switch to the full-screen view. */
+  onExpand?: () => void;
+}
+
+// Activity rows and other screens ask for a channel before the page mounts.
+const OPEN_CHANNEL_EVENT = 'karkhana:open-channel';
+let pendingChannelId: string | null = null;
+
+export function openChatChannel(channelId: string) {
+  pendingChannelId = channelId;
+  window.dispatchEvent(new CustomEvent(OPEN_CHANNEL_EVENT, { detail: channelId }));
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86400000);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function DayDivider({ iso }: { iso: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px 6px' }}>
+      <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+      <span style={{
+        fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.55)',
+        border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '2px 10px',
+        background: '#0d1017',
+      }}>{dayLabel(iso)}</span>
+      <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      padding: '12px 14px 4px', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+      textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-mono)',
+    }}>{children}</div>
+  );
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -45,7 +89,7 @@ function Avatar({ name, src, size = 28, online }: { name: string; src?: string |
       ) : (
         <div style={{
           width: size, height: size, borderRadius: '50%',
-          background: 'linear-gradient(135deg,#075BFF,#9b6dff)',
+          background: 'linear-gradient(135deg,#075BFF,#5B8FFF)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: size * 0.38, fontWeight: 700, color: '#fff', fontFamily: 'var(--font-sans)',
         }}>{initials}</div>
@@ -317,7 +361,8 @@ function Composer({
 
 // ── Main ChatPanel component ──────────────────────────────────────────────────
 
-export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
+export const ChatPanel: React.FC<ChatPanelProps> = ({ variant = 'panel', onClose, onExpand }) => {
+  const isPage = variant === 'page';
   const state = factoryStore.getState();
   const token = state.token ?? '';
 
@@ -336,6 +381,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
   const [tab, setTab] = useState<'channels' | 'dms'>('channels');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (pendingChannelId) { setActiveChannelId(pendingChannelId); pendingChannelId = null; }
+    const onOpen = (e: Event) => { setActiveChannelId((e as CustomEvent<string>).detail); pendingChannelId = null; };
+    window.addEventListener(OPEN_CHANNEL_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_CHANNEL_EVENT, onOpen);
+  }, []);
   const onlineUsers = usePresence();
   const typingUsers = useTypingUsers(activeChannelId);
   const { messages, loading: msgsLoading } = useChannelMessages(activeChannelId, token);
@@ -407,11 +459,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
         prev.map((c) => c.id === frame.channelId ? { ...c, unreadCount: c.unreadCount + 1 } : c)
       );
     }
-    // Mark read for active channel
-    if (frame.channelId === activeChannelId && token) {
-      markRead(frame.channelId, frame.id, token).catch(() => {});
-    }
-  }, [activeChannelId, token]);
+    // A channel we were just added to: refresh the lists so it shows up.
+    if (![...channels, ...dms].some((c) => c.id === frame.channelId)) reload();
+  }, [activeChannelId, channels, dms, reload]);
 
   const switchChannel = (id: string) => {
     setActiveChannelId(id);
@@ -469,7 +519,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
   })();
 
   return (
-    <div style={{
+    <div style={isPage ? {
+      height: '100%', width: '100%',
+      display: 'flex', flexDirection: 'column',
+      background: '#0A0A0F',
+      fontFamily: 'var(--font-sans)',
+    } : {
       position: 'fixed', right: 0, top: 0, bottom: 0,
       width: 680, zIndex: 200,
       display: 'flex', flexDirection: 'column',
@@ -491,20 +546,29 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
             {onlineUsers.length} online
           </span>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: 4, display: 'flex', borderRadius: 6 }}>
-          <X size={16} />
-        </button>
+        {!isPage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {onExpand && (
+              <button onClick={onExpand} title="Open full screen" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: 4, display: 'flex', borderRadius: 6 }}>
+                <Maximize2 size={14} />
+              </button>
+            )}
+            <button onClick={onClose} title="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: 4, display: 'flex', borderRadius: 6 }}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* ── Left sidebar (channel list) ───────────────────────────────────── */}
         <div style={{
-          width: 220, display: 'flex', flexDirection: 'column', flexShrink: 0,
+          width: isPage ? 264 : 220, display: 'flex', flexDirection: 'column', flexShrink: 0,
           background: '#0d1017', borderRight: '1px solid rgba(255,255,255,0.06)',
           overflow: 'hidden',
         }}>
-          {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {/* Tabs (panel); the page shows both sections stacked, like Slack */}
+          <div style={{ display: isPage ? 'none' : 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             {(['channels', 'dms'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} style={{
                 flex: 1, padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer',
@@ -520,8 +584,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
 
           {/* Channel / DM list */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-            {tab === 'channels' && (
+            {(isPage || tab === 'channels') && (
               <>
+                {isPage && <SectionLabel>Channels</SectionLabel>}
                 {loadingChannels ? (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><Loader2 size={16} style={{ color: 'rgba(255,255,255,0.3)', animation: 'spin 1s linear infinite' }} /></div>
                 ) : channels.map((ch) => (
@@ -585,8 +650,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
               </>
             )}
 
-            {tab === 'dms' && (
+            {(isPage || tab === 'dms') && (
               <>
+                {isPage && <SectionLabel>Direct messages</SectionLabel>}
                 {dms.map((dm) => {
                   const other = members.find((m) => m.id === (dm as any).otherUserId);
                   const isOnline = other ? onlineUsers.includes(other.id) : false;
@@ -639,8 +705,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
           {/* Channel header */}
           {activeChannel && (
             <div style={{
-              height: 44, display: 'flex', alignItems: 'center', gap: 8,
-              padding: '0 16px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+              height: isPage ? 52 : 44, display: 'flex', alignItems: 'center', gap: 8,
+              padding: isPage ? '0 20px' : '0 16px', borderBottom: '1px solid rgba(255,255,255,0.06)',
               flexShrink: 0,
             }}>
               {activeChannel.type === 'channel'
@@ -672,9 +738,16 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onClose }) => {
                 No messages yet. Say something! 👋
               </div>
             )}
-            {messages.map((msg, i) => (
-              <MessageRow key={msg.id} msg={msg} members={members} prevMsg={messages[i - 1]} />
-            ))}
+            {messages.map((msg, i) => {
+              const prev = messages[i - 1];
+              const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
+              return (
+                <React.Fragment key={msg.id}>
+                  {newDay && <DayDivider iso={msg.createdAt} />}
+                  <MessageRow msg={msg} members={members} prevMsg={newDay ? undefined : prev} />
+                </React.Fragment>
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 

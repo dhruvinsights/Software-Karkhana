@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, ledger, process, publisher
+from app import access, agent_memory, ledger, process, publisher
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
@@ -48,7 +48,7 @@ from app.routers.common import (
     lock_project,
 )
 from app.runner.base import get_backend, verify_run_token
-from app.schemas import RunOut, RunProgress, RunResult, RunSpec
+from app.schemas import ContextNote, RunOut, RunProgress, RunResult, RunSpec
 from app.services import context_notes
 
 logger = logging.getLogger(__name__)
@@ -239,6 +239,13 @@ async def run_spec(
     task = await get_or_404(session, Task, run.task_id)
     project = await get_or_404(session, Project, run.project_id)  # Read-only.
     s = get_settings()
+    notes = context_notes.as_notes(await context_notes.recent(session, run.project_id))
+    notes += [
+        ContextNote(kind="memory", title="Project memory", body=m, author="mem0")
+        for m in await agent_memory.recall(
+            run.project_id, f"{task.title}\n{task.description}", role="developer"
+        )
+    ]
     return RunSpec(
         run_id=run.id,
         task_key=task.key,
@@ -249,9 +256,7 @@ async def run_spec(
         repo=s.github_repo,
         repo_url=s.demo_repo_url,
         base_branch=s.github_base_branch,
-        context=context_notes.as_notes(
-            await context_notes.recent(session, run.project_id)
-        ),
+        context=notes,
     )
 
 

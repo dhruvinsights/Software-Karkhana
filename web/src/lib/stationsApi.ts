@@ -35,6 +35,16 @@ export interface ApiSecurityFinding extends Omit<SecurityFinding, 'cveId' | 'sla
   updatedAt: string;
 }
 
+/** A story developers finished that QA still has to cover. */
+export interface QaQueueItem {
+  id: string;
+  key: string;
+  title: string;
+  status: string;
+  acceptanceCriteria: string[];
+  scenarios: number;
+}
+
 export class StationError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -79,6 +89,9 @@ export const stationsApi = {
   ) => post<ApiTestScenario>(`/api/projects/${projectId}/test-scenarios`, body),
   updateScenario: (id: string, body: Partial<{ status: TestScenario['status']; actual_result: string | null; evidence_uri: string | null; title: string }>) =>
     patch<ApiTestScenario>(`/api/test-scenarios/${id}`, body),
+  qaQueue: (projectId: string) => call<QaQueueItem[]>(`/api/projects/${projectId}/qa-queue`),
+  /** AI drafts manual scenarios and an automation script for one finished story. */
+  synthesizeScenarios: (issueId: string) => post<ApiTestScenario[]>(`/api/issues/${issueId}/test-scenarios`, {}),
 
   listFindings: (projectId: string) => call<ApiSecurityFinding[]>(`/api/projects/${projectId}/security-findings`),
   createFinding: (

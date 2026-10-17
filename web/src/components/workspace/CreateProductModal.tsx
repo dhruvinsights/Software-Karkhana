@@ -336,7 +336,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({ isOpen, 
 
         {/* Brand Header */}
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-[#075BFF] flex items-center justify-center text-white shadow-lg shrink-0">
             <Layers className="w-6 h-6" />
           </div>
           <div>
@@ -402,7 +402,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({ isOpen, 
                     setName(e.target.value);
                     if (!code) setCode(e.target.value.substring(0, 4).toUpperCase());
                   }}
-                  placeholder="e.g. CIRQ-Vishwa - Circular Agri-Food Intelligence"
+                  placeholder="e.g. IdeaQ"
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-base text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
@@ -412,7 +412,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({ isOpen, 
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="CIRQ"
+                  placeholder="IDEAQ"
                   maxLength={6}
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-base text-white font-mono text-center placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 />
@@ -473,7 +473,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({ isOpen, 
                   type="text"
                   value={repositoryUrl}
                   onChange={(e) => setRepositoryUrl(e.target.value)}
-                  placeholder="https://github.com/dhruvinsights/CIRQ-Vishwa"
+                  placeholder="https://github.com/dhruvinsights/IdeaQ"
                   className="w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-base text-white font-mono placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>

@@ -259,7 +259,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         </button>
 
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-[#075BFF] flex items-center justify-center text-white shadow-lg shrink-0">
             <FolderGit2 className="w-6 h-6" />
           </div>
           <div>
@@ -423,7 +423,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
                                   color: selected ? 'white' : 'rgb(156,163,175)',
                                 }}
                               >
-                                <span className="w-4 h-4 rounded bg-indigo-600/30 flex items-center justify-center text-[10px] font-bold text-indigo-300">
+                                <span className="w-4 h-4 rounded bg-[#075BFF]/20 flex items-center justify-center text-[10px] font-bold text-[#5B8FFF]">
                                   {m.name.charAt(0).toUpperCase()}
                                 </span>
                                 <span className="truncate max-w-[130px]">{m.name}</span>

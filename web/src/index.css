@@ -101,3 +101,71 @@
   outline: 2px solid var(--accent-blue);
   outline-offset: 3px;
 }
+
+::selection {
+  background: rgba(7, 91, 255, 0.25);
+  color: #fff;
+}
+
+::-moz-selection {
+  background: rgba(7, 91, 255, 0.25);
+  color: #fff;
+}
+
+/* Workspace scale: 100% browser zoom renders like 110% on desktop.
+   CSS zoom also scales viewport units, so divide them back out. */
+:root { --app-zoom: 1; }
+@media (min-width: 1280px) { :root { --app-zoom: 1.1; } }
+.app-zoom {
+  zoom: var(--app-zoom);
+  width: calc(100vw / var(--app-zoom));
+  height: calc(100dvh / var(--app-zoom));
+}
+
+/* Buttons: one system, matching the landing page SpecularButtons (blue base,
+   white rim line, soft glow, light sweep on hover). Unlayered, so it wins over
+   the Tailwind colour utilities already on these buttons. */
+.k-btn-primary, .k-btn-secondary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: transform .15s ease, box-shadow .25s ease, border-color .25s ease, background-color .25s ease;
+}
+.k-btn-primary {
+  background: #075bff;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 0 0 1px rgba(7, 91, 255, .35), 0 6px 22px -6px rgba(7, 91, 255, .65);
+}
+.k-btn-primary:hover:not(:disabled) {
+  background: #1a68ff;
+  border-color: rgba(255, 255, 255, .55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 0 0 1px rgba(7, 91, 255, .5), 0 8px 30px -4px rgba(7, 91, 255, .8);
+}
+.k-btn-secondary {
+  background: rgba(17, 21, 36, .85);
+  color: #e8eaf2;
+  border: 1px solid rgba(96, 165, 250, .22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.k-btn-secondary:hover:not(:disabled) {
+  border-color: rgba(96, 165, 250, .5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 22px -6px rgba(96, 165, 250, .45);
+}
+.k-btn-primary::after, .k-btn-secondary::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .28) 50%, transparent 65%);
+  transform: translateX(-120%);
+  transition: transform .7s ease;
+  pointer-events: none;
+}
+.k-btn-primary:hover:not(:disabled)::after, .k-btn-secondary:hover:not(:disabled)::after { transform: translateX(120%); }
+.k-btn-primary:active:not(:disabled), .k-btn-secondary:active:not(:disabled) { transform: scale(.98); }
+.k-btn-primary:focus-visible, .k-btn-secondary:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .k-btn-primary::after, .k-btn-secondary::after { display: none; } }

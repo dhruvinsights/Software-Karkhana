@@ -187,3 +187,60 @@ async def test_restricted_project_needs_the_station(client):
     assert (await client.get(f"/api/projects/{pid}/security-findings", headers=as_(LEAD))).status_code == 403
     r = await client.post(f"/api/projects/{pid}/adrs", headers=as_(LEAD), json={"title": "Not my station"})
     assert r.status_code == 403
+
+
+async def test_qa_queue_and_ai_scenarios_for_finished_story(client, monkeypatch):
+    from app.services import qa_synth
+
+    real_structured = qa_synth.llm.generate_structured
+
+    async def fake_structured(**kw):
+        if kw.get("schema") is not qa_synth.DraftScenarios:
+            return await real_structured(**kw)
+        return qa_synth.DraftScenarios(
+            scenarios=[
+                qa_synth.DraftScenario(
+                    title="Valid code lowers total", steps=["Open cart", "Apply SAVE10"],
+                    expected_result="Total drops 10%",
+                ),
+                qa_synth.DraftScenario(
+                    title="Expired code rejected", type="Boundary", priority="P0",
+                    steps=["Apply OLD10"], expected_result="Code expired",
+                ),
+            ]
+        )
+
+    async def fake_text(**_kw):
+        return "def test_x():\n    r = requests.get(BASE_URL)\n    assert r.status_code == 200"
+
+    monkeypatch.setattr(qa_synth.llm, "generate_structured", fake_structured)
+    monkeypatch.setattr(qa_synth.llm, "generate_text", fake_text)
+
+    _ws, pid = await _project(client, "QA Queue Co")
+    done = (
+        await client.post(
+            f"/api/projects/{pid}/issues", headers=as_(PM), json={"title": "Discount codes", "type": "task"}
+        )
+    ).json()
+    await client.post(
+        f"/api/projects/{pid}/issues", headers=as_(PM), json={"title": "Not built yet", "type": "task"}
+    )
+    moved = await client.patch(f"/api/issues/{done['id']}", headers=as_(PM), json={"status": "ready_for_qa"})
+    assert moved.status_code == 200, moved.text
+
+    queue = (await client.get(f"/api/projects/{pid}/qa-queue", headers=as_(PM))).json()
+    assert [q["title"] for q in queue] == ["Discount codes"]
+    assert queue[0]["scenarios"] == 0
+
+    r = await client.post(f"/api/issues/{done['id']}/test-scenarios", headers=as_(PM))
+    assert r.status_code == 201, r.text
+    made = r.json()
+    assert [m["title"] for m in made] == ["Valid code lowers total", "Expired code rejected"]
+    assert made[1]["priority"] == "P0" and made[1]["type"] == "Boundary"
+    assert "assert" in made[0]["automationScript"]
+    assert made[0]["issueId"] == done["id"] and made[0]["status"] == "not_run"
+
+    again = await client.post(f"/api/issues/{done['id']}/test-scenarios", headers=as_(PM))
+    assert again.json() == []  # same titles are not duplicated
+    queue = (await client.get(f"/api/projects/{pid}/qa-queue", headers=as_(PM))).json()
+    assert queue[0]["scenarios"] == 2

@@ -379,6 +379,11 @@ export const factoryStore = {
 
       // 1. Fetch Me
       const meRes = await fetch('/api/auth/me', { headers: authHeader });
+      if (meRes.status === 401) {
+        // Expired or no longer valid (e.g. signed before a server key change): sign out cleanly.
+        factoryStore.signOut();
+        return;
+      }
       if (meRes.ok) {
         const user = await meRes.json();
         state.currentUser = user;

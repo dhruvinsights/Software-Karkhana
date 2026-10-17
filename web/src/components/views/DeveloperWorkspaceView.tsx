@@ -101,7 +101,7 @@ export const DeveloperWorkspaceView: React.FC<DeveloperWorkspaceViewProps> = ({ 
 
         <button
           onClick={() => factoryStore.setScreen(state.products.length > 0 ? 'projects' : 'workspace_home')}
-          className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-[#075BFF]/20"
+          className="k-btn-primary px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-[#075BFF]/20"
         >
           <Layers className="w-4 h-4" />
           <span>{state.products.length > 0 ? 'Go to Projects' : 'Go to Overview'}</span>
@@ -180,7 +180,7 @@ export const DeveloperWorkspaceView: React.FC<DeveloperWorkspaceViewProps> = ({ 
             <button
               type="submit"
               disabled={!newPrTitle.trim()}
-              className="w-full py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+              className="k-btn-primary w-full py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-xs"
             >
               + Submit PR to Review Stream
             </button>
@@ -274,7 +274,7 @@ export const DeveloperWorkspaceView: React.FC<DeveloperWorkspaceViewProps> = ({ 
                           </div>
                           <button
                             onClick={() => factoryStore.applyCodeRabbitFix(activePr.id, f.id)}
-                            className="px-3.5 py-1.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                            className="k-btn-primary px-3.5 py-1.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-lg text-xs font-medium cursor-pointer transition-colors"
                           >
                             Apply 1-Click Patch
                           </button>
@@ -301,7 +301,7 @@ export const DeveloperWorkspaceView: React.FC<DeveloperWorkspaceViewProps> = ({ 
                 <button
                   onClick={handleStartAgent}
                   disabled={agentRunning}
-                  className="px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-[#075BFF]/20"
+                  className="k-btn-primary px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-[#075BFF]/20"
                 >
                   <Play className="w-3.5 h-3.5" />
                   <span>{agentRunning ? 'Executing Task...' : 'Dispatch Agent'}</span>

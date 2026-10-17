@@ -8,7 +8,7 @@ interface IdeaValidationViewProps {
 
 export const IdeaValidationView: React.FC<IdeaValidationViewProps> = ({ state }) => {
   return (
-    <div className="max-w-[1700px] mx-auto animate-fade-in pb-12">
+    <div className="animate-fade-in pb-12">
       <ProductIdeaLab state={state} />
     </div>
   );

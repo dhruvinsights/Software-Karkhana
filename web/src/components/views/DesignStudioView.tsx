@@ -146,11 +146,11 @@ export const DesignStudioView: React.FC<DesignStudioViewProps> = ({ state }) => 
             <div className="space-y-2 text-xs font-mono">
               <div className="flex justify-between items-center text-slate-300">
                 <span>--font-sans</span>
-                <span className="text-purple-400">Inter / System</span>
+                <span className="text-[#5B8FFF]">Inter / System</span>
               </div>
               <div className="flex justify-between items-center text-slate-300">
                 <span>--font-mono</span>
-                <span className="text-purple-400">JetBrains Mono</span>
+                <span className="text-[#5B8FFF]">JetBrains Mono</span>
               </div>
             </div>
           </GlassCard>

@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, ledger, memory, process
+from app import access, agent_memory, ledger, memory, process
 from app.auth import CurrentUser
 from app.db import get_session
 from app.integrations import github
@@ -200,9 +200,14 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
         await advance_if_legal(
             session, project, Event.MERGED, actor=actor, payload={"pr": pr.number}
         )
-    return await memory.capture_on_merge(
+    learning = await memory.capture_on_merge(
         session, pr=pr, task=task, actor=ledger.Actor.ai("memory-curator")
     )
+    for role in ("developer", "reviewer"):
+        await agent_memory.remember(
+            project.id, role, f"{task.title}: {learning.text}"
+        )
+    return learning
 
 
 @router.post("/prs/{pr_id}/review", response_model=PullRequestOut)

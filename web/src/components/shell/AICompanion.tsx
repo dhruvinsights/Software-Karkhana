@@ -453,7 +453,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
               <button
                 onClick={() => handleSend()}
                 disabled={loading || !input.trim()}
-                className="p-2.5 bg-[#075BFF] text-white rounded-xl hover:bg-[#075BFF]/90 disabled:opacity-40 transition-colors shadow-xs self-end shrink-0"
+                className="k-btn-primary p-2.5 bg-[#075BFF] text-white rounded-xl hover:bg-[#075BFF]/90 disabled:opacity-40 transition-colors shadow-xs self-end shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -469,7 +469,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
           <div className="p-4 border-b border-white/[0.08] shrink-0">
             <button
               onClick={() => setIngestOpen((v) => !v)}
-              className="w-full py-2 px-4 bg-[#101016] hover:bg-[#17151D] border border-white/[0.08] rounded-xl text-xs font-medium text-[#B5B1C0] hover:text-white flex items-center justify-center gap-2 transition-colors"
+              className="k-btn-secondary w-full py-2 px-4 bg-[#101016] hover:bg-[#17151D] border border-white/[0.08] rounded-xl text-xs font-medium text-[#B5B1C0] hover:text-white flex items-center justify-center gap-2 transition-colors"
             >
               <Plus className="w-3.5 h-3.5 text-[#075BFF]" />
               <span>Ingest New Document</span>
@@ -502,7 +502,7 @@ export const AICompanion: React.FC<AICompanionProps> = ({ state }) => {
                   <button
                     type="submit"
                     disabled={ingestLoading || !ingestTitle.trim() || !ingestContent.trim()}
-                    className="flex-1 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-40 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                    className="k-btn-primary flex-1 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-40 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
                   >
                     {ingestLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                     <span>{ingestLoading ? 'Ingesting…' : 'Ingest'}</span>

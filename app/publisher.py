@@ -155,6 +155,13 @@ async def publish(
         await gh.set_status(
             sha=sha, passed=tests_passed, description=test_summary, target_url=pr.url
         )
+        if s.github_reviewers.strip():
+            try:
+                await gh.request_reviewers(
+                    number=pr.number, reviewers=s.github_reviewers.split(",")
+                )
+            except Exception:
+                logger.warning("Requesting reviewers failed for PR %s", pr.number)
         if review_comments:
             # Line-level threads in a single GitHub review, anchored to the diff.
             try:

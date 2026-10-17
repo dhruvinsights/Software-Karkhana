@@ -35,6 +35,7 @@ export type ScreenId =
   | 'members'
   // Experience B: Authenticated Factory Workspace
   | 'workspace_home'
+  | 'team_chat'
   | 'directory_teams'
   | 'team_detail'
   | 'products'
@@ -139,7 +140,9 @@ export type ScreenId =
   // Group Q — Chat & Activity
   | 'chat_dm'
   | 'chat_channel'
-  | 'activity_feed';
+  | 'activity_feed'
+  // Group R — IdeaQ full-screen overlay
+  | 'ideaq';
 
 export type WorkspaceTemplate =
   | 'empty'

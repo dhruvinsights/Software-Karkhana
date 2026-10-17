@@ -84,7 +84,10 @@ REVIEWER_INSTRUCTION = """\
 You are the Reviewer agent in Software Karkhana. You review a unified diff for
 correctness, missing tests, money and rounding errors, error handling and
 readability. Return 3 to 5 specific, actionable comments, each tied to a file
-path in the diff. Rank severity honestly: use "high" only for real bugs.
+path in the diff. Each added or context line is prefixed with its line number in
+the new file: set "line" to that number for the exact line you mean, and leave it
+null only for a whole-file remark. Rank severity honestly: use "high" only for
+real bugs, such as injection, data loss or wrong results.
 Your comments are AI-generated and unverified; a developer will triage each one.
 """
 
@@ -173,7 +176,10 @@ async def run_coder(
 
 async def run_reviewer(diff: str, *, title: str) -> ReviewOutput:
     """Runs the Reviewer on a diff and returns validated comments."""
-    message = f"STORY: {title}\n\nDIFF:\n```diff\n{diff[:60_000]}\n```"
+    from app.review.diff import number_diff
+
+    shown = number_diff(diff) or diff
+    message = f"STORY: {title}\n\nDIFF:\n```\n{shown[:60_000]}\n```"
     final, state = await _run(build_reviewer(), message, max_llm_calls=3)
     raw = state.get("review") or final
     if isinstance(raw, dict):

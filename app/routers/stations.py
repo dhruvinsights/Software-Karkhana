@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, db, ledger
 from app.auth import CurrentUser
-from app.models import Adr, Project, SecurityFinding, TestScenario, User
+from app.models import Adr, Issue, Project, SecurityFinding, TestScenario, User
 
 router = APIRouter(tags=["stations"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]
@@ -386,6 +386,64 @@ async def create_scenario(
         extra={"title": scenario.title, "type": scenario.type, "priority": scenario.priority},
     )
     return _scenario_out(scenario, await _names(session, [scenario]))
+
+
+@router.get("/api/projects/{project_id}/qa-queue")
+async def qa_queue(project_id: uuid.UUID, session: Session, user: CurrentUser) -> list[dict[str, Any]]:
+    """Stories developers finished and QA has not signed off, with how many scenarios each has."""
+    await _project_for(session, user, project_id, "qa")
+    issues = (
+        await session.scalars(
+            select(Issue)
+            .where(
+                Issue.project_id == project_id,
+                Issue.type != "epic",
+                Issue.status.in_(("ready_for_qa", "in_qa", "done")),
+            )
+            .order_by(Issue.number)
+        )
+    ).all()
+    counts = dict(
+        (
+            await session.execute(
+                select(TestScenario.issue_id, func.count())
+                .where(TestScenario.project_id == project_id, TestScenario.issue_id.is_not(None))
+                .group_by(TestScenario.issue_id)
+            )
+        ).all()
+    )
+    return [
+        {
+            "id": str(i.id),
+            "key": f"#{i.number}",
+            "title": i.title,
+            "status": i.status,
+            "acceptanceCriteria": i.acceptance_criteria or [],
+            "scenarios": counts.get(i.id, 0),
+        }
+        for i in issues
+    ]
+
+
+@router.post("/api/issues/{issue_id}/test-scenarios", status_code=status.HTTP_201_CREATED)
+async def synthesize_scenarios(issue_id: uuid.UUID, session: Session, user: CurrentUser) -> list[dict[str, Any]]:
+    """AI drafts manual scenarios and an automation script for one finished story."""
+    from app.ai.errors import ModelError
+    from app.services import qa_synth
+
+    issue = await _record_for(session, Issue, issue_id, "Issue")
+    project = await _project_for(session, user, issue.project_id, "qa")
+    try:
+        made = await qa_synth.synthesize_for_issue(session, project, issue, user)
+    except ModelError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"The model could not draft tests: {exc}") from exc
+    names = await _names(session, made)
+    for row in made:
+        await _log(
+            session, user, kind="test_scenario", created=True, row=row, changes={},
+            extra={"title": row.title, "issue": issue.number, "by": "ai-qa-synthesiser"},
+        )
+    return [_scenario_out(t, names) for t in made]
 
 
 @router.patch("/api/test-scenarios/{scenario_id}")

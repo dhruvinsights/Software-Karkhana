@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { factoryStore, FactoryState } from './store/factoryStore';
 import { stashPendingInvite, takeInviteFromUrl } from './lib/invites';
 import { COMING_SOON_SCREENS, ComingSoonBanner } from './components/views/StationBanners';
+import { ChatPage } from './components/chat/ChatPage';
 
 // Every screen is its own chunk: the marketing page (WebGL/GSAP), auth flow and each
 // station view load on first use, so the entry bundle stays small.
@@ -186,7 +187,11 @@ export default function App() {
       case 'product_create':
         return <ProductSetupView state={state} />;
 
+      case 'team_chat':
+        return <ChatPage />;
+
       case 'product_detail':
+      case 'ideaq':
         return <ProductWorkspaceView state={state} />;
 
       case 'ideas':

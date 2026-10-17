@@ -143,6 +143,24 @@ class GitHub:
         r.raise_for_status()
         return r.json()
 
+    async def get_pull_request_diff(self, *, number: int) -> str:
+        """Returns the PR's unified diff."""
+        r = await self._http.get(
+            f"/pulls/{number}", headers={"Accept": "application/vnd.github.diff"}
+        )
+        r.raise_for_status()
+        return r.text
+
+    async def request_reviewers(self, *, number: int, reviewers: list[str]) -> None:
+        """Asks GitHub users to review the PR. The PR author is skipped by GitHub."""
+        names = [r.strip().lstrip("@") for r in reviewers if r.strip()]
+        if not names:
+            return
+        r = await self._http.post(
+            f"/pulls/{number}/requested_reviewers", json={"reviewers": names}
+        )
+        r.raise_for_status()
+
     # ── Commit statuses ────────────────────────────────────────────────────
 
     async def set_status(

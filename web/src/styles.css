@@ -54,6 +54,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .who { margin-top: auto; padding: 14px; border-radius: 16px; background: var(--surface2); display: flex; flex-direction: column; gap: 6px; }
 .canvas { min-width: 0; display: flex; flex-direction: column; background: radial-gradient(1100px 420px at 70% -120px, rgb(45 92 255 / .16), transparent 70%), var(--bg); }
 .wrap { max-width: 1200px; width: 100%; margin: 0 auto; padding: 36px 40px 40px; flex: 1; }
+.wrap-full { width: 100%; padding: 36px 40px 40px; flex: 1; min-width: 0; }
 .vh { display: flex; flex-direction: column; gap: 8px; margin-bottom: 26px; }
 .vh h2 { font-size: 34px; }
 .vh p { max-width: 62ch; }
@@ -154,6 +155,9 @@ tbody tr:hover td { background: rgb(255 255 255 / .02); }
 .steps { display: flex; gap: 6px; }
 .steps i { height: 4px; flex: 1; border-radius: 4px; background: var(--surface3); }
 .steps i.on { background: var(--accent-hi); }
+
+::selection { background: rgba(7, 91, 255, 0.22); color: #fff; }
+::-moz-selection { background: rgba(7, 91, 255, 0.22); color: #fff; }
 
 @media (max-width: 960px) {
   .auth { grid-template-columns: 1fr; } .auth-hero { padding: 28px; min-height: 260px; }

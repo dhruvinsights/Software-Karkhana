@@ -49,7 +49,7 @@ from app.db import get_engine
 from app.integrations import github_tokens
 from app.integrations.github import git_auth_header
 from app.models import Idea, IdeaScan, Product
-from app.routers.chat import manager, notify_workspace
+from app.services.realtime import manager, notify_workspace
 
 logger = logging.getLogger(__name__)
 

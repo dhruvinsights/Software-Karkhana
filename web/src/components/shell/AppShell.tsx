@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense, useRef } from 'react';
 import {
   Layers,
   Search,
@@ -29,12 +29,17 @@ import {
   Bell,
   UserPlus,
   ShieldCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
 } from 'lucide-react';
+
+const ProductIdeaLab = lazy(() => import('../views/ProductIdeaLab').then((m) => ({ default: m.ProductIdeaLab })));
 import { ACCESS_LABEL, factoryStore, FactoryState, ROLE_CONFIGS } from '../../store/factoryStore';
 import { FactoryRole, ScreenId } from '../../types/factory';
 import { AICompanion } from './AICompanion';
 import { CommandPalette } from './CommandPalette';
-import { ChatPanel } from './ChatPanel';
+import { ChatPanel, openChatChannel } from './ChatPanel';
 import { ActivityFeedPanel } from './ActivityFeedPanel';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { WorkspaceInviteModal } from '../workspace/WorkspaceInviteModal';
@@ -57,6 +62,25 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [otherToolsOpen, setOtherToolsOpen] = useState(false);
+  // Team Chat takes the full width: fold the nav on entry, restore it on exit.
+  const navBeforeChat = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (state.currentScreen === 'team_chat' && navBeforeChat.current === null) {
+      navBeforeChat.current = sidebarCollapsed;
+      setSidebarCollapsed(true);
+    } else if (state.currentScreen !== 'team_chat' && navBeforeChat.current !== null) {
+      setSidebarCollapsed(navBeforeChat.current);
+      navBeforeChat.current = null;
+    }
+  }, [state.currentScreen]);
+  const [ideaqOpen, setIdeaqOpen] = useState(false);
+
+  // Open IdeaQ overlay when screen transitions to 'ideaq'
+  useEffect(() => {
+    if (state.currentScreen === 'ideaq') setIdeaqOpen(true);
+  }, [state.currentScreen]);
 
   // Which stations the signed-in person may use on the selected project.
   // null = unknown or unrestricted, so nothing is hidden.
@@ -141,7 +165,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
   // Map screenId → display label for the breadcrumb
   const SCREEN_LABELS: Partial<Record<ScreenId, string>> = {
-    workspace_home: 'Overview', products: 'Products', product_detail: 'Product Detail', product_create: 'Create Product',
+    workspace_home: 'Overview', team_chat: 'Team Chat', products: 'Products', product_detail: 'Product Detail', product_create: 'Create Product',
     ideas: 'Idea Lab', idea_detail: 'Idea Detail', idea_generate: 'AI Brainstorm',
     projects: 'Project Hub', project_detail: 'Project Detail',
     approvals: 'Reviewer Space', portfolio: 'Portfolio',
@@ -164,6 +188,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
         { id: 'products' as ScreenId, label: 'Products', icon: Layers, count: state.products.length },
         { id: 'projects' as ScreenId, label: 'Project Hub', icon: FolderGit2, count: state.projects.length },
         { id: 'approvals' as ScreenId, label: 'Reviews', icon: ShieldCheck },
+        { id: 'team_chat' as ScreenId, label: 'Team Chat', icon: MessageSquare, count: chatUnread || undefined },
       ],
     },
     {
@@ -194,8 +219,68 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
     },
   ];
 
+  // Role-focused sidebar: everyone gets the shared spaces; each role adds its own
+  // stations. The rest stays reachable under "Other tools", never removed.
+  const SHARED_NAV: ScreenId[] = ['workspace_home', 'products', 'projects', 'team_chat', 'knowledge_hub'];
+  const ROLE_NAV: Record<string, ScreenId[]> = {
+    developer: ['developer_dashboard', 'pull_requests', 'system_design', 'prototype_studio', 'qa_dashboard', 'pipeline_studio', 'release_dashboard'],
+    designer: ['prototype_studio', 'qa_dashboard'],
+    product_manager: ['approvals', 'prototype_studio', 'qa_dashboard', 'release_dashboard'],
+    architect: ['approvals', 'developer_dashboard', 'pull_requests', 'system_design', 'security_dashboard', 'rule_governance'],
+    qa: ['pull_requests', 'qa_dashboard', 'release_dashboard', 'feedback_inbox'],
+    security: ['approvals', 'pull_requests', 'system_design', 'security_dashboard'],
+    devops: ['developer_dashboard', 'pull_requests', 'pipeline_studio', 'release_dashboard', 'feedback_inbox'],
+    release_manager: ['pull_requests', 'qa_dashboard', 'pipeline_studio', 'release_dashboard', 'feedback_inbox'],
+    executive: ['approvals', 'release_dashboard', 'rule_governance'],
+    support: ['feedback_inbox'],
+  };
+  const seesEverything = isWorkspaceAdmin || state.currentRole === 'admin';
+  // The role you were invited with in this workspace wins over the account-level role.
+  const ROLE_ALIAS: Record<string, string> = { pm: 'product_manager', director: 'executive', lead: 'architect', release: 'release_manager', ops: 'devops' };
+  const rawRole = state.workspaceMembers.find((m) => m.id === state.currentUser?.id)?.role || state.currentRole;
+  const navRole = ROLE_ALIAS[rawRole] ?? rawRole;
+  const roleNav = new Set<ScreenId>([...SHARED_NAV, ...(ROLE_NAV[navRole] ?? ROLE_NAV.developer)]);
+  const stationAllowed = (item: { station?: string }) =>
+    !(stationAccess?.restricted && item.station && !stationAccess.stations.includes(item.station));
+  const inRole = (id: ScreenId) => seesEverything || roleNav.has(id) || state.currentScreen === id;
+  const visibleSections = navSections
+    .map((sec) => ({ ...sec, items: sec.items.filter((i) => stationAllowed(i as { station?: string }) && inRole(i.id)) }))
+    .filter((sec) => sec.items.length > 0);
+  const otherTools = navSections.flatMap((sec) => sec.items.filter((i) => stationAllowed(i as { station?: string }) && !inRole(i.id)));
+
+  const renderNavItem = (item: (typeof navSections)[number]['items'][number]) => {
+                const Icon = item.icon;
+                const isActive = state.currentScreen === item.id;
+                const soon = (item as { soon?: boolean }).soon;
+                const count = (item as { count?: number }).count;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => factoryStore.setScreen(item.id)}
+                    title={sidebarCollapsed ? item.label : (soon ? 'Coming soon: preview with sample data, not saved to the server' : undefined)}
+                    className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2.5 rounded-lg text-[15px] font-medium transition-all group ${
+                      isActive
+                        ? 'bg-neutral-800 text-white shadow-xs'
+                        : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-900/60'
+                    }`}
+                  >
+                    <div className={`flex items-center ${sidebarCollapsed ? '' : 'gap-2.5 truncate'}`}>
+                      <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-300'}`} />
+                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                    </div>
+                    {!sidebarCollapsed && (soon ? (
+                      <ComingSoonBadge />
+                    ) : count !== undefined && count > 0 ? (
+                      <span className={`text-[12px] font-mono ${isActive ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                        {count}
+                      </span>
+                    ) : null)}
+                  </button>
+                );
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#07070B] text-[#F6F5FA] antialiased font-sans select-none">
+    <div className="app-zoom flex overflow-hidden bg-[#07070B] text-[#F6F5FA] antialiased font-sans select-none">
       {/* Full-viewport LiquidEther background — covers sidebar + content */}
       <LiquidEther
         style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: 0 }}
@@ -229,13 +314,16 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
       <WorkspaceAdminPanel isOpen={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} state={state} />
 
       {/* Dark Editorial Sidebar */}
-      <aside className="w-64 bg-[#0A0A0F]/75 backdrop-blur-md text-[#B5B1C0] flex flex-col shrink-0 border-r border-white/[0.08] z-20">
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-72'} bg-[#0A0A0F]/75 backdrop-blur-md text-[#B5B1C0] flex flex-col shrink-0 border-r border-white/[0.08] z-20 overflow-hidden transition-[width] duration-300 ease-in-out`}>
         {/* Workspace Brand & Switcher Header - Pure typography, NO icon badge */}
-        <div className="p-4 border-b border-white/[0.08]">
+        <div className={`p-4 border-b border-white/[0.08] ${sidebarCollapsed ? 'px-2' : ''}`}>
+          {!sidebarCollapsed && (
           <div className="mb-3 px-1 flex items-center justify-between">
             <span className="text-sm font-semibold tracking-tight text-white">Software Karkhana</span>
             <span className="text-[10px] font-mono tracking-widest text-[#075BFF] uppercase px-1.5 py-0.5 rounded bg-[#075BFF]/10 border border-[#075BFF]/20">v2.4</span>
           </div>
+          )}
+          {!sidebarCollapsed && (
           <button
             onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)}
             className="w-full flex items-center justify-between p-2 rounded-lg bg-[#101016] hover:bg-[#17151D] border border-white/[0.08] transition-colors group text-left"
@@ -244,14 +332,15 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
               <span className="text-[12px] font-medium text-[#F6F5FA] truncate block leading-tight">
                 {state.workspace.name}
               </span>
-              <span className="text-[10px] text-[#827D8E] block leading-tight truncate mt-0.5 font-mono">
+              <span className="text-[11.5px] text-[#827D8E] block leading-tight truncate mt-0.5 font-mono">
                 {state.workspace.isDemo ? 'Autonomous Engine' : 'Production Unit'}
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-[#827D8E] group-hover:text-white transition-colors shrink-0" />
           </button>
+          )}
 
-          {workspaceMenuOpen && (
+          {!sidebarCollapsed && workspaceMenuOpen && (
             <div className="mt-2 bg-[#16181d] rounded-xl border border-neutral-700/80 p-1.5 shadow-2xl text-xs space-y-1">
               <div className="px-2.5 py-1 text-[10px] uppercase font-mono tracking-wider text-neutral-400 font-medium">
                 Workspaces
@@ -287,11 +376,12 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
           )}
         </div>
 
-        {/* Quick Search Bar */}
+        {/* Quick Search Bar — hidden when collapsed */}
+        {!sidebarCollapsed && (
         <div className="px-4 pt-3 pb-1">
           <button
             onClick={() => setPaletteOpen(true)}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-neutral-900/60 hover:bg-neutral-800/80 border border-neutral-800/80 text-neutral-400 hover:text-neutral-200 transition-colors text-xs"
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-neutral-900/60 hover:bg-neutral-800/80 border border-neutral-800/80 text-neutral-400 hover:text-neutral-200 transition-colors text-[13.5px]"
           >
             <div className="flex items-center gap-2">
               <Search className="w-3.5 h-3.5" />
@@ -300,64 +390,75 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
             <kbd className="font-mono text-[10px] bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-400">⌘K</kbd>
           </button>
         </div>
+        )}
 
         {/* Navigation Sections */}
-        <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-5">
-          {navSections.map((section, sIdx) => (
+        <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-5">
+          {/* AI Companion lives in the sidebar now (was in the topbar) */}
+          <button
+            onClick={() => factoryStore.toggleCompanion()}
+            title="AI Companion"
+            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-1' : 'gap-2.5 px-3'} py-2.5 rounded-lg text-[15px] font-medium border transition-all ${
+              state.companionOpen
+                ? 'bg-[#075BFF]/15 border-[#075BFF]/45 text-white'
+                : 'bg-white/[0.03] border-white/[0.08] text-neutral-300 hover:text-white hover:border-[#075BFF]/40 hover:bg-[#075BFF]/10'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 shrink-0 text-[#5B8FFF]" />
+            {!sidebarCollapsed && <span className="truncate">AI Companion</span>}
+          </button>
+
+          {visibleSections.map((section, sIdx) => (
             <div key={sIdx} className="space-y-1">
-              <div className="px-3 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+              {!sidebarCollapsed && (
+              <div className="px-3 text-[11.5px] font-semibold text-neutral-400 uppercase tracking-wider">
                 {section.title}
               </div>
-              {section.items
-                .filter((item) => {
-                  const st = (item as { station?: string }).station;
-                  return !(stationAccess?.restricted && st && !stationAccess.stations.includes(st));
-                })
-                .map((item) => {
-                const Icon = item.icon;
-                const isActive = state.currentScreen === item.id;
-                const soon = (item as { soon?: boolean }).soon;
-                const count = (item as { count?: number }).count;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => factoryStore.setScreen(item.id)}
-                    title={soon ? 'Coming soon: preview with sample data, not saved to the server' : undefined}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-all group ${
-                      isActive
-                        ? 'bg-neutral-800 text-white shadow-xs'
-                        : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-900/60'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 truncate">
-                      <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-300'}`} />
-                      <span className="truncate">{item.label}</span>
-                    </div>
-                    {soon ? (
-                      <ComingSoonBadge />
-                    ) : count !== undefined && count > 0 ? (
-                      <span className={`text-[11px] font-mono ${isActive ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                        {count}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+              )}
+              {section.items.map(renderNavItem)}
             </div>
           ))}
+
+          {otherTools.length > 0 && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setOtherToolsOpen((o) => !o)}
+                title="Tools outside your role"
+                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-300 transition-colors`}
+              >
+                {sidebarCollapsed ? <ChevronDown className={`w-4 h-4 transition-transform ${otherToolsOpen ? '' : '-rotate-90'}`} /> : (
+                  <>
+                    <span>Other tools ({otherTools.length})</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${otherToolsOpen ? '' : '-rotate-90'}`} />
+                  </>
+                )}
+              </button>
+              {otherToolsOpen && otherTools.map(renderNavItem)}
+            </div>
+          )}
         </nav>
 
         {/* User Session Footer */}
         <div className="p-3 border-t border-white/[0.08] space-y-2 bg-[#0A0A0F]">
+          {/* Sidebar collapse toggle */}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="w-full py-1.5 px-2 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] rounded-lg text-[13px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors text-[#827D8E] hover:text-white"
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <><PanelLeftClose className="w-3.5 h-3.5" /><span>Collapse</span></>}
+          </button>
+
+          {!sidebarCollapsed && (
           <div className="flex items-center gap-2.5 p-2 rounded-xl bg-[#101016] border border-white/[0.06]">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-xs text-white shrink-0">
               {(state.currentUser?.display_name || state.members[0]?.name || 'U').charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold text-white truncate leading-tight">
+              <div className="text-[14px] font-semibold text-white truncate leading-tight">
                 {state.currentUser?.display_name || state.members[0]?.name || 'Dhruv Chaturvedi'}
               </div>
-              <div className="text-[10px] text-[#075BFF] font-mono truncate mt-0.5">
+              <div className="text-[11.5px] text-[#075BFF] font-mono truncate mt-0.5">
                 {(state.workspaceMembers.find((m) => m.id === state.currentUser?.id)?.role ?? state.currentUser?.role)
                   ? (state.workspaceMembers.find((m) => m.id === state.currentUser?.id)?.role ?? state.currentUser!.role).replace(/_/g, ' ').toUpperCase()
                   : activeRole.label}
@@ -379,41 +480,46 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
               )}
             </div>
           </div>
+          )}
 
-          {isWorkspaceAdmin && (
+          {!sidebarCollapsed && isWorkspaceAdmin && (
             <button
               onClick={() => setAdminPanelOpen(true)}
-              className="w-full py-1.5 px-2 bg-[#f0a500]/10 hover:bg-[#f0a500]/20 text-[#f0a500] border border-[#f0a500]/30 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              className="w-full py-1.5 px-2 bg-[#f0a500]/10 hover:bg-[#f0a500]/20 text-[#f0a500] border border-[#f0a500]/30 rounded-lg text-[13px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Admin Panel</span>
             </button>
           )}
 
+          {!sidebarCollapsed && (
           <button
             onClick={() => setInviteModalOpen(true)}
-            className="w-full py-1.5 px-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+            className="w-full py-1.5 px-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-[13px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>Invite to Workspace</span>
           </button>
+          )}
 
           {/* Quick links */}
+          {!sidebarCollapsed && (
           <div className="flex items-center justify-between pt-1 px-1">
             <button
               onClick={() => factoryStore.setScreen('landing')}
-              className="text-[11px] text-[#827D8E] hover:text-white transition-colors flex items-center gap-1.5"
+              className="text-[12.5px] text-[#827D8E] hover:text-white transition-colors flex items-center gap-1.5"
             >
               <ExternalLink className="w-3 h-3" />
               <span>Public Landing</span>
             </button>
             <button
               onClick={() => factoryStore.signOut()}
-              className="text-[11px] text-[#827D8E] hover:text-rose-400 transition-colors"
+              className="text-[12.5px] text-[#827D8E] hover:text-rose-400 transition-colors"
             >
               Sign Out
             </button>
           </div>
+          )}
         </div>
       </aside>
 
@@ -458,8 +564,8 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
             {/* Chat */}
             <button
-              onClick={() => { setChatOpen((o) => !o); if (activityOpen) setActivityOpen(false); }}
-              className={`relative h-8 px-3 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border cursor-pointer ${chatOpen ? 'bg-[#075BFF]/20 border-[#075BFF]/50 text-[#75aaff]' : 'bg-[#101016] border-white/[0.08] text-[#827D8E] hover:text-white hover:bg-[#17151D]'}`}
+              onClick={() => { if (state.currentScreen === 'team_chat') return; setChatOpen((o) => !o); if (activityOpen) setActivityOpen(false); }}
+              className={`relative h-8 px-3 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border cursor-pointer ${chatOpen || state.currentScreen === 'team_chat' ? 'bg-[#075BFF]/20 border-[#075BFF]/50 text-[#75aaff]' : 'bg-[#101016] border-white/[0.08] text-[#827D8E] hover:text-white hover:bg-[#17151D]'}`}
               title="Team Chat"
             >
               <MessageSquare className="w-3.5 h-3.5" />
@@ -528,18 +634,6 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
               )}
             </div>
 
-            {/* AI Companion Toggle */}
-            <button
-              onClick={() => factoryStore.toggleCompanion()}
-              className={`h-8 px-3 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border ${
-                state.companionOpen
-                  ? 'bg-white text-black border-white font-semibold'
-                  : 'bg-[#101016] text-[#B5B1C0] border-white/[0.1] hover:text-white hover:bg-[#17151D]'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>AI Companion</span>
-            </button>
 
             {/* User Profile */}
             <div className="relative">
@@ -588,7 +682,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
         {/* Viewport Workspace Content and Companion */}
         <div className="flex-1 flex overflow-hidden relative z-1">
-          <main className="flex-1 overflow-y-auto p-8 lg:p-10 min-w-0 bg-[#07070B]/80 backdrop-blur-sm text-[#F6F5FA] relative z-1">
+          <main className={`flex-1 overflow-y-auto min-w-0 bg-[#07070B]/80 backdrop-blur-sm text-[#F6F5FA] relative z-1 ${['ideas', 'idea_detail', 'idea_generate', 'idea_compare', 'research_evidence', 'idea_report', 'product_detail'].includes(state.currentScreen) ? '' : state.currentScreen === 'team_chat' ? 'overflow-hidden!' : 'p-8 lg:p-10'}`}>
             {children}
           </main>
           <AICompanion state={state} />
@@ -596,18 +690,60 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
       </div>
 
       {/* Chat Panel (slides in from right) */}
-      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+      {chatOpen && state.currentScreen !== 'team_chat' && (
+        <ChatPanel
+          onClose={() => setChatOpen(false)}
+          onExpand={() => { setChatOpen(false); factoryStore.setScreen('team_chat'); }}
+        />
+      )}
 
       {/* Activity Feed Panel (slides in from right) */}
       {activityOpen && (
         <ActivityFeedPanel
           onClose={() => setActivityOpen(false)}
           onNavigate={(screen, targetId) => {
+            setActivityOpen(false);
+            if (screen === 'chat_channel') {
+              // Mentions and channel events open the full-screen chat on that channel.
+              if (targetId) openChatChannel(targetId);
+              setChatOpen(false);
+              factoryStore.setScreen('team_chat');
+              return;
+            }
             factoryStore.setScreen(screen as any);
             if (targetId) factoryStore.selectProject(targetId);
-            setActivityOpen(false);
           }}
         />
+      )}
+
+      {/* ── IdeaQ Full-Page Overlay ───────────────────────────────────────── */}
+      {ideaqOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-[5vh_5vw]"
+          style={{ padding: '5vh 5vw' }}
+        >
+          <div
+            className="relative w-full h-full rounded-2xl overflow-hidden border border-white/[0.1] shadow-2xl"
+            style={{ width: '90vw', height: '90vh' }}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setIdeaqOpen(false);
+                // Navigate back if we came from ideaq screen
+                if (state.currentScreen === 'ideaq') factoryStore.setScreen('product_detail');
+              }}
+              className="absolute top-4 right-4 z-50 w-8 h-8 rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/[0.12] flex items-center justify-center text-[#B5B1C0] hover:text-white transition-all cursor-pointer"
+              title="Close IdeaQ"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <Suspense fallback={<div className="flex items-center justify-center h-full bg-[#0A0A0F] text-[#827D8E] text-sm font-mono">Loading IdeaQ…</div>}>
+              <ProductIdeaLab state={state} />
+            </Suspense>
+          </div>
+        </div>
       )}
     </div>
   );
