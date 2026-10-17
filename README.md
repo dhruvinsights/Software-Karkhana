@@ -318,6 +318,11 @@ cd web && npx tsc -b
 
 - [📄 Software Karkhana Complete Project Blueprint](docs/Software_Karkhana_Complete_Project_Blueprint.md)
 - [🏗️ Architectural Decisions & Build Log](docs/BUILD_LOG.md)
+- [🏭 Running the Whole PDLC: Idea to Release Runbook](docs/E2E_FACTORY.md)
+- [💻 Local Developer Agent (`karkhana-agent`)](packages/karkhana-agent/README.md)
+- [🤖 PR Review Bot](docs/PR_BOT.md)
+- [📋 Master TODO & Work Logs](todo/README.md)
+- [📚 Team Wiki](docs/wiki/README.md)
 - [🚢 Enterprise Deployment & Go-Live Guide](docs/GO_LIVE.md)
 - [🎓 Factory Engineering Principles & Learning Guide](docs/LEARNING_GUIDE.md)
 - [🪟 Windows & WSL2 Local Setup Guide](docs/LOCAL_WINDOWS.md)

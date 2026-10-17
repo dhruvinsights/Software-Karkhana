@@ -81,6 +81,12 @@ Workspace-wide screens, all backed by the real API:
 - **GitHub:** writes use the product owner's connected token, resolved by `app/services/repos.py`.
 - **Live updates:** `workspace_sync` frames (`ideas`, `projects`, `runs`, `delivery`) and `run_log` lines fan out through `broadcaster`, over Redis or Kafka when configured.
 
+## Where to read more
+
+- Why each piece exists and how it is built: [BUILD_LOG.md](BUILD_LOG.md), section 14a.
+- The developer machine agent: [`packages/karkhana-agent/README.md`](../packages/karkhana-agent/README.md).
+- What is planned next: [`todo/MASTER_TODO.md`](../todo/MASTER_TODO.md).
+
 ## Known limits (next iteration)
 
 - **CI/CD:** the GitHub token connected for Hisaab lacks the `workflow` scope, so the pipeline PR could not be created yet. Run `gh auth refresh -s workflow`, or reconnect GitHub in the app, and re-save the token.

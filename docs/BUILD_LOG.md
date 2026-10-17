@@ -298,6 +298,36 @@ Key changes in v2:
 
 ---
 
+## 14a. Idea to release, end to end (`app/services/`, `app/routers/`, `packages/karkhana-agent/`)
+
+The runbook is [E2E_FACTORY.md](E2E_FACTORY.md). This section records what was built for it and why.
+Migrations `025` to `031` back it.
+
+| Action | Why |
+|---|---|
+| **Bob provider** (`app/ai/providers/bob.py`): the CLI is called with the prompt on stdin; `LLM_PROVIDER=bob` | One audited path for every model call. Bob handles auth and signing, so the server never builds a request itself. |
+| **Repo snapshots** (`app/services/repo_context.py`, migrations 027 and 031): clone, pack with repomix, store per commit, keep the `git ls-files` list | The AI reads real code. Ideas and plans are accepted only if the paths they cite exist in the file list. |
+| **Idea Lab on real code** (`app/ai/idea_agents.py`, `app/services/idea_report.py`): four specialist passes, then a typed evaluation report | The overall score is computed in code from five model scores, so the model cannot inflate it. Reports render as HTML and PDF (headless Chromium). |
+| **Approval emails and live sync** (`app/notifications.py`): reviewers are emailed, `workspace_sync` frames refresh open screens | A gate nobody sees is a gate nobody clears. |
+| **Plan from the approved idea** (`app/services/project_docs.py`, `app/services/plan.py`, `app/routers/plan.py`, migrations 025 and 028): drafts PRD, ERD (Mermaid) and epics and stories; stories must cite FR ids and every Must requirement needs a story | Coverage is checked by code, then a lead approves. Approval moves drafts to the backlog (**Gate 2**). |
+| **Design station** (`app/services/design.py`): API contracts and screen prototypes tied to story keys; designer approval hands off through shared context | Developers get the design as context for the build, not as a separate document. |
+| **Local dev agent** (`packages/karkhana-agent`, `app/services/devices.py`, `app/routers/agent_devices.py`, `app/runner/device.py`, migrations 026 and 029): one-time pairing code, then the machine long-polls `agent_jobs` | The machine dials out, so no inbound ports. `FOR UPDATE SKIP LOCKED` keeps several API instances safe. Runs report through the same HMAC callbacks as the cloud worker. |
+| **Per-product repos** (`app/services/repos.py`): GitHub writes use the product owner's connected token | No shared bot token with write access to every product. |
+| **Control-plane review and human approval** (`app/routers/reviews.py`, `app/review/`): merge needs AI comments triaged, a human approval by someone other than the author, tests passed and GitHub CI green (**Gate 4**) | The AI can recommend; it cannot approve its own work. |
+| **QA gate** (`app/services/qa_gate.py`, `app/services/qa_synth.py`): a failed scenario files a bug on the story; sign-off needs every scenario passed and no open bug (**Gate 5**) | Generated scripts may only call real endpoints, so a script cannot pass against code that does not exist. |
+| **DevOps pipeline** (`app/services/pipelines.py`, templates in `app/services/pipeline_templates/`): opens a PR with GitHub Actions (lint, tests, Docker build; release pushes to GHCR on tags) | Only Python + uv today; other stacks get a clear error. Needs the `workflow` token scope. |
+| **Releases** (`app/services/releases.py`, `app/routers/delivery.py`, migration 030): a manifest of merged PRs, stories with QA results, security findings and CI. Any blocker stops it. Approval tags the commit, creates the GitHub Release and emails the team (**Gate 6**) | One record with evidence, approved by a person. |
+| **Agent memory** (`app/agent_memory`, `scripts/setup_mem0.sh`, `scripts/mem0_cli.py`): mem0 in an isolated venv, wired to run specs and PR merge | Optional. Off unless `MEM0_PYTHON` is set. |
+
+**Learn**
+- repomix: <https://github.com/yamadashy/repomix>
+- Postgres `SKIP LOCKED` queues: <https://www.postgresql.org/docs/16/sql-select.html#SQL-FOR-UPDATE-SHARE>
+- GitHub Actions `workflow` scope: <https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps>
+
+**Check yourself:** why does the local agent poll the server instead of the server calling the laptop?
+
+---
+
 ## 15. Deploy: one config (`Dockerfile`, `cloudbuild.yaml`, `infra/bootstrap.sh`)
 
 | Action | Why |
@@ -331,6 +361,16 @@ Every result below says **when, where and how** it was produced.
 | Security tests | Same | `uv run pytest tests/security/ -q` | All pass |
 | Browser golden path | Ollama (qwen2.5-coder:14b) + local git remote | Playwright: onboarding → task → run → PR → triage → merge → ledger verify | All pass |
 | No fallback references | — | `grep -ri "fallbacks\|DEMO_FALLBACK\|served_from_cache" app/ tests/ web/` | No matches |
+
+### Idea-to-release branch (`local/e2e-factory`, merged with `main` 2026-10-17)
+
+| Check | Environment | Command | Result |
+|---|---|---|---|
+| Lint | Python 3.13, uv | `uv run ruff check app` | Clean |
+| Unit + integration tests | PostgreSQL 16 + pgvector, local | `uv run pytest -q -rs` | **239 passed, 1 skipped** (the AX validator test needs `AXCHECK_BIN`) |
+| Frontend | Node, local | `cd web && npx tsc -b && npm run build` | Builds |
+| Local agent | Node 20+ | `cd packages/karkhana-agent && node --test` | **6 passed** |
+| Live run | Test product Hisaab, Bob provider | [E2E_FACTORY.md](E2E_FACTORY.md) | Run on Hisaab as described in the runbook. The CI/CD pull request could not be created because the connected token lacks the `workflow` scope. |
 
 ### Original hackathon (Thu 15 Oct 2026, after review round 3) — historical
 
