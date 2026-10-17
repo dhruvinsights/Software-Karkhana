@@ -73,3 +73,26 @@ Tick an item only after its check passes. Commit code and this file together.
 | 2026-10-18 | Frontend workspace API; coding runs get their story's design slice |
 | 2026-10-18 | Dev and QA workspace screens with channels; mounted in project and standalone screens |
 | 2026-10-18 | Deployed mode: image now carries Node + repomix and Chromium (verified in a local build); settings documented |
+
+## 8. Calmer, cheaper agent runs (user feedback after the first real use)
+- [ ] The developer chooses the folder: a per-machine, per-project path set in
+      Developer → Machines; the agent clones there (or reuses an existing clone).
+- [ ] Failing tests are fixed before anything is published: the agent feeds the
+      failures back for up to two small rounds; if they still fail it stops and
+      keeps the work. No PR for a red build.
+- [ ] The agent does not open the PR. A finished build waits for the developer,
+      who reviews the change and picks the base branch (and head branch name,
+      title) when raising it.
+- [ ] Build again continues: it reuses the worktree, runs the tests first and
+      skips the coding agent when they already pass; otherwise the prompt says
+      what exists and what failed. Rework reasons reach the next build.
+- [ ] Credits: hard cost and turn caps per run and per fix round; one summary of
+      what was spent; no coding agent call when nothing needs fixing.
+- [ ] Claude / Bob situations handled with a plain message: out of credits, not
+      signed in, rate limited (one retry), turn or cost cap hit, timeout, stopped
+      by the developer (Stop button), partial work kept.
+- [ ] Never touch the developer's system: pip/venv rules in the prompt and
+      PIP_REQUIRE_VIRTUALENV; `.chroma/` and agent scratch stay out of the diff.
+- [ ] The diff viewer scales: file list with search and filters, files with
+      comments opened first, everything else collapsed and rendered on demand,
+      generated and lock files folded away.
