@@ -20,7 +20,7 @@ import datetime as dt
 import hashlib
 import logging
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
@@ -50,8 +50,15 @@ from app.routers.common import (
     lock_project,
 )
 from app.runner.base import get_backend, verify_run_token
-from app.schemas import ContextNote, RunOut, RunProgress, RunResult, RunSpec
-from app.services import context_notes, plan, repos
+from app.schemas import (
+    ContextNote,
+    RunOut,
+    RunProgress,
+    RunResult,
+    RunSpec,
+    SuiteReport,
+)
+from app.services import context_notes, plan, repos, test_suites
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -302,6 +309,23 @@ async def run_progress(
     return {"status": run.status}
 
 
+@router.post("/internal/runs/{run_id}/tests", include_in_schema=False)
+async def run_tests_report(
+    run_id: uuid.UUID,
+    body: SuiteReport,
+    session: Session,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """One test suite started or finished; the Developer station shows it live."""
+    run = await _run_for_worker(session, run_id, authorization)
+    if run.status in TERMINAL:
+        return {"status": run.status}
+    run.test_suites = test_suites.merge(list(run.test_suites or []), body)
+    run.heartbeat_at = dt.datetime.now(dt.UTC)
+    await _announce(session, run.project_id)
+    return {"status": run.status, "suites": run.test_suites}
+
+
 async def _review_in_control_plane(body: RunResult, title: str) -> RunResult:
     """Adds an AI review to a result that arrived without one.
 
@@ -340,6 +364,9 @@ async def run_complete(
     run = await _run_for_worker(session, run_id, authorization)
     if run.status in TERMINAL:
         return {"status": run.status, "note": "already final"}
+    # The final word on each suite, for runners that report only at the end.
+    for report in body.test_suites:
+        run.test_suites = test_suites.merge(list(run.test_suites or []), report)
     if not body.ok or not body.patch:
         await _finish_failed(
             session, run, "failed", body.error or "worker reported failure", body

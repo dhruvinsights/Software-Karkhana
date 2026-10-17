@@ -13,9 +13,9 @@ Tick an item only after its check passes. Commit code and this file together.
       Check: grep for localhost in app/ and web/src, each hit justified.
 
 ## 1. Test progress in runs (unit and integration separately)
-- [ ] `runs.test_suites` (migration 033) + `POST /internal/runs/{id}/tests` callback
+- [x] `runs.test_suites` (migration 033) + `POST /internal/runs/{id}/tests` callback
       for one suite's start and result. Check: integration test.
-- [ ] karkhana-agent runs suites separately (`.karkhana/agent.json` `tests: {unit, integration}`,
+- [x] karkhana-agent runs suites separately (`.karkhana/agent.json` `tests: {unit, integration}`,
       else `tests/unit` and `tests/integration` when present) and reports each one,
       parsing pytest counts. Check: `node --test` in packages/karkhana-agent.
 
@@ -66,3 +66,4 @@ Tick an item only after its check passes. Commit code and this file together.
 | Date | What |
 |---|---|
 | 2026-10-17 | TODO written; branch created |
+| 2026-10-17 | Runs report unit and integration suites separately, live |

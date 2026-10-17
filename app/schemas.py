@@ -433,6 +433,7 @@ class RunOut(ORM):
     test_exit_code: int | None
     test_output: str | None
     validation_status: str
+    test_suites: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None
     created_at: dt.datetime
     finished_at: dt.datetime | None
@@ -626,6 +627,20 @@ class RunProgress(BaseModel):
     phase: str
 
 
+class SuiteReport(BaseModel):
+    """One test suite's state, sent when it starts and when it ends."""
+
+    suite: str = Field(min_length=1, max_length=40, pattern=r"^[a-z0-9_-]+$")
+    status: Literal["running", "passed", "failed", "error", "skipped"]
+    passed: int | None = Field(default=None, ge=0)
+    failed: int | None = Field(default=None, ge=0)
+    skipped: int | None = Field(default=None, ge=0)
+    total: int | None = Field(default=None, ge=0)
+    command: str | None = Field(default=None, max_length=500)
+    duration_ms: int | None = Field(default=None, ge=0)
+    output: str | None = Field(default=None, max_length=20_000)
+
+
 class RunResult(BaseModel):
     """Final report from the worker. Test fields come from the real run.
 
@@ -647,5 +662,7 @@ class RunResult(BaseModel):
     review_summary: str | None = None
     summary: str | None = None  # What the Coder says it did; becomes a handoff.
     artifacts_uri: str | None = None
+    # Each suite's final state (unit, integration, ...).
+    test_suites: list[SuiteReport] = Field(default_factory=list)
     # Headroom token accounting for every model call in the run.
     context_compression: dict[str, Any] | None = None

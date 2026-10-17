@@ -45,6 +45,8 @@ export function runClient(callbackUrl, runId, runToken) {
   return {
     spec: () => request(`${base}/spec`, { auth }),
     progress: (phase) => request(`${base}/progress`, { method: 'POST', auth, body: { phase } }),
+    // One test suite started or finished (unit, integration, ...).
+    tests: (suite) => request(`${base}/tests`, { method: 'POST', auth, body: suite }),
     // Publishing and review happen inside this call on the server.
     complete: (result) => request(`${base}/complete`, { method: 'POST', auth, body: result, timeoutMs: 600_000 }),
   };

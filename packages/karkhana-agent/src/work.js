@@ -3,7 +3,7 @@ import { hostname } from 'node:os';
 import { deviceClient, runClient } from './api.js';
 import { commit, ensureClone, stagedDiff, taskWorktree } from './git.js';
 import { harnessFor } from './harness.js';
-import { runTests, testCommand } from './testrun.js';
+import { runSuites, testSuites } from './testrun.js';
 
 const HEARTBEAT_MS = 60_000;
 
@@ -72,14 +72,16 @@ async function buildJob(job, device, { workDir, harness, sandbox }) {
     const summary = await harnessFor(job.harness || harness)(buildPrompt(spec), worktree, log);
 
     await runApi.progress('validating');
-    const argv = await testCommand(worktree);
-    const tests = await runTests(worktree, argv, sandbox);
-    log('info', `ran ${tests.label}`);
-    log(tests.code === 0 ? 'output' : 'error', `tests exit ${tests.code}`);
+    const suites = await testSuites(worktree);
+    const tests = await runSuites(worktree, suites, sandbox, (suite) => runApi.tests(suite));
+    for (const r of tests.suites) {
+      const counts = r.total != null ? ` (${r.passed} passed, ${r.failed} failed of ${r.total})` : '';
+      log(r.status === 'passed' ? 'output' : 'error', `${r.suite}: ${r.status}${counts} · ${r.command}`);
+    }
 
     const patch = await stagedDiff(worktree);
     if (!patch.trim()) {
-      await runApi.complete({ ok: false, error: 'The agent made no changes.', test_exit_code: tests.code, test_output: tests.output, test_command: tests.label });
+      await runApi.complete({ ok: false, error: 'The agent made no changes.', test_exit_code: tests.code, test_output: tests.output, test_command: tests.label, test_suites: tests.suites });
       return { ok: false, worktree, error: 'no changes' };
     }
     await commit(worktree, `${spec.task_key}: ${spec.task_title}\n\nKarkhana run ${job.runId}`);
@@ -90,6 +92,7 @@ async function buildJob(job, device, { workDir, harness, sandbox }) {
       test_command: tests.label,
       test_exit_code: tests.code,
       test_output: tests.output,
+      test_suites: tests.suites,
       summary: summary.slice(0, 4000) || null,
       reviewed: false,
     });

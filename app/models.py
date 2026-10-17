@@ -421,6 +421,8 @@ class Run(Base):
     test_exit_code: Mapped[int | None] = mapped_column(Integer)
     test_output: Mapped[str | None] = mapped_column(Text)
     validation_status: Mapped[str] = mapped_column(String, default="not_run")
+    # Unit, integration, ... each with its state and counts (migration 033).
+    test_suites: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     error: Mapped[str | None] = mapped_column(Text)
     artifacts_uri: Mapped[str | None] = mapped_column(String)
     # Headroom token accounting reported by the worker (migration 015).

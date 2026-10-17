@@ -189,6 +189,29 @@ async def test_golden_path(client, fakes):
     await client.post(
         f"/internal/runs/{run_id}/progress", json={"phase": "coding"}, headers=auth
     )
+    # Each suite reports as it starts and ends; the Developer station shows it live.
+    r = await client.post(
+        f"/internal/runs/{run_id}/tests",
+        json={"suite": "integration", "status": "running", "command": "pytest tests/integration"},
+        headers=auth,
+    )
+    assert r.status_code == 200
+    await client.post(
+        f"/internal/runs/{run_id}/tests",
+        json={"suite": "unit", "status": "passed", "output": "....\n12 passed, 1 skipped in 0.4s"},
+        headers=auth,
+    )
+    run = (await client.get(f"/api/runs/{run_id}", headers=as_(DEV))).json()
+    assert [s["suite"] for s in run["test_suites"]] == ["unit", "integration"]
+    assert run["test_suites"][0] | {"passed": 12, "skipped": 1, "total": 13} == run["test_suites"][0]
+    assert run["test_suites"][1]["status"] == "running"
+    assert (
+        await client.post(
+            f"/internal/runs/{run_id}/tests",
+            json={"suite": "unit", "status": "passed"},
+            headers={"Authorization": "Run nope"},
+        )
+    ).status_code == 401
 
     review = [
         {
@@ -215,6 +238,9 @@ async def test_golden_path(client, fakes):
         "test_output": "19 passed",
         "review": review,
         "reviewed": True,
+        "test_suites": [
+            {"suite": "integration", "status": "passed", "passed": 7, "failed": 0, "total": 7}
+        ],
     }
     assert (
         await client.post(
@@ -230,6 +256,10 @@ async def test_golden_path(client, fakes):
     assert r.json()["note"] == "already final"
     run = (await client.get(f"/api/runs/{run_id}", headers=as_(DEV))).json()
     assert run["status"] == "succeeded" and run["test_exit_code"] == 0
+    assert [(t["suite"], t["status"]) for t in run["test_suites"]] == [
+        ("unit", "passed"),
+        ("integration", "passed"),
+    ]
 
     # A10: merge is blocked until every AI comment is triaged.
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
