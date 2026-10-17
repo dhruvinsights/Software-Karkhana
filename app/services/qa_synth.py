@@ -46,13 +46,44 @@ def strip_fence(text: str) -> str:
     return t.strip()
 
 
-_ROUTE = re.compile(r"""@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']""")
+_ROUTE = re.compile(r"""@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']*)["']""")
+_PREFIX = re.compile(r"""APIRouter\([^)]*?prefix\s*=\s*["']([^"']*)["']""")
 _CALL = re.compile(r"""requests\.(get|post|put|patch|delete)\(\s*f?["']\{BASE_URL\}([^"'?]*)""")
 
 
 def routes(*texts: str) -> set[tuple[str, str]]:
-    """``(METHOD, path)`` of every FastAPI route declared in ``texts``."""
-    return {(m.upper(), path) for text in texts for m, path in _ROUTE.findall(text)}
+    """``(METHOD, path)`` of every FastAPI route declared in ``texts`` (one file each).
+
+    A file's ``APIRouter(prefix=...)`` is joined to its decorators, so
+    ``prefix="/customers"`` with ``@router.post("")`` is ``POST /customers``.
+    """
+    out: set[tuple[str, str]] = set()
+    for text in texts:
+        m = _PREFIX.search(text)
+        prefix = m.group(1).rstrip("/") if m else ""
+        for method, path in _ROUTE.findall(text):
+            full = f"{prefix}{path}" or "/"
+            out.add((method.upper(), full))
+    return out
+
+
+def per_file(patch: str) -> list[str]:
+    """The lines a diff adds, one string per file."""
+    return [
+        "\n".join(line[1:] for line in block.splitlines() if line.startswith("+") and not line.startswith("+++"))
+        for block in re.split(r"^diff --git ", patch, flags=re.MULTILINE)
+        if block.strip()
+    ]
+
+
+def exercises(code: str, scenario_title: str) -> bool:
+    """False for a script that only pings health checks while the scenario is about something else."""
+    calls = [path for _m, path in _CALL.findall(code)]
+    if not calls:
+        return False
+    if "health" in scenario_title.lower():
+        return True
+    return any(not path.rstrip("/").endswith("/health") for path in calls)
 
 
 def _template_re(path: str) -> re.Pattern[str]:
@@ -110,6 +141,8 @@ async def write_script(
         except ModelError:
             return ""
         problems = script_problems(code, allowed) if looks_runnable(code) else ["it is not a runnable pytest test"]
+        if not problems and not exercises(code, d.title):
+            problems = ["it does not call the endpoint the scenario is about; a health check proves nothing here"]
         if not problems:
             return code
         ask += "\n\nYour previous script was rejected: " + "; ".join(problems) + f"\nPrevious script:\n{code}"
@@ -169,12 +202,13 @@ async def _implementation(
                 .limit(1)
             )
         ) or ""
-    code, rendered = "", ""
+    files: list[str] = []
+    rendered = ""
     if project.product_id and (snap := await repo_context.latest(session, project.product_id)):
-        code = "\n".join(snap.files.values())
+        files = list(snap.files.values())
         rendered = repo_context.render(snap, 30_000)
-    added = "\n".join(line[1:] for line in patch.splitlines() if line.startswith("+"))
-    return patch[:40_000], routes(code, added), rendered
+    # The snapshot can predate the merge: the change's own routes count too.
+    return patch[:40_000], routes(*files, *per_file(patch)), rendered
 
 
 async def synthesize_for_issue(
