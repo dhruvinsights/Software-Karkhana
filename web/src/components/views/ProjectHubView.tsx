@@ -455,6 +455,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
       {activeStationTab === 'plan' && (
         <ProjectPlanPanel
           projectId={selectedProject.id}
+          projectName={selectedProject.name}
           canEdit={!!accessInfo && (accessInfo.canManage || accessInfo.isLead)}
         />
       )}

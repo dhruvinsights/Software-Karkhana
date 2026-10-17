@@ -28,7 +28,7 @@ import { IdeaApprovalPanel } from './IdeaApprovalPanel';
 import { fetchGitHubStatus, startGitHubDeviceFlow, pollGitHubDeviceFlow, saveGitHubTokenDirect, GitHubStatus } from '../../lib/githubApi';
 import { chatSocket, useChatFrames } from '../../lib/chatSocket';
 import { reportLabel, startIdeaReport } from '../../lib/ideaReports';
-import { IdeaReportModal } from '../workspace/IdeaReportModal';
+import { IdeaReportModal } from '../workspace/DocumentModal';
 import { MarkdownMessage } from '../MarkdownMessage';
 
 const GithubIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (

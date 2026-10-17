@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, agent_memory, ledger, process, publisher
+from app import access, agent_memory, ledger, publisher
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
@@ -49,7 +49,7 @@ from app.routers.common import (
 )
 from app.runner.base import get_backend, verify_run_token
 from app.schemas import ContextNote, RunOut, RunProgress, RunResult, RunSpec
-from app.services import context_notes
+from app.services import context_notes, plan
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["runs"])
@@ -104,7 +104,7 @@ async def start_run(
         role=Role(my_role),
         payload={"task": task.key},
     )
-    process.move_task(task, "in_progress")
+    await plan.move_task(session, task, "in_progress")
     task.assignee_id = user.id
     run = Run(
         id=uuid.uuid4(),
@@ -138,7 +138,7 @@ async def start_run(
             f"backend start failed: {exc}",
             dt.datetime.now(dt.UTC),
         )
-        process.move_task(task, "ready")
+        await plan.move_task(session, task, "ready")
         await advance_if_legal(session, project, Event.RUN_FAILED, actor=ledger.SYSTEM)
         await ledger.append(
             session,
@@ -421,7 +421,7 @@ async def run_complete(
         tests_passed=tests_passed,
     )
     session.add(pr)
-    process.move_task(task, "review")
+    await plan.move_task(session, task, "review")
     await session.flush()
     await ledger.append(
         session,
@@ -501,7 +501,7 @@ async def _finish_failed(
         )
         run.context_compression = body.context_compression
     if task.status == "in_progress":
-        process.move_task(task, "ready")
+        await plan.move_task(session, task, "ready")
     await advance_if_legal(session, project, Event.RUN_FAILED, actor=ledger.SYSTEM)
     await ledger.append(
         session,

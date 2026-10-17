@@ -167,6 +167,7 @@ class Event(enum.StrEnum):
     PR_OPENED = "pr_opened"
     REVIEW_POSTED = "review_posted"
     MERGED = "merged"
+    PLAN_APPROVED = "plan_approved"
 
 
 SYSTEM_ONLY: frozenset[Role] = frozenset()  # Only the platform may trigger.
@@ -186,6 +187,13 @@ TRANSITIONS: dict[tuple[str, str, Event], tuple[str, str, frozenset[Role]]] = {
         "evaluate",
         "rejected",
         frozenset({Role.DIRECTOR}),
+    ),
+    # A project born from an idea that its reviewers already approved: the
+    # plan approval by the PM or lead is the gate into planning.
+    ("evaluate", "evaluated", Event.PLAN_APPROVED): (
+        "plan",
+        "ready",
+        frozenset({Role.PM, Role.PRODUCT_MANAGER, Role.LEAD, Role.DIRECTOR, Role.EXECUTIVE}),
     ),
     ("evaluate", "rejected", Event.RESUBMIT): (
         "evaluate",
@@ -302,7 +310,7 @@ async def advance(
 
 # Task board: legal status moves.
 TASK_TRANSITIONS: dict[str, frozenset[str]] = {
-    "draft": frozenset({"ready"}),  # Only via director approval.
+    "draft": frozenset({"ready", "backlog"}),  # Director approval, or plan approval.
     "backlog": frozenset({"ready"}),
     "ready": frozenset({"in_progress", "backlog"}),
     "in_progress": frozenset({"review", "ready"}),

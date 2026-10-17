@@ -2,27 +2,29 @@ import React, { useEffect, useState } from 'react';
 import { Download, RefreshCw, X } from 'lucide-react';
 import { downloadIdeaReportPdf, fetchIdeaReportHtml } from '../../lib/ideaReports';
 
-interface IdeaReportModalProps {
-  ideaId: string;
+interface DocumentModalProps {
   title: string;
-  token: string;
+  loadHtml: () => Promise<string>;
+  downloadPdf: () => Promise<void>;
   onClose: () => void;
 }
 
-/** The server-rendered evaluation report, exactly as it prints, with a PDF download. */
-export const IdeaReportModal: React.FC<IdeaReportModalProps> = ({ ideaId, title, token, onClose }) => {
+/** A server-rendered document exactly as it prints, with a PDF download. */
+export const DocumentModal: React.FC<DocumentModalProps> = ({ title, loadHtml, downloadPdf, onClose }) => {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    fetchIdeaReportHtml(ideaId, token).then(setHtml).catch((e: Error) => setError(e.message));
-  }, [ideaId, token]);
+    loadHtml().then(setHtml).catch((e: Error) => setError(e.message));
+    // Loaded once per open; the parent remounts the modal for another document.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const download = async () => {
     setDownloading(true);
     try {
-      await downloadIdeaReportPdf(ideaId, title, token);
+      await downloadPdf();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -37,7 +39,7 @@ export const IdeaReportModal: React.FC<IdeaReportModalProps> = ({ ideaId, title,
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-gray-50 shrink-0">
-          <p className="text-sm font-semibold text-gray-800 truncate pr-4">{title} · Evaluation report</p>
+          <p className="text-sm font-semibold text-gray-800 truncate pr-4">{title}</p>
           <div className="flex items-center gap-2">
             <button
               onClick={download}
@@ -55,12 +57,27 @@ export const IdeaReportModal: React.FC<IdeaReportModalProps> = ({ ideaId, title,
         {error ? (
           <p className="p-6 text-sm text-red-600">{error}</p>
         ) : html === null ? (
-          <p className="p-6 text-sm text-gray-500">Loading report…</p>
+          <p className="p-6 text-sm text-gray-500">Loading…</p>
         ) : (
           // sandbox="" runs no scripts and gives the page no access to this app.
-          <iframe title={`${title} report`} sandbox="" srcDoc={html} className="flex-1 w-full bg-white" />
+          <iframe title={title} sandbox="" srcDoc={html} className="flex-1 w-full bg-white" />
         )}
       </div>
     </div>
   );
 };
+
+/** The evaluation report of one idea. */
+export const IdeaReportModal: React.FC<{ ideaId: string; title: string; token: string; onClose: () => void }> = ({
+  ideaId,
+  title,
+  token,
+  onClose,
+}) => (
+  <DocumentModal
+    title={`${title} · Evaluation report`}
+    loadHtml={() => fetchIdeaReportHtml(ideaId, token)}
+    downloadPdf={() => downloadIdeaReportPdf(ideaId, title, token)}
+    onClose={onClose}
+  />
+);

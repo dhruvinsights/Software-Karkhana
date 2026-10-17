@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, agent_memory, ledger, memory, process
+from app import access, agent_memory, ledger, memory
 from app.auth import CurrentUser
 from app.db import get_session
 from app.integrations import github
@@ -33,6 +33,7 @@ from app.process import Event, Role
 from app.review.diff import anchor_comments, diff_to_json, parse_unified_diff
 from app.routers.common import advance_if_legal, get_or_404, lock_project
 from app.schemas import CommentOut, LearningOut, PullRequestOut, TriageIn
+from app.services import plan
 
 router = APIRouter(prefix="/api", tags=["reviews"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -171,7 +172,7 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
             await gh.aclose()
 
     pr.status, pr.merged_by, pr.merged_at = "merged", user.id, dt.datetime.now(dt.UTC)
-    process.move_task(task, "done")
+    await plan.move_task(session, task, "done")
     await ledger.append(
         session,
         actor=actor,

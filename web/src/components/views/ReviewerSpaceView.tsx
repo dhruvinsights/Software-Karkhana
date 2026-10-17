@@ -18,7 +18,7 @@ import {
 import { FactoryState, factoryStore } from '../../store/factoryStore';
 import { IdeaReviewItem } from '../../types/factory';
 import { useChatFrames } from '../../lib/chatSocket';
-import { IdeaReportModal } from '../workspace/IdeaReportModal';
+import { IdeaReportModal } from '../workspace/DocumentModal';
 import { BorderGlow } from '../reactbits/BorderGlow';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 

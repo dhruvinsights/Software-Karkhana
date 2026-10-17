@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Annotated, Any
 
@@ -23,9 +24,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, db, ledger
+from app import access, db, ledger, process
 from app.auth import CurrentUser
-from app.models import Epic, Issue, Project
+from app.models import Epic, Issue, Project, ProjectDocument
 from app.routers.issues import _names, _out
 from app.services import plan
 
@@ -93,9 +94,32 @@ async def get_plan(project_id: uuid.UUID, session: Session, user: CurrentUser) -
 async def approve_plan(project_id: uuid.UUID, session: Session, user: CurrentUser) -> dict[str, Any]:
     """A lead accepts the plan: every draft moves to the backlog."""
     project = await _lead_project(session, user, project_id)
+    if project.stage == "evaluate":
+        # Only a project whose idea the reviewers approved can enter planning
+        # on the plan approval alone; others go through the director gate.
+        if project.idea_id is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "A director must approve this project first.")
+        try:
+            role = process.Role(await access.effective_role(session, user, project.workspace_id))
+            await process.advance(
+                session, project, process.Event.PLAN_APPROVED, actor=ledger.Actor.human(user), role=role
+            )
+        except (ValueError, process.ForbiddenTransition) as exc:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Your role cannot approve this plan.") from exc
+        except process.TransitionError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     moved = await plan.approve_plan(session, project)
     if moved == 0:
         raise HTTPException(status.HTTP_409_CONFLICT, "There is no draft plan to approve.")
+    now = dt.datetime.now(dt.UTC)
+    for doc in (
+        await session.scalars(
+            select(ProjectDocument).where(
+                ProjectDocument.project_id == project.id, ProjectDocument.status == "draft"
+            )
+        )
+    ).all():
+        doc.status, doc.approved_by, doc.approved_at = "approved", user.id, now
     await ledger.append(
         session,
         actor=ledger.Actor.human(user),

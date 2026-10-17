@@ -5,40 +5,23 @@
  */
 
 import { IdeaReportState } from '../types/factory';
-
-async function failure(res: Response, fallback: string): Promise<Error> {
-  const body = await res.json().catch(() => null);
-  return new Error(body?.detail || fallback);
-}
+import { downloadPdf, fetchHtml, fileSafe } from './printable';
 
 export async function startIdeaReport(ideaId: string, token: string): Promise<void> {
   const res = await fetch(`/api/ideas/${ideaId}/evaluate`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await failure(res, 'Could not start the report.');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || 'Could not start the report.');
+  }
 }
 
-export async function fetchIdeaReportHtml(ideaId: string, token: string): Promise<string> {
-  const res = await fetch(`/api/ideas/${ideaId}/report.html`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw await failure(res, 'Could not load the report.');
-  return res.text();
-}
+export const fetchIdeaReportHtml = (ideaId: string, token: string) => fetchHtml(`/api/ideas/${ideaId}/report.html`, token);
 
-export async function downloadIdeaReportPdf(ideaId: string, title: string, token: string): Promise<void> {
-  const res = await fetch(`/api/ideas/${ideaId}/report.pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw await failure(res, 'Could not create the PDF.');
-  const url = URL.createObjectURL(await res.blob());
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${title.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'idea'}-evaluation.pdf`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+export const downloadIdeaReportPdf = (ideaId: string, title: string, token: string) =>
+  downloadPdf(`/api/ideas/${ideaId}/report.pdf`, `${fileSafe(title)}-evaluation.pdf`, token);
 
 /** Short label for a report state, for buttons and lists. */
 export function reportLabel(report: IdeaReportState | null | undefined): string {

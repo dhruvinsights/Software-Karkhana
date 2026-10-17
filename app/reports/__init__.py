@@ -98,3 +98,28 @@ async def to_pdf(html: str, *, title: str) -> bytes:
             )
         finally:
             await browser.close()
+
+
+def project_plan_html(
+    *,
+    project: Any,
+    product: Any,
+    prd_doc: Any,
+    erd_doc: Any | None,
+    epics: list[Any],
+    stories: list[Any],
+    approver: str | None,
+) -> str:
+    """The PRD with its data model and backlog as one printable document."""
+    return _ENV.get_template("project_plan.html.j2").render(
+        project=project,
+        product=product,
+        prd_doc=prd_doc,
+        prd=prd_doc.content,
+        erd=erd_doc.content if erd_doc else None,
+        epics=epics,
+        stories=stories,
+        approver=approver,
+        prepared_on=prd_doc.created_at.strftime("%d %b %Y"),
+        approved_on=prd_doc.approved_at.strftime("%d %b %Y") if prd_doc.approved_at else "",
+    )

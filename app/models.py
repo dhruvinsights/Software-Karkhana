@@ -241,12 +241,32 @@ class Project(Base):
     idea_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("ideas.id", ondelete="SET NULL"), nullable=True
     )
+    # Progress of the PRD/ERD/backlog drafting job (migration 028).
+    docs_status: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ProjectDocument(Base):
+    """A versioned PRD, ERD or design spec: drafted by AI, approved by people (028)."""
+
+    __tablename__ = "project_documents"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String)  # prd | erd | design
+    version: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String, default="draft")  # draft | approved
+    model: Mapped[str] = mapped_column(String)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
 
 
 class WorkspaceInvite(Base):

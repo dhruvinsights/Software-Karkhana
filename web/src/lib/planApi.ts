@@ -2,6 +2,7 @@
 // The server owns the data; a lead builds the draft plan and approves it.
 import { useCallback, useEffect, useState } from 'react';
 import { factoryStore } from '../store/factoryStore';
+import { useChatFrames } from './chatSocket';
 import { isServerProject } from './stationsApi';
 
 export interface PlanIssue {
@@ -26,6 +27,31 @@ export interface PlanData {
   total: number;
 }
 
+/** Progress of the job that drafts the PRD, ERD and backlog. */
+export interface DocsStatus {
+  state: 'running' | 'ready' | 'failed';
+  step?: string;
+  error?: string | null;
+}
+
+export interface ProjectDoc {
+  id: string;
+  kind: 'prd' | 'erd' | 'design';
+  version: number;
+  title: string;
+  status: 'draft' | 'approved';
+  model: string;
+  content: any;
+  createdAt: string;
+  approvedAt: string | null;
+  mermaid?: string;
+}
+
+export interface ProjectDocs {
+  status: DocsStatus | null;
+  documents: ProjectDoc[];
+}
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = factoryStore.getState().token;
   if (!token) throw new Error('Sign in to load the plan.');
@@ -44,11 +70,14 @@ export const planApi = {
   get: (projectId: string) => call<PlanData>(`/api/projects/${projectId}/plan`),
   build: (projectId: string) => call<{ created: number }>(`/api/projects/${projectId}/plan`, { method: 'POST' }),
   approve: (projectId: string) => call<{ approved: number }>(`/api/projects/${projectId}/plan/approve`, { method: 'POST' }),
+  documents: (projectId: string) => call<ProjectDocs>(`/api/projects/${projectId}/documents`),
+  redraft: (projectId: string) => call<{ status: string }>(`/api/projects/${projectId}/documents/redraft`, { method: 'POST' }),
 };
 
-/** Loads the plan and exposes the two lead actions. */
+/** Loads the plan and its documents, live, and exposes the lead actions. */
 export function usePlan(projectId: string | undefined) {
   const [plan, setPlan] = useState<PlanData | null>(null);
+  const [docs, setDocs] = useState<ProjectDocs | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +87,9 @@ export function usePlan(projectId: string | undefined) {
     if (!isServerProject(projectId)) return;
     setLoading(true);
     try {
-      setPlan(await planApi.get(projectId));
+      const [p, d] = await Promise.all([planApi.get(projectId), planApi.documents(projectId)]);
+      setPlan(p);
+      setDocs(d);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -69,6 +100,11 @@ export function usePlan(projectId: string | undefined) {
 
   useEffect(() => {
     void reload();
+  }, [reload]);
+
+  // The drafting job and other people's approvals announce themselves here.
+  useChatFrames('workspace_sync', (frame) => {
+    if (frame.scope === 'projects') void reload();
   }, [reload]);
 
   const run = useCallback(
@@ -95,7 +131,9 @@ export function usePlan(projectId: string | undefined) {
     error,
     offline,
     reload,
+    docs,
     build: () => run(planApi.build),
     approve: () => run(planApi.approve),
+    redraft: () => run(planApi.redraft),
   };
 }

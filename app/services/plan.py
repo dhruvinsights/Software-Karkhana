@@ -33,8 +33,14 @@ from dataclasses import dataclass
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger
+from app import ledger, process
 from app.models import Epic, Issue, Project, Task, User
+
+# A story issue and its runnable task move together. People move the issue on
+# the board (backlog, ready); runs, PRs and merges move the task.
+_TASK_FOR_ISSUE = {"backlog": "backlog", "ready": "ready", "todo": "ready"}
+_ISSUE_FOR_TASK = {"in_progress": "in_progress", "review": "in_review", "done": "ready_for_qa", "ready": "ready"}
+_NOT_STARTED = frozenset({"draft", "backlog", "ready"})
 
 
 @dataclass(frozen=True)
@@ -172,8 +178,30 @@ async def sync_plan(session: AsyncSession, project: Project, user: User) -> Sync
     return SyncResult(epics=len(epics), stories=len(tasks), created=created, removed=len(stale))
 
 
+async def task_follows_issue(session: AsyncSession, issue: Issue) -> None:
+    """A person moved a story on the board: its task follows, before work starts."""
+    target = _TASK_FOR_ISSUE.get(issue.status)
+    if issue.task_id is None or target is None:
+        return
+    task = await session.get(Task, issue.task_id)
+    if task is not None and task.status in _NOT_STARTED:
+        task.status = target
+
+
+async def move_task(session: AsyncSession, task: Task, status: str) -> None:
+    """Moves a task (legal moves only) and the story issue linked to it."""
+    process.move_task(task, status)
+    target = _ISSUE_FOR_TASK.get(status)
+    if target is None:
+        return
+    issue = await session.scalar(select(Issue).where(Issue.task_id == task.id, Issue.type == "story"))
+    if issue is not None and issue.status != target:
+        issue.status = target
+        issue.updated_at = dt.datetime.now(dt.UTC)
+
+
 async def approve_plan(session: AsyncSession, project: Project) -> int:
-    """Moves every draft plan issue to the backlog. Returns how many moved."""
+    """Moves every draft plan issue, and its task, to the backlog. Returns how many moved."""
     now = dt.datetime.now(dt.UTC)
     rows = list(
         (
@@ -191,5 +219,6 @@ async def approve_plan(session: AsyncSession, project: Project) -> int:
     for i in rows:
         i.status = "backlog"
         i.updated_at = now
+        await task_follows_issue(session, i)
     await session.flush()
     return len(rows)

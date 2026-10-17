@@ -221,7 +221,9 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
   // Role-focused sidebar: everyone gets the shared spaces; each role adds its own
   // stations. The rest stays reachable under "Other tools", never removed.
-  const SHARED_NAV: ScreenId[] = ['workspace_home', 'products', 'projects', 'team_chat', 'knowledge_hub'];
+  // Reviews is shared: any member can be named a reviewer, and the inbox only
+  // lists what is assigned to the person looking at it.
+  const SHARED_NAV: ScreenId[] = ['workspace_home', 'products', 'projects', 'approvals', 'team_chat', 'knowledge_hub'];
   const ROLE_NAV: Record<string, ScreenId[]> = {
     developer: ['developer_dashboard', 'pull_requests', 'system_design', 'prototype_studio', 'qa_dashboard', 'pipeline_studio', 'release_dashboard'],
     designer: ['prototype_studio', 'qa_dashboard'],

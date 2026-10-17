@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import access, db, issue_rules, ledger
 from app.auth import CurrentUser
 from app.models import Issue, Project, User
+from app.services import plan
 
 router = APIRouter(tags=["issues"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]
@@ -264,6 +265,7 @@ async def update_issue(
         changes["status"] = body.status
         issue.status = body.status
         issue.closed_at = dt.datetime.now(dt.UTC) if body.status in issue_rules.CLOSED else None
+        await plan.task_follows_issue(session, issue)
 
     if changes:
         issue.updated_at = dt.datetime.now(dt.UTC)

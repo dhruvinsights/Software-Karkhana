@@ -44,7 +44,7 @@ import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { IdeaApprovalPanel } from './IdeaApprovalPanel';
-import { IdeaReportModal } from '../workspace/IdeaReportModal';
+import { IdeaReportModal } from '../workspace/DocumentModal';
 import { downloadIdeaReportPdf, reportLabel, startIdeaReport } from '../../lib/ideaReports';
 
 interface ProductWorkspaceViewProps {
