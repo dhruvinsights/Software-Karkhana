@@ -45,6 +45,7 @@ from app.db import get_session
 from app.integrations import github_tokens
 from app.models import (
     ActivityEvent,
+    ContextEntry,
     Issue,
     Project,
     ProjectMember,
@@ -55,6 +56,7 @@ from app.models import (
     User,
 )
 from app.notifications import email_people
+from app.routers import runs
 from app.routers.reviews import _approvals
 from app.services import design_handoff, plan, repos
 from app.services.realtime import notify_activity, notify_workspace
@@ -812,6 +814,19 @@ async def rework(
     pr.status = "closed"
     await plan.move_task(session, task, "in_progress")
     await plan.move_task(session, task, "ready")
+    # The next build must act on this, not just run again.
+    session.add(
+        ContextEntry(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            kind="note",
+            title=f"{runs.REWORK_TITLE}{task.key}"[:140],
+            body=body.reason.strip()[:4000],
+            author_label=user.display_name,
+            author_kind="human",
+            run_id=pr.run_id,
+        )
+    )
     await ledger.append(
         session,
         actor=ledger.Actor.human(user),

@@ -810,6 +810,8 @@ class AgentDevice(Base):
     pairing_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")  # pending | active | revoked
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # {project id: folder} the developer chose for each project's repository (migration 039).
+    work_paths: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[dt.datetime] = _now()
 
 

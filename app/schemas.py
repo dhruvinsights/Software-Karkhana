@@ -609,6 +609,9 @@ class ContextNote(BaseModel):
 class RunSpec(BaseModel):
     """What the worker needs to do one task."""
 
+    # Changes a reviewer asked for on the previous pull request; the next build must act on them.
+    rework: str | None = None
+
     run_id: uuid.UUID
     task_key: str
     task_title: str
@@ -661,6 +664,9 @@ class RunResult(BaseModel):
     review_model: str | None = None
     review_summary: str | None = None
     summary: str | None = None  # What the Coder says it did; becomes a handoff.
+    # False: a developer's machine finished a green build and keeps it local; the
+    # developer reviews it and raises the pull request (POST /api/runs/{id}/publish).
+    publish: bool = True
     artifacts_uri: str | None = None
     # Each suite's final state (unit, integration, ...).
     test_suites: list[SuiteReport] = Field(default_factory=list)

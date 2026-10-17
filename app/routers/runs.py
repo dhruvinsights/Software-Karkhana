@@ -16,15 +16,16 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import hashlib
 import logging
 import uuid
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import access, agent_memory, ledger, publisher
@@ -65,6 +66,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["runs"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 TERMINAL = {"succeeded", "failed", "timed_out", "cancelled"}
+# A note with this title prefix carries a reviewer's requested changes to the task's next build.
+REWORK_TITLE = "Rework requested on "
 CODER = ledger.Actor.ai("coder-agent")
 REVIEWER = ledger.Actor.ai("reviewer-agent")
 
@@ -81,6 +84,17 @@ class RunStartIn(BaseModel):
     """Where to run: the configured backend, or the caller's machine."""
 
     backend: Literal["device"] | None = None
+
+
+async def _continuable(session: AsyncSession, task: Task) -> bool:
+    """A task built (or stopped) here that has no run going and no open pull request."""
+    active = await session.scalar(
+        select(func.count()).select_from(Run).where(Run.task_id == task.id, Run.status.in_(("queued", "running")))
+    )
+    open_pr = await session.scalar(
+        select(func.count()).select_from(PullRequest).where(PullRequest.task_id == task.id, PullRequest.status == "open")
+    )
+    return not active and not open_pr
 
 
 @router.post(
@@ -119,7 +133,9 @@ async def start_run(
                 "Connect a machine, run the login command it shows, then `karkhana-agent work`. "
                 "A machine connected as someone else does not take your work.",
             )
-    if task.status != "ready":
+    if task.status == "in_progress" and await _continuable(session, task):
+        pass  # built or stopped earlier and not published: this build continues it
+    elif task.status != "ready":
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             f"{task.key} is {task.status}; only Ready tasks can be assigned",
@@ -144,7 +160,8 @@ async def start_run(
         role=Role(my_role),
         payload={"task": task.key},
     )
-    await plan.move_task(session, task, "in_progress")
+    if task.status == "ready":
+        await plan.move_task(session, task, "in_progress")
     task.assignee_id = user.id
     run = Run(
         id=uuid.uuid4(),
@@ -268,6 +285,28 @@ async def _run_for_worker(
     return await get_or_404(session, Run, run_id)
 
 
+async def _rework_for(session: AsyncSession, run: Run) -> str | None:
+    """What a reviewer asked to change on this task's previous pull request, if it was sent back."""
+    previous = await session.scalar(
+        select(Run.id)
+        .where(Run.task_id == run.task_id, Run.created_at < run.created_at)
+        .order_by(Run.created_at.desc())
+        .limit(1)
+    )
+    if previous is None:
+        return None
+    return await session.scalar(
+        select(ContextEntry.body)
+        .where(
+            ContextEntry.run_id == previous,
+            ContextEntry.kind == "note",
+            ContextEntry.title.like(REWORK_TITLE + "%"),
+        )
+        .order_by(ContextEntry.created_at.desc())
+        .limit(1)
+    )
+
+
 @router.get(
     "/internal/runs/{run_id}/spec", response_model=RunSpec, include_in_schema=False
 )
@@ -295,6 +334,7 @@ async def run_spec(
             notes.append(ContextNote(kind="design", title=f"Design for {task.key}", body=body, author="design station"))
     target = await repos.for_project(session, project.id)
     return RunSpec(
+        rework=await _rework_for(session, run),
         run_id=run.id,
         task_key=task.key,
         task_title=task.title,
@@ -372,6 +412,7 @@ async def run_complete(
     run_id: uuid.UUID,
     body: RunResult,
     session: Session,
+    background: BackgroundTasks,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, str]:
     """Final report from the worker, then publish from the control plane.
@@ -393,11 +434,100 @@ async def run_complete(
         await _announce(session, run.project_id)
         return {"status": run.status}
 
+    if not body.publish:
+        return await _store_built(session, run, body)
+    return await _publish_run(session, run, body, background)
+
+
+async def _store_built(session: AsyncSession, run: Run, body: RunResult) -> dict[str, str]:
+    """A green build that stays on the developer's machine until they raise the pull request."""
+    assert body.patch is not None
+    if len(body.patch.encode()) > publisher.MAX_PATCH_BYTES:
+        await _finish_failed(session, run, "failed", "The change is larger than 1 MB; split the story.", body)
+        await _announce(session, run.project_id)
+        return {"status": run.status}
+    task = await get_or_404(session, Task, run.task_id)
+    project = await get_or_404(session, Project, run.project_id)
+    now = dt.datetime.now(dt.UTC)
+    run.status, run.phase, run.finished_at, run.heartbeat_at = "succeeded", "built", now, now
+    run.validation_status = "passed" if body.test_exit_code == 0 else "failed"
+    run.patch = body.patch  # the whole change: it is what gets pushed later
+    run.test_command, run.test_exit_code, run.test_output = body.test_command, body.test_exit_code, body.test_output
+    run.context_compression = body.context_compression
+    await ledger.append(
+        session,
+        actor=CODER,
+        action="run.built",
+        subject_type="run",
+        subject_id=run.id,
+        project_id=project.id,
+        payload={
+            "task": task.key,
+            "test_exit_code": body.test_exit_code,
+            "validation": run.validation_status,
+            "patch_sha256": hashlib.sha256(body.patch.encode()).hexdigest(),
+        },
+    )
+    if body.summary:
+        session.add(
+            ContextEntry(
+                id=uuid.uuid4(),
+                project_id=project.id,
+                kind="handoff",
+                title=f"{task.key}: {task.title}"[:140],
+                body=body.summary[:4000],
+                author_label=CODER.label,
+                author_kind="ai",
+                run_id=run.id,
+            )
+        )
+    await _announce(session, project.id)
+    return {"status": run.status, "validation": run.validation_status, "note": "built; waiting for the developer to raise the pull request"}
+
+
+async def _target(session: AsyncSession, project_id: uuid.UUID, base_branch: str | None) -> repos.RepoTarget | None:
+    target = await repos.for_project(session, project_id)
+    if target is not None and base_branch:
+        target = dataclasses.replace(target, base_branch=base_branch)
+    return target
+
+
+async def publish_run(
+    session: AsyncSession,
+    run: Run,
+    body: RunResult,
+    background: BackgroundTasks,
+    *,
+    base_branch: str | None = None,
+    branch_name: str | None = None,
+    title: str | None = None,
+) -> dict[str, str]:
+    """Pushes a built run's change, opens the pull request against ``base_branch`` and records the review.
+
+    A failed push leaves the build as it was (HTTP 502), so it can be raised again.
+    """
+    return await _publish_run(
+        session, run, body, background, base_branch=base_branch, branch_name=branch_name, title=title, keep_built=True
+    )
+
+
+async def _publish_run(
+    session: AsyncSession,
+    run: Run,
+    body: RunResult,
+    background: BackgroundTasks,
+    *,
+    base_branch: str | None = None,
+    branch_name: str | None = None,
+    title: str | None = None,
+    keep_built: bool = False,
+) -> dict[str, str]:
+    """Review, push, open the PR. Idempotent: a one-shot ``publishing`` claim guards it."""
     claimed = await session.execute(
         update(Run)
         .where(
             Run.id == run.id,
-            Run.status == "running",
+            or_(Run.status == "running", and_(Run.status == "succeeded", Run.phase == "built")),
             Run.phase.is_distinct_from("publishing"),
         )
         .values(phase="publishing", heartbeat_at=dt.datetime.now(dt.UTC))
@@ -450,12 +580,19 @@ async def run_complete(
             ),
             review_engine=body.review_engine or "",
             review_summary=body.review_summary or "",
-            target=await repos.for_project(session, project.id),
+            target=await _target(session, project.id, base_branch),
             token=await repos.write_token(session, project.id, run.requested_by),
+            branch=branch_name,
+            title=title,
         )
     except Exception as exc:
         logger.exception("Publishing run %s failed", run.id)
         await session.refresh(run)
+        if keep_built:
+            # The build is fine; only the push failed. Keep it so the developer can try again.
+            run.status, run.phase = "succeeded", "built"
+            await session.commit()
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"The pull request could not be raised: {exc}") from exc
         await _finish_failed(session, run, "failed", f"publish failed: {exc}", body)
         await _announce(session, run.project_id)
         return {"status": run.status}
