@@ -238,6 +238,23 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   useChatFrames('workspace_sync', () => { loadProjectMembers(); }, [loadProjectMembers]);
   useChatFrames('reconnected', () => { loadProjectMembers(); }, [loadProjectMembers]);
 
+  // A PM or the project lead narrows someone to their listed stations, or lifts it.
+  const setMemberLimited = async (member: ProjectMemberRow, limited: boolean) => {
+    if (!selectedProject) return;
+    setProjectInviteError(null);
+    const res = await fetch(`/api/projects/${selectedProject.id}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ user_id: member.userId, role: member.role, stations: member.stations, limited }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setProjectInviteError(typeof j.detail === 'string' ? j.detail : 'Could not change their access.');
+      return;
+    }
+    loadProjectMembers();
+  };
+
   const toggleProjectAccess = async () => {
     if (!selectedProject || !accessInfo) return;
     setProjectInviteError(null);
@@ -642,7 +659,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
               })}
             </div>
             <p className="text-[11px] text-[#827D8E]">
-              {inviteStations.length ? 'They will only see the selected stations.' : 'No station selected: they get the default stations for their role.'}
+              Stations pick the team they join. Everyone on the project can use all of it; limit someone below if needed.
             </p>
             {accessInfo && (
               <div className="flex items-center justify-between rounded-xl border border-white/[0.08] px-3.5 py-2.5">
@@ -693,6 +710,25 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
                         {STATION_LABELS[st] ?? st}
                       </span>
                     ))}
+                    <span
+                      className={`text-[10px] font-mono uppercase px-2 py-1 rounded-lg border ${
+                        member.limited
+                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                          : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                      }`}
+                      title={member.limited ? 'Can use only the stations listed' : 'Can use every station of the project'}
+                    >
+                      {member.limited ? 'Limited' : 'Full access'}
+                    </span>
+                    {accessInfo && (accessInfo.canManage || accessInfo.isLead) && member.userId !== state.currentUser?.id && (
+                      <button
+                        type="button"
+                        onClick={() => void setMemberLimited(member, !member.limited)}
+                        className="text-[10px] px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-white cursor-pointer"
+                      >
+                        {member.limited ? 'Give full access' : 'Limit to these stations'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

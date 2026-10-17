@@ -168,10 +168,8 @@ async def test_golden_path(client, fakes):
     ]
     assert not board["draft"] and len(board["ready"]) == len(detail["tasks"])
 
-    # A8: developer assigns to agent; a PM may not.
-    assert (
-        await client.post(f"/api/tasks/{tid}/runs", headers=as_(PM))
-    ).status_code == 403
+    # A8: anyone with the project's Developer station builds (everyone on the
+    # project has it unless a PM or the lead limited them; see test_stations).
     r = await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))
     assert r.status_code == 202, r.text
     run_id = r.json()["id"]

@@ -96,15 +96,17 @@ async def start_run(
 ) -> Run:
     """Developer clicks "Build". The process engine decides if it may run.
 
-    The caller must be a developer or lead *in the project's workspace*.
+    The caller needs the project's Developer station (everyone on the project
+    has it unless a PM or the project lead limited them).
     ``backend: "device"`` builds on the caller's own connected machine.
     """
     task = await get_or_404(session, Task, task_id)
     project = await lock_project(session, task.project_id)  # Serializes admission.
-    my_role = await access.require_project_role(
-        session, user, project, Role.DEVELOPER, Role.LEAD
-    )
+    # Whoever may use the Developer station of this project may build its
+    # stories; on the project they act as its developer (or lead).
     await access.ensure_station(session, user, project, "developer")
+    workspace_role = await access.effective_role(session, user, project.workspace_id)
+    my_role = Role.LEAD if workspace_role == Role.LEAD else Role.DEVELOPER
     if task.status != "ready":
         raise HTTPException(
             status.HTTP_409_CONFLICT,

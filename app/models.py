@@ -311,6 +311,9 @@ class ProjectMember(Base):
         default=lambda: ["product", "architecture", "developer", "qa", "devops", "security", "release"],
     )
     is_lead: Mapped[bool] = mapped_column(Boolean, default=False)
+    # False: every station of the project. True: only ``stations`` (set by a PM
+    # or the project lead to narrow someone's access). Migration 038.
+    limited: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[dt.datetime] = _now()
 
 

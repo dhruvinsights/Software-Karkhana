@@ -319,3 +319,28 @@ async def test_frontend_workspace_lists_stories_with_their_design(client, fakes)
     assert r["design"]["handoffNotes"] == ["Use paise"]
     [row] = r["stories"]
     assert row["key"] == story["key"] and row["screens"][0]["name"] == "Cart"
+
+
+async def test_everyone_on_the_project_can_build_until_limited(client, fakes):
+    pid, story = await _story(client)
+    dev = await _uid(client, DEV)
+    # Invited with the developer team; full access by default.
+    mine = (await client.get(f"/api/projects/{pid}/access", headers=as_(DEV))).json()
+    assert not mine["limited"] and "security" in mine["stations"]
+    # The PM limits them to QA: building is now refused with the reason.
+    r = await client.post(
+        f"/api/projects/{pid}/members",
+        headers=as_(PM),
+        json={"user_id": dev, "role": "developer", "stations": ["qa"], "limited": True},
+    )
+    assert r.status_code == 200
+    r = await client.post(f"/api/tasks/{story['taskId']}/runs", headers=as_(DEV), json={"backend": "device"})
+    assert r.status_code == 403 and "limited" in r.text
+    # Lifting the limit restores everything.
+    await client.post(
+        f"/api/projects/{pid}/members",
+        headers=as_(PM),
+        json={"user_id": dev, "role": "developer", "stations": ["developer"], "limited": False},
+    )
+    mine = (await client.get(f"/api/projects/{pid}/access", headers=as_(DEV))).json()
+    assert not mine["limited"] and "security" in mine["stations"]

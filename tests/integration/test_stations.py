@@ -183,8 +183,18 @@ async def test_restricted_project_needs_the_station(client):
     r = await client.patch(f"/api/projects/{pid}/access", headers=as_(PM), json={"access": "restricted"})
     assert r.status_code == 200
 
+    # Invited people have every station until a PM or the lead limits them.
+    assert (await client.get(f"/api/projects/{pid}/security-findings", headers=as_(LEAD))).status_code == 200
+    lead = (await client.get("/api/me", headers=as_(LEAD))).json()["id"]
+    r = await client.post(
+        f"/api/projects/{pid}/members",
+        headers=as_(PM),
+        json={"user_id": lead, "role": "developer", "stations": ["qa"], "limited": True},
+    )
+    assert r.status_code == 200
     assert (await client.get(f"/api/projects/{pid}/test-scenarios", headers=as_(LEAD))).status_code == 200
-    assert (await client.get(f"/api/projects/{pid}/security-findings", headers=as_(LEAD))).status_code == 403
+    r = await client.get(f"/api/projects/{pid}/security-findings", headers=as_(LEAD))
+    assert r.status_code == 403 and "limited" in r.text
     r = await client.post(f"/api/projects/{pid}/adrs", headers=as_(LEAD), json={"title": "Not my station"})
     assert r.status_code == 403
 
@@ -237,7 +247,9 @@ async def test_qa_queue_and_ai_scenarios_for_finished_story(client, monkeypatch)
     made = r.json()
     assert [m["title"] for m in made] == ["Valid code lowers total", "Expired code rejected"]
     assert made[1]["priority"] == "P0" and made[1]["type"] == "Boundary"
-    assert "assert" in made[0]["automationScript"]
+    # No code is known for this project, so no endpoint can be named: a script
+    # that calls nothing real is dropped and the scenario stays manual.
+    assert made[0]["automationScript"] is None
     assert made[0]["issueId"] == done["id"] and made[0]["status"] == "not_run"
 
     again = await client.post(f"/api/issues/{done['id']}/test-scenarios", headers=as_(PM))
