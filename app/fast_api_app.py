@@ -37,6 +37,7 @@ from app import db
 from app.app_utils.telemetry import setup_telemetry
 from app.config import get_settings
 from app.routers import (
+    agent_devices,
     auth,
     chat,
     context,
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
     for r in (
+        agent_devices.router,
         auth.router,
         chat.router,
         gemini.router,

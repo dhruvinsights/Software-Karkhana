@@ -50,6 +50,7 @@ import { ShinyText } from '../reactbits/ShinyText';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { ProjectPlanPanel } from './ProjectPlanPanel';
 import { ProjectDesignPanel } from './ProjectDesignPanel';
+import { ProjectBuildPanel } from './ProjectBuildPanel';
 import { stationsApi, useStationList, ApiTestScenario } from '../../lib/stationsApi';
 
 /** Server-side QA scenario count for the project card. */
@@ -421,11 +422,11 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
 
               <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => factoryStore.setScreen('developer_dashboard')}
+                  onClick={() => setActiveStationTab('developer')}
                   className="k-btn-primary px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                 >
                   <Terminal className="w-3.5 h-3.5" />
-                  <span>Launch Agent Swarm</span>
+                  <span>Build stories</span>
                 </button>
               </div>
             </div>
@@ -515,17 +516,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
       {/* Tab 4: Developer Swarm */}
       {activeStationTab === 'developer' && (
         <div className="space-y-6">
-          {/* Sub-header with Studio link */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">Developer Station & Swarm Control</h2>
-            <button
-              onClick={() => factoryStore.setScreen('developer_dashboard')}
-              className="k-btn-primary px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              <span>Open Developer Studio</span>
-            </button>
-          </div>
+          <ProjectBuildPanel projectId={selectedProject.id} />
 
           {/* Quick-stats bar */}
           <div className="grid grid-cols-3 gap-3">

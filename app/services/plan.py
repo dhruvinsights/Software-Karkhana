@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ledger, process
+from app import issue_rules, ledger, process
 from app.models import Epic, Issue, Project, Task, User
 
 # A story issue and its runnable task move together. People move the issue on
@@ -148,7 +148,7 @@ async def sync_plan(session: AsyncSession, project: Project, user: User) -> Sync
         issue = by_task.get(t.id)
         parent = epic_issue.get(t.epic_id)
         if issue is None:
-            _new(
+            issue = _new(
                 title=t.title[:200],
                 description=t.description,
                 type="story",
@@ -164,6 +164,8 @@ async def sync_plan(session: AsyncSession, project: Project, user: User) -> Sync
             issue.acceptance_criteria = list(t.acceptance_criteria or [])
             issue.parent_id = parent.id if parent else None
             issue.updated_at = dt.datetime.now(dt.UTC)
+        # One id per story everywhere (board, branch, PR, design): the issue key.
+        t.key = issue_rules.key(issue.number)
     await session.flush()
 
     await ledger.append(

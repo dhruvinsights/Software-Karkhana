@@ -44,6 +44,7 @@ from app.integrations import github_tokens
 from app.models import PullRequest, Task, User
 from app.process import Role
 from app.routers.common import get_or_404
+from app.services import repos
 
 router = APIRouter(prefix="/api/github", tags=["github"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -211,9 +212,10 @@ async def github_auth_disconnect(session: Session, user: AnyRole) -> None:
     await github_tokens.delete_token(session, user.id)
 
 
-async def _client_for(session: AsyncSession, user: User) -> gh_module.GitHub | None:
-    """The caller's own GitHub token if connected, else the server token."""
-    return gh_module.client(await github_tokens.load_token(session, user.id))
+async def _client_for(session: AsyncSession, user: User, pr: PullRequest) -> gh_module.GitHub | None:
+    """A client for the PR's project repository (see ``app.services.repos``)."""
+    task = await get_or_404(session, Task, pr.task_id)
+    return await repos.client_for(session, task.project_id, user.id)
 
 
 # ── PR status (live from GitHub) ──────────────────────────────────────────────
@@ -254,11 +256,11 @@ async def pr_github_status(
             can_merge=(pr.status == "open" and pr.tests_passed and pr.reviewed_at is not None and open_c == 0),
         )
 
-    gh = await _client_for(session, user)
+    gh = await _client_for(session, user, pr)
     if gh is None:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "GitHub is not configured (GITHUB_TOKEN + GITHUB_REPO required).",
+            "GitHub is not connected for this product's repository.",
         )
     try:
         combined = await gh.get_combined_status(sha=pr.head_sha)
@@ -319,11 +321,11 @@ async def trigger_ci_check(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Cannot create GitHub check-run for a local-only PR.",
         )
-    gh = await _client_for(session, user)
+    gh = await _client_for(session, user, pr)
     if gh is None:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "GitHub is not configured (GITHUB_TOKEN + GITHUB_REPO required).",
+            "GitHub is not connected for this product's repository.",
         )
     task = await get_or_404(session, Task, pr.task_id)
     try:

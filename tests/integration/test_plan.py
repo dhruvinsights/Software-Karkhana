@@ -89,6 +89,14 @@ async def test_plan_creates_drafts_once_and_a_lead_approves(client):
     # A developer can read the plan but not approve it.
     assert (await client.post(f"/api/projects/{pid}/plan/approve", headers=as_(DEV))).status_code == 403
 
+    # A project that did not come from a reviewed idea needs the director first.
+    r = await client.post(f"/api/projects/{pid}/plan/approve", headers=as_(PM))
+    assert r.status_code == 409 and "director" in r.text
+    async with db.sessionmaker()() as s:
+        project = await s.get(Project, uuid.UUID(pid))
+        project.stage, project.stage_status = "plan", "ready"
+        await s.commit()
+
     r = await client.post(f"/api/projects/{pid}/plan/approve", headers=as_(PM))
     assert r.status_code == 200 and r.json() == {"approved": 6}
     plan = (await client.get(f"/api/projects/{pid}/plan", headers=as_(PM))).json()

@@ -36,6 +36,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.integrations import github
+from app.services.repos import RepoTarget
 
 logger = logging.getLogger(__name__)
 
@@ -102,17 +103,27 @@ async def publish(
     review_comments: list[dict[str, Any]] | None = None,
     review_engine: str = "",
     review_summary: str = "",
+    target: RepoTarget | None = None,
+    token: str | None = None,
 ) -> Published:
-    """Pushes the patch and opens the PR. Raises :class:`PublishError`."""
+    """Pushes the patch to ``target`` and opens the PR with ``token``.
+
+    Raises :class:`PublishError`.
+    """
     if not patch.strip():
         raise PublishError("empty patch")
     if len(patch.encode()) > MAX_PATCH_BYTES:
         raise PublishError("patch is larger than 1 MB")
     s = get_settings()
-    gh = github.client()
-    source = s.demo_repo_url or (
-        f"https://github.com/{s.github_repo}.git" if s.github_repo else None
-    )
+    if target and not token and not s.demo_repo_url:
+        # Never fall back to a local-only PR for a real repository: that would
+        # look like a pull request while nothing reached GitHub.
+        raise PublishError(
+            f"No GitHub token can write to {target.slug}. The product owner should connect GitHub."
+        )
+    gh = github.GitHub(token, target.slug, s.github_api_url) if token and target else None
+    source = s.demo_repo_url or (target.clone_url if target else None)
+    base = target.base_branch if target else s.github_base_branch
     branch = f"karkhana/{task_key.lower()}-{run_id.hex[:8]}"
     title = f"{task_key}: {task_title}"
     if source is None:
@@ -125,11 +136,11 @@ async def publish(
             not tests_passed,
         )
 
-    auth = github.git_auth_header(s.github_token) if gh and s.github_token else None
+    auth = github.git_auth_header(token) if gh and token else None
     sha = await asyncio.to_thread(
         _apply_and_push,
         source=source,
-        base=s.github_base_branch,
+        base=base,
         branch=branch,
         patch=patch,
         message=f"{title}\n\nKarkhana run {run_id}",
@@ -146,7 +157,7 @@ async def publish(
     try:
         pr = await gh.open_pull_request(
             branch=branch,
-            base=s.github_base_branch,
+            base=base,
             title=title,
             body=pr_body,
             head_sha=sha,

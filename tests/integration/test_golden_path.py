@@ -84,10 +84,10 @@ def fakes(monkeypatch):
     monkeypatch.setattr(llm, "generate_structured", fake.generate)
     monkeypatch.setattr(llm, "embed", fake.embed)
     backend = RecordingBackend()
-    monkeypatch.setattr(runner_base, "get_backend", lambda: backend)
+    monkeypatch.setattr(runner_base, "get_backend", lambda name=None: backend)
     import app.routers.runs as runs_router
 
-    monkeypatch.setattr(runs_router, "get_backend", lambda: backend)
+    monkeypatch.setattr(runs_router, "get_backend", lambda name=None: backend)
     return fake, backend
 
 
@@ -259,14 +259,25 @@ async def test_golden_path(client, fakes):
         f"/api/comments/{c2['id']}/triage", json={"triage": "valid"}, headers=as_(DEV)
     )
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
-    assert pr["merge_blockers"] == ["1 AI comment(s) not triaged"]
+    assert pr["merge_blockers"] == [
+        "1 AI comment(s) not triaged",
+        "Needs approval from a reviewer other than the author",
+    ]
     await client.post(
         f"/api/comments/{c3['id']}/triage",
         json={"triage": "dismissed", "reason": "Covered by an existing test"},
         headers=as_(DEV),
     )
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
-    assert pr["can_merge"]
+    assert pr["merge_blockers"] == ["Needs approval from a reviewer other than the author"]
+
+    # Human review: the author cannot approve their own change; another reviewer can.
+    approve = f"/api/prs/{pr['id']}/approve"
+    assert (await client.post(approve, json={}, headers=as_(DEV))).status_code == 403
+    r = await client.post(approve, json={"note": "Reads well"}, headers=as_(LEAD))
+    assert r.status_code == 200, r.text
+    assert r.json()["approvals"][0]["note"] == "Reads well" and r.json()["can_merge"]
+    pr = r.json()
 
     # B1: merge captures an unverified learning linked to the PR and comments.
     r = await client.post(f"/api/prs/{pr['id']}/merge", headers=as_(DEV))
@@ -463,6 +474,25 @@ async def test_concurrent_runs_keep_project_and_tasks_consistent(client, fakes):
     assert "stage.event_not_applied" not in actions
 
 
+async def _complete_during_reviewer_outage(client, rid, res):
+    """Reports a run result while every review attempt fails, so the PR lands unreviewed."""
+    from app.review import engine as review_engine
+
+    async def down(diff, **kw):
+        raise RuntimeError("reviewer unavailable")
+
+    original = review_engine.review_diff
+    review_engine.review_diff = down
+    try:
+        await client.post(
+            f"/internal/runs/{rid}/complete",
+            json=res,
+            headers={"Authorization": f"Run {run_token(rid)}"},
+        )
+    finally:
+        review_engine.review_diff = original
+
+
 async def test_missing_review_can_be_retried(client, fakes):
     _pid, tasks = await _approved_project(client, "Reviewer outage")
     tid = tasks[0]["id"]
@@ -475,11 +505,7 @@ async def test_missing_review_can_be_retried(client, fakes):
         "test_output": "ok",
         "review": [],
     }
-    await client.post(
-        f"/internal/runs/{rid}/complete",
-        json=res,
-        headers={"Authorization": f"Run {run_token(rid)}"},
-    )
+    await _complete_during_reviewer_outage(client, rid, res)
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
     assert "No AI review recorded" in pr["merge_blockers"]
 
@@ -559,11 +585,7 @@ async def test_concurrent_review_retries_post_one_review(client, fakes):
         "test_output": "ok",
         "review": [],
     }
-    await client.post(
-        f"/internal/runs/{rid}/complete",
-        json=res,
-        headers={"Authorization": f"Run {run_token(rid)}"},
-    )
+    await _complete_during_reviewer_outage(client, rid, res)
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
 
     async def slow_reviewer(diff, **kw):

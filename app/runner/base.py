@@ -88,9 +88,13 @@ def worker_env(run_id: uuid.UUID) -> dict[str, str]:
     }
 
 
-def get_backend() -> RunnerBackend:
-    """Returns the configured backend."""
-    backend = get_settings().runner_backend
+def get_backend(name: str | None = None) -> RunnerBackend:
+    """Returns the backend called ``name``, else the configured one."""
+    backend = name or get_settings().runner_backend
+    if backend == "device":
+        from app.runner.device import DeviceBackend
+
+        return DeviceBackend()
     if backend == "cloudrun_job":
         from app.runner.cloudrun_job import CloudRunJobBackend
 

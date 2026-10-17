@@ -14,7 +14,9 @@ export interface PlanIssue {
   status: string;
   acceptanceCriteria: string[];
   sourceQuote: string;
+  assigneeId: string | null;
   assigneeName: string | null;
+  taskId: string | null;
 }
 
 export interface PlanEpic extends PlanIssue {

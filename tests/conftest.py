@@ -49,6 +49,8 @@ os.environ.update(
             tempfile.gettempdir(), f"karkhana-anchors-{os.getpid()}.jsonl"
         ),
         "TOKEN_ENCRYPTION_KEYS": "-JsbozYcTYyyJPINYfJFEVTr_eqUZaz7FLIC6zP_8Y8=",  # Test-only Fernet key.
+        # Never read the developer's .env: tests set everything they rely on.
+        "KARKHANA_NO_DOTENV": "1",
     }
 )
 os.environ.pop("GITHUB_REPO", None)

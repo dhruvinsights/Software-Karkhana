@@ -100,9 +100,9 @@ class ReviewCommentDraft(BaseModel):
 
 
 class ReviewOutput(BaseModel):
-    """The ADK reviewer's answer: 3 to 5 comments."""
+    """The reviewer's answer: up to 5 comments, none when the diff is sound."""
 
-    comments: list[ReviewCommentDraft] = Field(min_length=3, max_length=5)
+    comments: list[ReviewCommentDraft] = Field(max_length=5)
 
 
 class LearningOutput(BaseModel):
@@ -451,6 +451,20 @@ class CommentOut(ORM):
     triage_reason: str | None
 
 
+class PrApprovalOut(BaseModel):
+    """A human approval of a PR."""
+
+    by: str
+    note: str | None = None
+    at: dt.datetime
+
+
+class PrApproveIn(BaseModel):
+    """A reviewer's approval, with an optional note."""
+
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class PullRequestOut(ORM):
     """A PR with its comments."""
 
@@ -466,8 +480,10 @@ class PullRequestOut(ORM):
     review_model: str | None = None
     review_summary: str | None = None
     comments: list[CommentOut] = Field(default_factory=list)
+    approvals: list[PrApprovalOut] = Field(default_factory=list)
     can_merge: bool = False
     merge_blockers: list[str] = Field(default_factory=list)
+
 
 
 class TriageIn(BaseModel):

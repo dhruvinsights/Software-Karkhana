@@ -20,9 +20,10 @@ import datetime as dt
 import hashlib
 import logging
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +41,7 @@ from app.models import (
     Task,
 )
 from app.process import Event, Role
+from app.review import engine as review_engine
 from app.review.diff import anchor_comments
 from app.routers.common import (
     advance_if_legal,
@@ -49,7 +51,8 @@ from app.routers.common import (
 )
 from app.runner.base import get_backend, verify_run_token
 from app.schemas import ContextNote, RunOut, RunProgress, RunResult, RunSpec
-from app.services import context_notes, plan
+from app.services import context_notes, plan, repos
+from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["runs"])
@@ -57,6 +60,20 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 TERMINAL = {"succeeded", "failed", "timed_out", "cancelled"}
 CODER = ledger.Actor.ai("coder-agent")
 REVIEWER = ledger.Actor.ai("reviewer-agent")
+
+
+async def _announce(session: AsyncSession, project_id: uuid.UUID) -> None:
+    """Commits, then tells the project's open tabs that its runs changed."""
+    await session.commit()
+    project = await session.get(Project, project_id)
+    if project is not None and project.workspace_id:
+        await notify_workspace(project.workspace_id, "runs")
+
+
+class RunStartIn(BaseModel):
+    """Where to run: the configured backend, or the caller's machine."""
+
+    backend: Literal["device"] | None = None
 
 
 @router.post(
@@ -68,10 +85,12 @@ async def start_run(
     task_id: uuid.UUID,
     session: Session,
     user: CurrentUser,
+    body: RunStartIn | None = None,
 ) -> Run:
-    """Developer clicks "Assign to agent". The process engine decides if it may run.
+    """Developer clicks "Build". The process engine decides if it may run.
 
     The caller must be a developer or lead *in the project's workspace*.
+    ``backend: "device"`` builds on the caller's own connected machine.
     """
     task = await get_or_404(session, Task, task_id)
     project = await lock_project(session, task.project_id)  # Serializes admission.
@@ -94,7 +113,7 @@ async def start_run(
             status.HTTP_429_TOO_MANY_REQUESTS, "Too many active runs for this project"
         )
 
-    backend = get_backend()
+    backend = get_backend(body.backend if body else None)
     actor = ledger.Actor.human(user)
     await advance_or_http(
         session,
@@ -149,6 +168,7 @@ async def start_run(
             project_id=project.id,
             payload={"error": str(exc)[:300]},
         )
+        await _announce(session, project.id)
         return run
     run.external_id, run.status, run.started_at = (
         started.external_id,
@@ -165,6 +185,7 @@ async def start_run(
         project_id=project.id,
         payload={"external_id": started.external_id},
     )
+    await _announce(session, project.id)
     return run
 
 
@@ -246,6 +267,7 @@ async def run_spec(
             run.project_id, f"{task.title}\n{task.description}", role="developer"
         )
     ]
+    target = await repos.for_project(session, project.id)
     return RunSpec(
         run_id=run.id,
         task_key=task.key,
@@ -253,9 +275,9 @@ async def run_spec(
         task_description=task.description,
         acceptance_criteria=task.acceptance_criteria,
         project_name=project.name,
-        repo=s.github_repo,
-        repo_url=s.demo_repo_url,
-        base_branch=s.github_base_branch,
+        repo=target.slug if target else None,
+        repo_url=s.demo_repo_url or (target.clone_url if target else None),
+        base_branch=target.base_branch if target else s.github_base_branch,
         context=notes,
     )
 
@@ -273,8 +295,33 @@ async def run_progress(
         return {"status": run.status}
     if run.phase == "publishing":  # The control plane owns the run now.
         return {"status": run.status}
+    changed = run.phase != body.phase[:40]
     run.phase, run.heartbeat_at = body.phase[:40], dt.datetime.now(dt.UTC)
+    if changed:
+        await _announce(session, run.project_id)
     return {"status": run.status}
+
+
+async def _review_in_control_plane(body: RunResult, title: str) -> RunResult:
+    """Adds an AI review to a result that arrived without one.
+
+    A failed review leaves ``reviewed`` false, which blocks the merge until
+    someone re-runs it.
+    """
+    try:
+        review = await review_engine.review_diff(body.patch or "", title=title)
+    except Exception:
+        logger.warning("Control-plane review failed", exc_info=True)
+        return body
+    return body.model_copy(
+        update={
+            "review": list(review.comments),
+            "reviewed": True,
+            "review_engine": review.engine,
+            "review_model": review.model,
+            "review_summary": review.summary,
+        }
+    )
 
 
 @router.post("/internal/runs/{run_id}/complete", include_in_schema=False)
@@ -297,6 +344,7 @@ async def run_complete(
         await _finish_failed(
             session, run, "failed", body.error or "worker reported failure", body
         )
+        await _announce(session, run.project_id)
         return {"status": run.status}
 
     claimed = await session.execute(
@@ -315,6 +363,9 @@ async def run_complete(
     task = await get_or_404(session, Task, run.task_id)
     project = await get_or_404(session, Project, run.project_id)
     tests_passed = body.test_exit_code == 0
+    if not body.reviewed:
+        # Runners on developer machines hold no review engine; review here.
+        body = await _review_in_control_plane(body, task.title)
     # Anchor every comment to a line that exists in the diff, so GitHub accepts
     # the inline threads and the UI can render them under the right line.
     anchored_review = anchor_comments(body.patch, list(body.review))
@@ -353,11 +404,14 @@ async def run_complete(
             ),
             review_engine=body.review_engine or "",
             review_summary=body.review_summary or "",
+            target=await repos.for_project(session, project.id),
+            token=await repos.write_token(session, project.id, run.requested_by),
         )
     except Exception as exc:
         logger.exception("Publishing run %s failed", run.id)
         await session.refresh(run)
         await _finish_failed(session, run, "failed", f"publish failed: {exc}", body)
+        await _announce(session, run.project_id)
         return {"status": run.status}
 
     await session.refresh(run)
@@ -474,6 +528,7 @@ async def run_complete(
             actor=REVIEWER,
             payload={"pr": pr.number},
         )
+    await _announce(session, project.id)
     return {"status": run.status, "validation": run.validation_status}
 
 

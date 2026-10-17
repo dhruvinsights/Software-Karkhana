@@ -46,7 +46,7 @@ async def test_dashboard_is_scoped_to_role(client):
 
 async def test_health_endpoints_report_real_state(client):
     h = (await client.get("/api/providers/health", headers=as_(PM))).json()
-    assert h["llm_provider"] in {"gemini", "ollama"}
+    assert h["llm_provider"] in {"gemini", "ollama", "bob"}
     assert "configured" in h["gemini"] and "engine" in h["review"]
     r = (await client.get("/api/runner/status", headers=as_(PM))).json()
     assert r["backend"] == "local" and r["ready"] is True

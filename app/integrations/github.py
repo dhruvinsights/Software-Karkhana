@@ -436,10 +436,11 @@ def git_auth_header(token: str) -> str:
 
 
 def client(token: str | None = None) -> GitHub | None:
-    """Returns a GitHub client if a repo and token are configured.
+    """A client for the server-wide ``GITHUB_REPO``, if a repo and token are configured.
 
     ``token`` (a user's decrypted OAuth token, see ``github_tokens``) takes
-    precedence over the server's ``GITHUB_TOKEN``.
+    precedence over the server's ``GITHUB_TOKEN``. Project work goes through
+    ``app.services.repos.client_for``, which uses the product's repository.
     """
     s = get_settings()
     token = token or s.github_token

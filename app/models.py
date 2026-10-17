@@ -773,3 +773,57 @@ class RagChatMessage(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.clock_timestamp()
     )
+
+
+class AgentDevice(Base):
+    """A developer machine running karkhana-agent (029). Secrets are stored hashed."""
+
+    __tablename__ = "agent_devices"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String)
+    platform: Mapped[str] = mapped_column(String, default="")
+    harness: Mapped[str] = mapped_column(String, default="")
+    token_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    pairing_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    pairing_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String, default="pending")  # pending | active | revoked
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class AgentJob(Base):
+    """One agent execution; for builds on a machine, tied to the run it executes (026, 029)."""
+
+    __tablename__ = "agent_jobs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("issues.id", ondelete="SET NULL"), nullable=True)
+    role: Mapped[str] = mapped_column(String)
+    engine: Mapped[str] = mapped_column(String, default="bob")
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="queued")
+    instruction: Mapped[str] = mapped_column(Text, default="")
+    output: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sandbox: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    device_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_devices.id", ondelete="SET NULL"), nullable=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentJobLog(Base):
+    """One line of an agent job's live log (026). Append-only."""
+
+    __tablename__ = "agent_job_logs"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_jobs.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    level: Mapped[str] = mapped_column(String, default="info")  # info | thinking | output | error
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = _now()
