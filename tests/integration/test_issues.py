@@ -71,7 +71,8 @@ async def test_raise_number_assign_and_close_a_bug(client):
     assert second["key"] == "ISS-2"  # numbers never repeat within a project
 
     # It shows up on the assignee's own list.
-    mine = (await client.get("/api/issues/mine", headers=as_(DEV))).json()
+    # Other tests leave work assigned to DEV in other projects; look at this one.
+    mine = [i for i in (await client.get("/api/issues/mine", headers=as_(DEV))).json() if i["projectId"] == pid]
     assert [i["key"] for i in mine] == ["ISS-1"]
 
     # The assignee moves it along; closing stamps closedAt and clears it from "mine".
@@ -79,7 +80,8 @@ async def test_raise_number_assign_and_close_a_bug(client):
     assert r.status_code == 200 and r.json()["status"] == "in_progress"
     r = await client.patch(f"/api/issues/{first['id']}", headers=as_(DEV), json={"status": "done"})
     assert r.json()["closedAt"] is not None
-    assert (await client.get("/api/issues/mine", headers=as_(DEV))).json() == []
+    mine = (await client.get("/api/issues/mine", headers=as_(DEV))).json()
+    assert [i for i in mine if i["projectId"] == pid] == []
 
     listed = (await client.get(f"/api/projects/{pid}/issues?status=todo", headers=as_(PM))).json()
     assert [i["key"] for i in listed] == ["ISS-2"]
