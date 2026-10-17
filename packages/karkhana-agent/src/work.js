@@ -2,6 +2,7 @@
 import { hostname } from 'node:os';
 import { deviceClient, runClient } from './api.js';
 import { buildTask } from './build.js';
+import { makeGate } from './gate.js';
 import { commit, ensureClone, ensureCloneAt, expandPath, stagedDiff, taskWorktree, workState } from './git.js';
 import { DEFAULT_LIMITS, FIX_LIMITS, harnessFor } from './harness.js';
 import { preflightSuites, runSuites, testSuites } from './testrun.js';
@@ -92,7 +93,11 @@ async function buildJob(job, device, { workDir, harness, sandbox, deps = realDep
       signal: stop.signal,
       commitMessage: `${spec.task_key}: ${spec.task_title}\n\nKarkhana run ${job.runId}`,
       caps: capsFromEnv(),
-      deps: { ...deps, harness: harnessImpl ?? harnessFor(job.harness || harness) },
+      deps: {
+        ...deps,
+        harness: harnessImpl ?? harnessFor(job.harness || harness),
+        pause: makeGate({ runApi, control: spec.control, signal: stop.signal, log }),
+      },
     });
 
     const tests = out.result;

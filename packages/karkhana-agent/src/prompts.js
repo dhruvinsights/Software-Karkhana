@@ -22,6 +22,15 @@ const header = (spec) => [
   criteriaOf(spec),
   '',
 ];
+/** What the developer added on top: a reviewer's requested changes, their instruction, where to start. */
+const extras = (spec) => {
+  const out = [];
+  if (spec.rework) out.push(`CHANGES REQUESTED ON THE PREVIOUS PULL REQUEST (do these first):\n${spec.rework}\n`);
+  const brief = spec.brief ?? {};
+  if (brief.instruction?.trim()) out.push(`INSTRUCTION FROM THE DEVELOPER WHO OWNS THIS TASK (it wins over the notes above if they conflict):\n${brief.instruction.trim()}\n`);
+  if (brief.focus?.length) out.push(`START FROM THESE FILES OR FOLDERS (read these first):\n${brief.focus.map((f) => `- ${f}`).join('\n')}\n`);
+  return out;
+};
 const shared = (spec) => (spec.context.length ? [`SHARED PROJECT CONTEXT (approved design, decisions, handoffs and review feedback; follow them):\n${contextOf(spec)}\n`] : ['']);
 
 /** A story that has not been started. */
@@ -29,6 +38,7 @@ export function buildPrompt(spec) {
   return [
     ...header(spec),
     ...shared(spec),
+    ...extras(spec),
     'How to work:',
     '1. Read README, AGENTS.md if present, and the code you will change first. Follow the existing style.',
     '2. Make the smallest change that meets every criterion.',
@@ -58,6 +68,7 @@ export function continuePrompt(spec, state, failing) {
   return [
     ...header(spec),
     ...shared(spec),
+    ...extras(spec),
     'THIS IS A CONTINUATION. Earlier work on this story is already in this directory. Do NOT start over and do NOT redo anything that already works.',
     '',
     `WHAT EXISTS NOW (changed against the base branch${state.summary ? `: ${state.summary}` : ''}):`,
@@ -88,4 +99,23 @@ export function fixPrompt(spec, failing) {
     RULES,
     'Reply with one or two sentences on the cause and the fix.',
   ].join('\n');
+}
+
+/** The developer read the work and wants one specific change. */
+export function changePrompt(spec, note) {
+  return [
+    `The change for story ${spec.task_key} (${spec.task_title}) in this directory is written. The developer who owns it reviewed it and asks for this:`,
+    '',
+    note.trim(),
+    '',
+    'Make exactly this change and nothing else. Keep everything that already works and every existing test.',
+    '',
+    RULES,
+    'Reply with one or two sentences on what you changed.',
+  ].join('\n');
+}
+
+/** The fix round, with the developer's own words on how to fix it. */
+export function fixPromptWithNote(spec, failing, note) {
+  return `${fixPrompt(spec, failing)}\n\nTHE DEVELOPER SAYS HOW TO FIX IT:\n${note.trim()}\n`;
 }

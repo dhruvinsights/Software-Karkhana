@@ -188,7 +188,7 @@ export function parseCounts(output) {
  * Runs every suite in order and reports each as it starts and ends (`report`
  * may be null). The exit code is the first failing suite's, else 0.
  */
-export async function runSuites(worktree, suites, sandbox = 'none', report = null) {
+export async function runSuites(worktree, suites, sandbox = 'none', report = null, hooks = {}) {
   if (sandbox === 'docker') await assertDockerSeesWorktree(worktree, suites[0]?.argv);
   // A lost progress report never stops the tests.
   const tell = async (suite) => {
@@ -202,6 +202,14 @@ export async function runSuites(worktree, suites, sandbox = 'none', report = nul
   let code = 0;
   const outputs = [];
   for (const { name, argv } of suites) {
+    // The developer may skip a suite (hooks.before returns 'skip'); it is recorded as skipped, never as passed.
+    if ((await hooks.before?.({ name, argv })) === 'skip') {
+      const skipped = { suite: name, status: 'skipped', note: 'Skipped by the developer', command: argv.join(' ').slice(0, 500) };
+      results.push(skipped);
+      outputs.push(`== ${name}: skipped by the developer`);
+      await tell(skipped);
+      continue;
+    }
     await tell({ suite: name, status: 'running', command: argv.join(' ').slice(0, 500) });
     const started = Date.now();
     const out = await runTests(worktree, argv, sandbox);

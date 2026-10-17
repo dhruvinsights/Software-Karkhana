@@ -426,6 +426,11 @@ class Run(Base):
     validation_status: Mapped[str] = mapped_column(String, default="not_run")
     # Unit, integration, ... each with its state and counts (migration 033).
     test_suites: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    # Where the developer pauses the build, what they briefed the agent with, and the
+    # decision waiting for them right now (migration 040).
+    control: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    brief: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    gate: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(Text)
     artifacts_uri: Mapped[str | None] = mapped_column(String)
     # Headroom token accounting reported by the worker (migration 015).

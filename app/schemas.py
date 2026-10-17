@@ -434,6 +434,9 @@ class RunOut(ORM):
     test_output: str | None
     validation_status: str
     test_suites: list[dict[str, Any]] = Field(default_factory=list)
+    control: dict[str, Any] | None = None
+    brief: dict[str, Any] | None = None
+    gate: dict[str, Any] | None = None
     error: str | None
     created_at: dt.datetime
     finished_at: dt.datetime | None
@@ -604,6 +607,8 @@ class ContextNote(BaseModel):
     title: str
     body: str
     author: str
+    # Stable id so a developer can include or leave out this note (the run brief).
+    id: str = ""
 
 
 class RunSpec(BaseModel):
@@ -611,6 +616,9 @@ class RunSpec(BaseModel):
 
     # Changes a reviewer asked for on the previous pull request; the next build must act on them.
     rework: str | None = None
+    # How the developer steers this build: pauses, and what they chose to brief it with.
+    control: dict[str, Any] | None = None
+    brief: dict[str, Any] | None = None
 
     run_id: uuid.UUID
     task_key: str

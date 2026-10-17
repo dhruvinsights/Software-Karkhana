@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, agent_memory, ledger, publisher
+from app import access, ledger, publisher
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
@@ -52,14 +52,13 @@ from app.routers.common import (
 )
 from app.runner.base import get_backend, verify_run_token
 from app.schemas import (
-    ContextNote,
     RunOut,
     RunProgress,
     RunResult,
     RunSpec,
     SuiteReport,
 )
-from app.services import context_notes, design_handoff, plan, repos, test_suites
+from app.services import plan, repos, run_context, test_suites
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -81,9 +80,11 @@ async def _announce(session: AsyncSession, project_id: uuid.UUID) -> None:
 
 
 class RunStartIn(BaseModel):
-    """Where to run: the configured backend, or the caller's machine."""
+    """Where to run: the configured backend, or the caller's machine; and how it is steered."""
 
     backend: Literal["device"] | None = None
+    control: run_context.Control | None = None
+    brief: run_context.Brief | None = None
 
 
 async def _continuable(session: AsyncSession, task: Task) -> bool:
@@ -171,6 +172,10 @@ async def start_run(
         requested_by=user.id,
         status="queued",
         phase="queued",
+        control=(
+            {"mode": body.control.mode, "pauses": body.control.effective()} if body and body.control else None
+        ),
+        brief=body.brief.model_dump() if body and body.brief else None,
     )
     session.add(run)
     await session.flush()
@@ -320,18 +325,10 @@ async def run_spec(
     task = await get_or_404(session, Task, run.task_id)
     project = await get_or_404(session, Project, run.project_id)  # Read-only.
     s = get_settings()
-    notes = context_notes.as_notes(await context_notes.recent(session, run.project_id))
-    notes += [
-        ContextNote(kind="memory", title="Project memory", body=m, author="mem0")
-        for m in await agent_memory.recall(
-            run.project_id, f"{task.title}\n{task.description}", role="developer"
-        )
-    ]
-    # A story the designer drew screens or contracts for: hand its slice to the agent.
-    design = await design_handoff.latest_design(session, project.id)
-    if design is not None and task.key:
-        if body := design_handoff.as_note(design.content, task.key, design.version):
-            notes.append(ContextNote(kind="design", title=f"Design for {task.key}", body=body, author="design station"))
+    # Everything the agent could be told, then only what the developer chose to give it.
+    criteria, notes = run_context.chosen(
+        run.brief, list(task.acceptance_criteria or []), await run_context.gather_notes(session, project, task)
+    )
     target = await repos.for_project(session, project.id)
     return RunSpec(
         rework=await _rework_for(session, run),
@@ -339,7 +336,9 @@ async def run_spec(
         task_key=task.key,
         task_title=task.title,
         task_description=task.description,
-        acceptance_criteria=task.acceptance_criteria,
+        acceptance_criteria=criteria,
+        control=run.control,
+        brief=run.brief,
         project_name=project.name,
         repo=target.slug if target else None,
         repo_url=s.demo_repo_url or (target.clone_url if target else None),

@@ -45,6 +45,6 @@ async def recent(
 def as_notes(entries: list[ContextEntry]) -> list[ContextNote]:
     """Oldest first, the order an agent should read them."""
     return [
-        ContextNote(kind=e.kind, title=e.title, body=e.body, author=e.author_label)
+        ContextNote(id=str(e.id), kind=e.kind, title=e.title, body=e.body, author=e.author_label)
         for e in reversed(entries)
     ]

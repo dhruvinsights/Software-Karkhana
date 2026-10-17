@@ -524,6 +524,8 @@ def _run_brief(run: Run) -> dict[str, Any]:
         "phase": run.phase,
         "testSuites": run.test_suites or [],
         "error": run.error,
+        "control": run.control,
+        "gate": run.gate,
     }
 
 
@@ -655,6 +657,8 @@ async def dev_board(
                     "branch": run.branch,
                     "error": run.error,
                     "testSuites": run.test_suites or [],
+                    "control": run.control,
+                    "gate": run.gate,
                     "testExitCode": run.test_exit_code,
                     "createdAt": _iso(run.created_at),
                     "finishedAt": _iso(run.finished_at),
