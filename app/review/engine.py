@@ -29,9 +29,10 @@ async def review_diff(diff: str, *, title: str) -> ReviewResult:
     from app.agents.coder import run_reviewer
 
     out = await run_reviewer(diff, title=title)
+    engine = "bob" if get_settings().llm_provider == "bob" else "adk"
     return ReviewResult(
-        engine="adk",
+        engine=engine,
         model=llm.chat_model_name(),
         comments=list(out.comments),
-        summary=f"{len(out.comments)} comment(s) from the ADK reviewer.",
+        summary=f"{len(out.comments)} comment(s) from the {engine} reviewer.",
     )

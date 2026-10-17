@@ -83,6 +83,7 @@ interface PrDetail {
   review_model: string | null;
   review_summary: string | null;
   comments: PrComment[];
+  approvals: { by: string; note: string | null; at: string }[];
   can_merge: boolean;
   merge_blockers: string[];
 }
@@ -428,6 +429,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
   const [ghStatus, setGhStatus] = useState<GHStatus | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [approvalNote, setApprovalNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showDeviceFlow, setShowDeviceFlow] = useState(false);
   const [ghConnected, setGhConnected] = useState(false);
@@ -537,6 +539,27 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
       }
       const g = await fetch(`/api/github/prs/${prId}/status`, { headers: authHeaders() });
       if (g.ok) setGhStatus(await g.json());
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const approvePR = async (prId: string) => {
+    setActionLoading('approve');
+    setError(null);
+    try {
+      const res = await fetch(`/api/prs/${prId}/approve`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: approvalNote.trim() || null }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.detail || 'Approval failed');
+        return;
+      }
+      setDetail(body);
+      setApprovalNote('');
     } finally {
       setActionLoading(null);
     }
@@ -1001,6 +1024,29 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
                     All checks passed — ready to merge.
                   </div>
                 )}
+
+                <div style={{ marginBottom: 14 }}>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Human review</p>
+                  {detail.approvals.length === 0 && (
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No approvals yet.</p>
+                  )}
+                  {detail.approvals.map((a, i) => (
+                    <div key={i} style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center', color: 'var(--accent)' }}>
+                      <ShieldCheck size={12} /> Approved by {a.by}{a.note ? `: ${a.note}` : ''}
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <input
+                      value={approvalNote}
+                      onChange={(e) => setApprovalNote(e.target.value)}
+                      placeholder="Review note (optional)"
+                      style={{ flex: 1, padding: 6, fontSize: 12 }}
+                    />
+                    <button onClick={() => approvePR(selectedPrId!)} disabled={actionLoading === 'approve'} className="btn btn-ghost" style={{ fontSize: 12 }}>
+                      Approve
+                    </button>
+                  </div>
+                </div>
 
                 <button
                   onClick={() => mergePR(selectedPrId!)}

@@ -20,7 +20,7 @@ const ACCESS_STYLE: Record<WorkspaceAccessLevel, { color: string; icon: React.Re
   owner: { color: '#f0a500', icon: <Crown size={12} />, hint: 'Created this workspace. Full control.' },
   admin: { color: '#f0a500', icon: <ShieldCheck size={12} />, hint: 'Manages members, guides, the product and every project.' },
   reviewer: { color: '#00d9a6', icon: <ClipboardCheck size={12} />, hint: 'Reviews and decides ideas; read-only overview of every project.' },
-  guide: { color: '#9b6dff', icon: <BookOpen size={12} />, hint: 'Read-only advisor: sees every project and idea, can comment.' },
+  guide: { color: '#5B8FFF', icon: <BookOpen size={12} />, hint: 'Read-only advisor: sees every project and idea, can comment.' },
   member: { color: '#075BFF', icon: <User size={12} />, hint: 'Works on the projects they are invited to.' },
 };
 

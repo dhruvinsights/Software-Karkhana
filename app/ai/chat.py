@@ -26,18 +26,17 @@ which one ran:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
-import shutil
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 import httpx
 
 from app.ai.errors import ModelError
+from app.ai.providers import bob
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -76,22 +75,6 @@ async def _ollama_models() -> list[str]:
     return [n for n in names if "embed" not in n and not n.startswith("llava")]
 
 
-def _bob_bin() -> str | None:
-    s = get_settings()
-    if s.bob_bin and os.path.isfile(s.bob_bin):
-        return s.bob_bin
-    return shutil.which("bob")
-
-
-def _bob_key() -> str | None:
-    s = get_settings()
-    return (
-        s.bob_api_key
-        or os.environ.get("BOB_API_KEY")
-        or os.environ.get("BOBSHELL_API_KEY")
-    )
-
-
 def _claude_key() -> str | None:
     return get_settings().anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
 
@@ -107,7 +90,6 @@ async def list_providers() -> list[ProviderInfo]:
         if s.ollama_chat_model in ollama_models
         else (ollama_models[0] if ollama_models else "")
     )
-    bob = _bob_bin()
     return [
         ProviderInfo(
             "ollama",
@@ -138,10 +120,12 @@ async def list_providers() -> list[ProviderInfo]:
         ProviderInfo(
             "bob",
             "IBM Bob",
-            bool(bob and _bob_key()),
+            bob.configured(),
             "Ready"
-            if bob and _bob_key()
-            else ("Set BOB_API_KEY in .env" if bob else "Install the `bob` CLI"),
+            if bob.configured()
+            else (
+                "Set BOB_API_KEY in .env" if bob.binary() else "Install the `bob` CLI"
+            ),
             ["bob"],
             "bob",
         ),
@@ -325,78 +309,14 @@ async def _stream_claude(
 async def _stream_bob(
     messages: list[Message], system: str, workspace_dir: str | None
 ) -> AsyncIterator[Event]:
-    """IBM Bob through ``bob run``, the pattern from Software-karkhana-v1.
-
-    Bob's gateway sits behind bot protection, so the official CLI (which signs
-    requests) is the only reliable client. Bob is an agent with its own file and
-    shell tools; it reads ``workspace_dir`` when given. Progress lines become
-    status events; the final ``result`` line is the answer.
-    """
-    bob = _bob_bin()
-    key = _bob_key()
-    if not bob or not key:
-        raise ModelError(
-            "IBM Bob is not configured: install the bob CLI and set BOB_API_KEY in .env"
-        )
+    """IBM Bob as a tool-using agent; it reads ``workspace_dir`` when given."""
     transcript = "\n\n".join(
         f"[{'You' if m['role'] == 'user' else 'Assistant'}]\n{m['content']}"
         for m in messages
     )
     prompt = f"<system>\n{system}\n</system>\n\n{transcript}"
-    cmd = [
-        bob,
-        "run",
-        "--format",
-        "json",
-        "--max-turns",
-        "20",
-        "--disable-mcp",
-        "--disable-subagents",
-        "--trust",
-        "--accept-license",
-    ]
-    if workspace_dir:
-        cmd += ["--workspace", workspace_dir]
-    cmd.append(prompt)
-    env = {**os.environ, "BOB_API_KEY": key, "BOB_LOG_LEVEL": "error"}
-    # Bob aborts if both key variables are set to different values.
-    env.pop("BOBSHELL_API_KEY", None)
-
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env
-    )
-    answer = ""
-    try:
-        assert proc.stdout is not None
-        async with asyncio.timeout(get_settings().bob_timeout_s):
-            async for raw in proc.stdout:
-                line = raw.decode(errors="replace").strip()
-                if not line:
-                    continue
-                try:
-                    obj: dict[str, Any] = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if obj.get("type") == "result":
-                    answer = obj.get("last_message", "")
-                elif obj.get("type") in (
-                    "tool_use",
-                    "tool_call",
-                    "progress",
-                    "assistant",
-                ):
-                    note = (
-                        obj.get("name")
-                        or obj.get("tool")
-                        or obj.get("text")
-                        or obj.get("type")
-                    )
-                    yield {"type": "status", "text": str(note)[:200]}
-            await proc.wait()
-    except TimeoutError as exc:
-        proc.kill()
-        raise ModelError("IBM Bob timed out") from exc
-    if proc.returncode != 0 and not answer:
-        err = (await proc.stderr.read()).decode(errors="replace") if proc.stderr else ""
-        raise ModelError(f"bob run failed (exit {proc.returncode}): {err[-500:]}")
-    yield {"type": "text", "delta": answer or "(Bob returned no answer)"}
+    async for event in bob.stream(prompt, workspace_dir=workspace_dir):
+        if event["type"] == "status":
+            yield event
+        else:
+            yield {"type": "text", "delta": event["text"] or "(Bob returned no answer)"}

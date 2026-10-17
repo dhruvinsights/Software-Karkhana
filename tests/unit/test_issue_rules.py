@@ -33,6 +33,6 @@ def test_who_can_modify():
 
 def test_validation_messages():
     assert r.validate(type_="bug", priority="P1", status="done") is None
-    assert "type" in r.validate(type_="epic")
+    assert "type" in r.validate(type_="saga")
     assert "priority" in r.validate(priority="urgent")
     assert "status" in r.validate(status="blocked")

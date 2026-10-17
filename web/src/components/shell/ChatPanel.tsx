@@ -89,7 +89,7 @@ function Avatar({ name, src, size = 28, online }: { name: string; src?: string |
       ) : (
         <div style={{
           width: size, height: size, borderRadius: '50%',
-          background: 'linear-gradient(135deg,#075BFF,#9b6dff)',
+          background: 'linear-gradient(135deg,#075BFF,#5B8FFF)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: size * 0.38, fontWeight: 700, color: '#fff', fontFamily: 'var(--font-sans)',
         }}>{initials}</div>

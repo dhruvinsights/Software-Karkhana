@@ -12,6 +12,8 @@ Everything about what is planned, in progress and done lives here. If you work o
 
 - [`docs/CHAT_V2_TODO.md`](../docs/CHAT_V2_TODO.md)
 - [`docs/CHAT_FULLSCREEN_TODO.md`](../docs/CHAT_FULLSCREEN_TODO.md)
+- [`docs/PR_BOT_TODO.md`](../docs/PR_BOT_TODO.md)
+- [`docs/UI_THEME_TODO.md`](../docs/UI_THEME_TODO.md)
 - Long-form project wiki: [`docs/wiki/`](../docs/wiki/README.md)
 
 ## Rules

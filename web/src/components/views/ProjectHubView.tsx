@@ -31,10 +31,12 @@ import {
   Loader2,
   Mic,
   MicOff,
+  ListTree,
 } from 'lucide-react';
 import { factoryStore, FactoryState, ROLE_CONFIGS } from '../../store/factoryStore';
 import { FactoryRole, ScreenId, ProjectComment } from '../../types/factory';
 import { PRReviewPanel } from './PRReviewPanel';
+import { ProjectStationBoard, StationBar, ProjectMemberRow, StationTab } from './ProjectStationBoard';
 import {
   fetchProjectComments,
   postProjectComment,
@@ -46,6 +48,11 @@ import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
+import { ProjectPlanPanel } from './ProjectPlanPanel';
+import { ProjectDesignPanel } from './ProjectDesignPanel';
+import { ProjectBuildPanel } from './ProjectBuildPanel';
+import { ProjectPipelinePanel, ProjectReleasePanel } from './ProjectDeliveryPanels';
+import { QAVerificationView } from './QAVerificationView';
 import { stationsApi, useStationList, ApiTestScenario } from '../../lib/stationsApi';
 
 /** Server-side QA scenario count for the project card. */
@@ -58,15 +65,23 @@ const ScenarioSummary: React.FC<{ projectId: string }> = ({ projectId }) => {
   return <>{items.length} scenarios · {passed} passed.</>;
 };
 
+/** Idea text can arrive as raw markdown; show it as plain words. */
+const plainTitle = (text: string | undefined): string =>
+  (text ?? '')
+    .replace(/[#*_`|>]+/g, ' ')
+    .replace(/-{3,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 interface ProjectHubViewProps {
   state: FactoryState;
 }
 
 export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
-  const [activeStationTab, setActiveStationTab] = useState<
-    'overview' | 'product' | 'architecture' | 'developer' | 'qa' | 'devops' | 'security' | 'team_access' | 'comments'
-  >('overview');
+  const [activeStationTab, setActiveStationTab] = useState<StationTab>('overview');
+  const [projectMembers, setProjectMembers] = useState<ProjectMemberRow[]>([]);
+  const [myStations, setMyStations] = useState<string[]>([]);
 
   // ── Comments state ────────────────────────────────────────────────────────
   const [comments, setComments] = useState<ProjectComment[]>([]);
@@ -84,7 +99,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   const [copiedProjectLink, setCopiedProjectLink] = useState(false);
   const [projectInviteError, setProjectInviteError] = useState<string | null>(null);
   const [inviteStations, setInviteStations] = useState<string[]>([]);
-  const [accessInfo, setAccessInfo] = useState<{ access: string; canManage: boolean } | null>(null);
+  const [accessInfo, setAccessInfo] = useState<{ access: string; canManage: boolean; isLead: boolean } | null>(null);
   const [inviteRole, setInviteRole] = useState<FactoryRole>('developer');
 
   const selectedProject = state.projects.find((p) => p.id === state.selectedProjectId) || state.projects[0];
@@ -198,9 +213,29 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
     }
     fetch(`/api/projects/${pid}/access`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((a) => setAccessInfo(a ? { access: a.access, canManage: a.canManage } : null))
+      .then((a) => {
+        setAccessInfo(a ? { access: a.access, canManage: a.canManage, isLead: !!a.isLead } : null);
+        setMyStations(a?.stations ?? []);
+      })
       .catch(() => setAccessInfo(null));
   }, [selectedProject?.id, token]);
+
+  const loadProjectMembers = useCallback(() => {
+    const pid = selectedProject?.id;
+    if (!pid || !token || pid.length !== 36) {
+      setProjectMembers([]);
+      return;
+    }
+    fetch(`/api/projects/${pid}/members`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setProjectMembers(rows as ProjectMemberRow[]))
+      .catch(() => setProjectMembers([]));
+  }, [selectedProject?.id, token]);
+
+  useEffect(() => { loadProjectMembers(); }, [loadProjectMembers]);
+  // Anyone joining, leaving or changing station triggers a workspace_sync: refresh the teams live.
+  useChatFrames('workspace_sync', () => { loadProjectMembers(); }, [loadProjectMembers]);
+  useChatFrames('reconnected', () => { loadProjectMembers(); }, [loadProjectMembers]);
 
   const toggleProjectAccess = async () => {
     if (!selectedProject || !accessInfo) return;
@@ -213,7 +248,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
     });
     if (res.ok) {
       const a = await res.json();
-      setAccessInfo({ access: a.access, canManage: a.canManage });
+      setAccessInfo({ access: a.access, canManage: a.canManage, isLead: !!a.isLead });
     } else {
       const j = await res.json().catch(() => ({}));
       setProjectInviteError(typeof j.detail === 'string' ? j.detail : 'Could not change access.');
@@ -265,7 +300,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
           </p>
           <button
             onClick={() => setCreateProjectModalOpen(true)}
-            className="px-6 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#075BFF]/20"
+            className="k-btn-primary px-6 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#075BFF]/20"
           >
             <Plus className="w-4 h-4" />
             <span>Create Engineering Project</span>
@@ -297,11 +332,11 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
             <span>·</span>
             <span className="text-emerald-400 font-mono">LIVE FACTORY</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white">
-            Project <ShinyText text={selectedProject.name} speed={5} />
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white line-clamp-2" title={selectedProject.name}>
+            <ShinyText text={plainTitle(selectedProject.name)} speed={5} />
           </h1>
-          <p className="text-sm text-[#827D8E] max-w-2xl font-light">
-            {selectedProject.description || 'Coordinating multi-discipline engineering delivery and station access.'}
+          <p className="text-sm text-[#827D8E] max-w-2xl font-light line-clamp-2">
+            {plainTitle(selectedProject.description) || 'Coordinating multi-discipline engineering delivery and station access.'}
           </p>
         </div>
 
@@ -319,7 +354,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
           )}
           <button
             onClick={() => setCreateProjectModalOpen(true)}
-            className="px-4 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#075BFF]/20 transition-all cursor-pointer"
+            className="k-btn-primary px-4 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#075BFF]/20 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>New Project</span>
@@ -352,101 +387,19 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
         </div>
       )}
 
-      {/* Station Navigation Ribbon */}
-      <div className="flex items-center gap-2 p-1.5 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl overflow-x-auto text-xs">
-        <button
-          onClick={() => setActiveStationTab('overview')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'overview' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <Activity className="w-3.5 h-3.5" />
-          <span>Station Overview</span>
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('product')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'product' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-          <span>Product & Epics</span>
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('architecture')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'architecture' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <Workflow className="w-3.5 h-3.5 text-purple-400" />
-          <span>Architecture & ADRs</span>
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('developer')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'developer' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Developer Swarm</span>
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('qa')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'qa' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-          <span>QA & Verification</span>
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('devops')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'devops' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <Radio className="w-3.5 h-3.5 text-blue-400" />
-          <span>CI/CD & Canary</span>
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('security')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'security' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <Shield className="w-3.5 h-3.5 text-rose-400" />
-          <span>AppSec & Governance</span>
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('comments')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeStationTab === 'comments' ? 'bg-[#075BFF] text-white shadow-xs' : 'text-[#827D8E] hover:text-white'
-          }`}
-        >
-          <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
-          <span>Comments</span>
-          {comments.filter((c) => !c.id.startsWith('cmt-')).length > 0 && (
-            <span className="text-[10px] bg-[#075BFF]/80 text-white rounded-full px-1.5 py-0 font-mono">{comments.length}</span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveStationTab('team_access')}
-          className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 ml-auto ${
-            activeStationTab === 'team_access' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-400 hover:text-white'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5" />
-          <span>Role & Station Access</span>
-        </button>
-      </div>
+      {/* Station screens: the board is home; each station opens as its own screen. */}
+      {activeStationTab !== 'overview' && (
+        <StationBar
+          tab={activeStationTab}
+          members={projectMembers}
+          canInvite={!!accessInfo && (accessInfo.canManage || accessInfo.isLead)}
+          token={token}
+          workspaceId={state.activeWorkspaceId}
+          projectId={selectedProject.id}
+          onBack={() => setActiveStationTab('overview')}
+          onOpenTeam={() => setActiveStationTab('team_access')}
+        />
+      )}
 
       {/* Tab 1: Overview */}
       {activeStationTab === 'overview' && (
@@ -471,67 +424,49 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
 
               <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => factoryStore.setScreen('developer_dashboard')}
-                  className="px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  onClick={() => setActiveStationTab('developer')}
+                  className="k-btn-primary px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                 >
                   <Terminal className="w-3.5 h-3.5" />
-                  <span>Launch Agent Swarm</span>
+                  <span>Build stories</span>
                 </button>
               </div>
             </div>
 
             <div className="p-4 bg-[#07070B] rounded-xl border border-white/[0.08] font-mono text-xs flex flex-wrap gap-4 text-[#827D8E]">
-              <div>Repository: <span className="text-cyan-400">{selectedProject.repositoryUrl}</span></div>
+              <div>Repository: <span className="text-[#5B8FFF]">{selectedProject.repositoryUrl}</span></div>
               <div>Health: <span className="text-emerald-400 capitalize">{selectedProject.health}</span></div>
               <div>Target Release: <span className="text-white">{selectedProject.targetReleaseDate}</span></div>
             </div>
           </SpotlightCard>
 
-          {/* Station Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div
-              onClick={() => setActiveStationTab('product')}
-              className="p-5 bg-[#0c0e15]/90 border border-white/[0.08] hover:border-[#075BFF]/50 rounded-2xl cursor-pointer transition-colors space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono text-amber-400 uppercase">Product Station</span>
-                <Sparkles className="w-4 h-4 text-amber-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-white">Requirements & Epics</h3>
-              <p className="text-xs text-[#827D8E]">
-                {projectEpics.length} Epics defined · AI feasibility scoring & scope gating.
-              </p>
-            </div>
-
-            <div
-              onClick={() => setActiveStationTab('developer')}
-              className="p-5 bg-[#0c0e15]/90 border border-white/[0.08] hover:border-[#075BFF]/50 rounded-2xl cursor-pointer transition-colors space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono text-cyan-400 uppercase">Developer Swarm</span>
-                <Terminal className="w-4 h-4 text-cyan-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-white">Engineering & Code</h3>
-              <p className="text-xs text-[#827D8E]">
-                {projectTasks.length} Tasks · {projectPRs.length} PRs opened by autonomous workers.
-              </p>
-            </div>
-
-            <div
-              onClick={() => setActiveStationTab('qa')}
-              className="p-5 bg-[#0c0e15]/90 border border-white/[0.08] hover:border-[#075BFF]/50 rounded-2xl cursor-pointer transition-colors space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono text-emerald-400 uppercase">QA Verification</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-white">Test Suites & Gates</h3>
-              <p className="text-xs text-[#827D8E]">
-                <ScenarioSummary projectId={selectedProject.id} />
-              </p>
-            </div>
-          </div>
+          {/* One card per station, each with its own team and reviewers */}
+          <ProjectStationBoard
+            members={projectMembers}
+            visible={(station) => station === null || myStations.includes(station)}
+            counts={{
+              plan: `${projectEpics.length} epics`,
+              product: `${projectEpics.length} epics defined`,
+              developer: `${projectTasks.length} tasks · ${projectPRs.length} PRs`,
+              team_access: `${projectMembers.length} people`,
+            }}
+            onOpen={setActiveStationTab}
+          />
         </div>
+      )}
+
+      {/* Plan: epics and stories, approved by a lead */}
+      {activeStationTab === 'plan' && (
+        <ProjectPlanPanel
+          projectId={selectedProject.id}
+          projectName={selectedProject.name}
+          canEdit={!!accessInfo && (accessInfo.canManage || accessInfo.isLead)}
+        />
+      )}
+
+      {/* Design: contracts and screens, approved by the design station */}
+      {activeStationTab === 'design' && (
+        <ProjectDesignPanel projectId={selectedProject.id} canDesign={myStations.includes('design')} />
       )}
 
       {/* Tab 2: Product & Epics */}
@@ -541,7 +476,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
             <h2 className="text-xl font-semibold text-white">Product Scope & Epics</h2>
             <button
               onClick={() => factoryStore.setScreen('roadmap')}
-              className="px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
+              className="k-btn-secondary px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
             >
               Open Full Roadmap View →
             </button>
@@ -565,7 +500,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
             <h2 className="text-xl font-semibold text-white">Architecture & System Boundaries</h2>
             <button
               onClick={() => factoryStore.setScreen('system_design')}
-              className="px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
+              className="k-btn-secondary px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
             >
               Open Mermaid Studio →
             </button>
@@ -583,17 +518,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
       {/* Tab 4: Developer Swarm */}
       {activeStationTab === 'developer' && (
         <div className="space-y-6">
-          {/* Sub-header with Studio link */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">Developer Station & Swarm Control</h2>
-            <button
-              onClick={() => factoryStore.setScreen('developer_dashboard')}
-              className="px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              <span>Open Developer Studio</span>
-            </button>
-          </div>
+          <ProjectBuildPanel projectId={selectedProject.id} />
 
           {/* Quick-stats bar */}
           <div className="grid grid-cols-3 gap-3">
@@ -620,7 +545,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
           {/* Full PR review engine */}
           <div className="p-6 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
             <div className="flex items-center gap-2 mb-5">
-              <GitPullRequest className="w-4 h-4 text-cyan-400" />
+              <GitPullRequest className="w-4 h-4 text-[#5B8FFF]" />
               <h3 className="text-sm font-semibold text-white">Pull Request Review Engine</h3>
               <span className="text-xs font-mono text-[#075BFF] ml-auto">Karkhana AI · Better than CodeRabbit</span>
             </div>
@@ -632,42 +557,14 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
         </div>
       )}
 
-      {/* Tab 5: QA & Verification */}
-      {activeStationTab === 'qa' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">QA Verification & Defect Gates</h2>
-            <button
-              onClick={() => factoryStore.setScreen('qa_dashboard')}
-              className="px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
-            >
-              Open QA Matrix →
-            </button>
-          </div>
+      {/* QA: the queue of finished stories, scenarios and sign-off */}
+      {activeStationTab === 'qa' && <QAVerificationView state={state} />}
 
-          <GlassCard className="p-6 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Test Suites & Unlazy Gates</h3>
-            <p className="text-xs text-slate-400">
-              Deterministic verification guarantees that agent claims are validated against actual exit codes.
-            </p>
-          </GlassCard>
-        </div>
-      )}
+      {/* CI/CD: GitHub Actions pipeline */}
+      {activeStationTab === 'devops' && <ProjectPipelinePanel projectId={selectedProject.id} />}
 
-      {/* Tab 6: CI/CD & Canary */}
-      {activeStationTab === 'devops' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">CI/CD Pipelines & Infrastructure</h2>
-            <button
-              onClick={() => factoryStore.setScreen('pipeline_studio')}
-              className="px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
-            >
-              Open Pipeline DAGs →
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Release: release records and the release gate */}
+      {activeStationTab === 'release' && <ProjectReleasePanel projectId={selectedProject.id} />}
 
       {/* Tab 7: AppSec */}
       {activeStationTab === 'security' && (
@@ -676,7 +573,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
             <h2 className="text-xl font-semibold text-white">Security & Threat Modeling</h2>
             <button
               onClick={() => factoryStore.setScreen('security_dashboard')}
-              className="px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
+              className="k-btn-secondary px-4 py-2 bg-[#101016] border border-white/[0.08] text-white rounded-xl text-xs font-medium hover:border-white/20 transition-colors cursor-pointer"
             >
               Open AppSec Scanner →
             </button>
@@ -699,7 +596,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
           {/* Project Invite Generator */}
           <GlassCard className="p-6 space-y-4">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Link className="w-4 h-4 text-indigo-400" />
+              <Link className="w-4 h-4 text-[#5B8FFF]" />
               <span>Copy Project Invite Link</span>
             </h3>
 
@@ -707,7 +604,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
               <select
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value as FactoryRole)}
-                className="px-3.5 py-2.5 bg-[#07070B] border border-white/[0.08] rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="px-3.5 py-2.5 bg-[#07070B] border border-white/[0.08] rounded-xl text-xs text-white focus:outline-none focus:border-[#075BFF]/25"
               >
                 {(Object.keys(ROLE_CONFIGS) as FactoryRole[]).map((r) => (
                   <option key={r} value={r}>
@@ -743,7 +640,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
                     type="button"
                     onClick={() => setInviteStations((s) => (on ? s.filter((x) => x !== id) : [...s, id]))}
                     className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors cursor-pointer ${
-                      on ? 'bg-indigo-600/30 border-indigo-400 text-white' : 'border-white/[0.1] text-[#827D8E]'
+                      on ? 'bg-[#075BFF]/20 border-[#075BFF]/25 text-white' : 'border-white/[0.1] text-[#827D8E]'
                     }`}
                   >
                     {label}
@@ -778,25 +675,31 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
 
           {/* Assigned Workspace Members */}
           <GlassCard className="p-6 space-y-4">
-            <h3 className="text-sm font-semibold text-white">Enrolled Team Members & Station Permissions</h3>
+            <h3 className="text-sm font-semibold text-white">Project team and stations</h3>
             <div className="divide-y divide-white/[0.08]">
-              {state.members.map((member) => (
-                <div key={member.id} className="py-3.5 flex items-center justify-between gap-4">
+              {projectMembers.length === 0 && (
+                <p className="py-3 text-xs text-[#827D8E]">No one is on this project yet. Copy an invite link above.</p>
+              )}
+              {projectMembers.map((member) => (
+                <div key={member.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-semibold text-xs">
-                      {member.name.charAt(0)}
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#075BFF] to-blue-600 flex items-center justify-center text-white font-semibold text-xs overflow-hidden">
+                      {member.avatarUrl ? <img src={member.avatarUrl} alt="" className="w-full h-full object-cover" /> : member.name.charAt(0)}
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-white">{member.name}</div>
                       <div className="text-[11px] text-[#827D8E] font-mono">{member.email}</div>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[10px] font-mono uppercase px-2 py-1 bg-white/[0.06] text-white rounded-lg border border-white/[0.08]">
-                      {member.roles[0] || 'Member'}
+                      {member.role}{member.isLead ? ' · lead' : ''}
                     </span>
-                    <span className="text-xs text-emerald-400 font-mono">Active</span>
+                    {member.stations.map((st) => (
+                      <span key={st} className="text-[10px] px-2 py-1 rounded-full border border-white/[0.1] text-[#B5B1C0]">
+                        {STATION_LABELS[st] ?? st}
+                      </span>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -810,7 +713,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
         <div className="space-y-4 max-w-3xl">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-sky-400" />
+              <MessageSquare className="w-5 h-5 text-[#5B8FFF]" />
               Project Comments
             </h2>
             <span className="text-xs text-[#827D8E] font-mono">{comments.length} comment{comments.length !== 1 ? 's' : ''}</span>
@@ -838,7 +741,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
                 );
               return (
                 <div key={c.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#075BFF] to-[#9b6dff] flex items-center justify-center text-xs font-bold text-white shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#075BFF] to-[#5B8FFF] flex items-center justify-center text-xs font-bold text-white shrink-0">
                     {(c.authorName || 'U').charAt(0).toUpperCase()}
                   </div>
                   <div className={`flex-1 max-w-[80%] ${isMe ? 'items-end' : ''} flex flex-col gap-1`}>
@@ -874,7 +777,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
                     <button key={m.id} onClick={() => insertCommentMention(m)}
                       className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.06] transition-colors text-sm text-[#d0d4de]"
                     >
-                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#075BFF] to-[#9b6dff] flex items-center justify-center text-[9px] font-bold text-white">{m.displayName.charAt(0)}</div>
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#075BFF] to-[#5B8FFF] flex items-center justify-center text-[9px] font-bold text-white">{m.displayName.charAt(0)}</div>
                       <span className="font-medium">{m.displayName}</span>
                       <span className="text-[10px] text-[#4e5668] ml-auto font-mono">{m.email}</span>
                     </button>
@@ -906,7 +809,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
                 <button
                   onClick={handleSendComment}
                   disabled={!commentText.trim()}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${commentText.trim() ? 'bg-[#075BFF] text-white cursor-pointer' : 'bg-white/[0.05] text-[#4e5668] cursor-not-allowed'}`}
+                  className={`k-btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${commentText.trim() ? 'bg-[#075BFF] text-white cursor-pointer' : 'bg-white/[0.05] text-[#4e5668] cursor-not-allowed'}`}
                 >
                   <Send className="w-3 h-3" /> Post
                 </button>

@@ -35,7 +35,7 @@ from app.models import GitHubToken
 
 log = logging.getLogger(__name__)
 
-DEFAULT_SCOPES = "repo,read:org"
+DEFAULT_SCOPES = "repo,workflow,read:org"
 
 
 async def save_token(

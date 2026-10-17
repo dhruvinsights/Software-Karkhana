@@ -83,13 +83,13 @@ export const WorkflowAdminView: React.FC<WorkflowAdminViewProps> = ({ state }) =
                 <div className="font-bold text-white">Discovery</div>
                 <div className="text-[11px] text-slate-400">Radar & Viability</div>
               </div>
-              <div className="p-4 bg-[#10131d] rounded-xl border border-purple-500/20 space-y-1">
-                <span className="text-[10px] uppercase font-mono text-purple-400">PHASE 2</span>
+              <div className="p-4 bg-[#10131d] rounded-xl border border-[#075BFF]/25 space-y-1">
+                <span className="text-[10px] uppercase font-mono text-[#5B8FFF]">PHASE 2</span>
                 <div className="font-bold text-white">Definition</div>
                 <div className="text-[11px] text-slate-400">Epics & ADR Contracts</div>
               </div>
-              <div className="p-4 bg-[#10131d] rounded-xl border border-cyan-500/20 space-y-1">
-                <span className="text-[10px] uppercase font-mono text-cyan-400">PHASE 3</span>
+              <div className="p-4 bg-[#10131d] rounded-xl border border-[#075BFF]/25 space-y-1">
+                <span className="text-[10px] uppercase font-mono text-[#5B8FFF]">PHASE 3</span>
                 <div className="font-bold text-white">Autonomous Dev</div>
                 <div className="text-[11px] text-slate-400">AST Review & Sandbox</div>
               </div>

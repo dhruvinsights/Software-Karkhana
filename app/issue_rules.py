@@ -23,10 +23,21 @@ from __future__ import annotations
 
 import uuid
 
-TYPES = ("story", "bug", "task", "chore", "security")
+TYPES = ("epic", "story", "bug", "task", "chore", "security")
 PRIORITIES = ("P0", "P1", "P2", "P3")
-STATUSES = ("todo", "in_progress", "in_review", "done", "wont_fix")
-SOURCES = ("manual", "qa", "security", "ci", "review")
+STATUSES = (
+    "draft",
+    "backlog",
+    "ready",
+    "todo",
+    "in_progress",
+    "in_review",
+    "ready_for_qa",
+    "in_qa",
+    "done",
+    "wont_fix",
+)
+SOURCES = ("manual", "qa", "security", "ci", "review", "plan")
 CLOSED = frozenset({"done", "wont_fix"})
 
 

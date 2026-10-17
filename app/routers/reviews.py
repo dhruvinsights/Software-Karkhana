@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import uuid
 from typing import Annotated, Any
 
@@ -24,26 +25,45 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, ledger, memory, process
+from app import access, agent_memory, ledger, memory
 from app.auth import CurrentUser
 from app.db import get_session
 from app.integrations import github
-from app.models import Project, PullRequest, ReviewComment, Run, Task, User
+from app.models import Approval, Project, PullRequest, ReviewComment, Run, Task, User
 from app.process import Event, Role
 from app.review.diff import anchor_comments, diff_to_json, parse_unified_diff
 from app.routers.common import advance_if_legal, get_or_404, lock_project
-from app.schemas import CommentOut, LearningOut, PullRequestOut, TriageIn
+from app.schemas import (
+    CommentOut,
+    LearningOut,
+    PrApprovalOut,
+    PrApproveIn,
+    PullRequestOut,
+    TriageIn,
+)
+from app.services import pipelines, plan, repos
+from app.services.realtime import notify_workspace
 
 router = APIRouter(prefix="/api", tags=["reviews"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 # Authority is checked per project in ``_guard_task`` (workspace role + station).
+logger = logging.getLogger(__name__)
 Dev = CurrentUser
 AnyRole = CurrentUser
 DEV_ROLES = (Role.DEVELOPER, Role.LEAD)
 
 
-def merge_blockers(pr: PullRequest, comments: list[ReviewComment]) -> list[str]:
-    """Everything that must be true before merge. Empty list means mergeable."""
+def merge_blockers(
+    pr: PullRequest,
+    comments: list[ReviewComment],
+    approvers: list[uuid.UUID] | None = None,
+    author: uuid.UUID | None = None,
+) -> list[str]:
+    """Everything recorded in Karkhana that must be true before merge.
+
+    Empty means mergeable here; GitHub's own checks are verified at merge time.
+    ``approvers`` are people who approved the PR; one must not be its ``author``.
+    """
     blockers = []
     if pr.status != "open":
         blockers.append(f"PR is {pr.status}")
@@ -54,7 +74,33 @@ def merge_blockers(pr: PullRequest, comments: list[ReviewComment]) -> list[str]:
     open_count = sum(1 for c in comments if c.triage == "open")
     if open_count:
         blockers.append(f"{open_count} AI comment(s) not triaged")
+    if approvers is not None and not any(a != author for a in approvers):
+        blockers.append("Needs approval from a reviewer other than the author")
     return blockers
+
+
+def _gate(pr: PullRequest) -> str:
+    return f"pr:{pr.id}"
+
+
+async def _approvals(session: AsyncSession, pr: PullRequest) -> list[Approval]:
+    return list(
+        (
+            await session.scalars(
+                select(Approval)
+                .where(Approval.gate == _gate(pr), Approval.decision == "approved")
+                .order_by(Approval.decided_at)
+            )
+        ).all()
+    )
+
+
+async def _author(session: AsyncSession, pr: PullRequest) -> uuid.UUID | None:
+    """Who asked for the change: the requester of the run that produced it."""
+    run = await session.get(Run, pr.run_id) if pr.run_id else None
+    return run.requested_by if run else None
+
+
 
 
 async def _pr_out(session: AsyncSession, pr: PullRequest) -> PullRequestOut:
@@ -67,9 +113,18 @@ async def _pr_out(session: AsyncSession, pr: PullRequest) -> PullRequestOut:
         ).all(),
         key=lambda c: (rank.get(c.severity, 3), c.path),
     )
-    blockers = merge_blockers(pr, comments)
+    approvals = await _approvals(session, pr)
+    author = await _author(session, pr)
+    blockers = merge_blockers(pr, comments, [a.decided_by for a in approvals], author)
+    names = {
+        u.id: u.display_name
+        for u in (await session.scalars(select(User).where(User.id.in_([a.decided_by for a in approvals])))).all()
+    }
     out = PullRequestOut.model_validate(pr)
     out.comments = [CommentOut.model_validate(c) for c in comments]
+    out.approvals = [
+        PrApprovalOut(by=names.get(a.decided_by, ""), note=a.reason, at=a.decided_at) for a in approvals
+    ]
     out.merge_blockers, out.can_merge = blockers, not blockers
     return out
 
@@ -135,6 +190,52 @@ async def triage(
     return comment
 
 
+@router.post("/prs/{pr_id}/approve", response_model=PullRequestOut)
+async def approve_pr(
+    pr_id: uuid.UUID, body: PrApproveIn, session: Session, user: Dev
+) -> PullRequestOut:
+    """A reviewer other than the author approves the change (human review gate)."""
+    pr = await get_or_404(session, PullRequest, pr_id)
+    task = await get_or_404(session, Task, pr.task_id)
+    project = await get_or_404(session, Project, task.project_id)
+    await access.require_project_role(session, user, project, Role.DEVELOPER, Role.LEAD, Role.ARCHITECT)
+    await access.ensure_station(session, user, project, "developer", "architecture")
+    if pr.status != "open":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"PR is {pr.status}")
+    if user.id == await _author(session, pr):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You cannot approve your own change.")
+    if any(a.decided_by == user.id for a in await _approvals(session, pr)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "You already approved this PR.")
+    note = (body.note or "").strip() or None
+    session.add(
+        Approval(project_id=project.id, gate=_gate(pr), decision="approved", reason=note, decided_by=user.id)
+    )
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="pr.approved",
+        subject_type="pull_request",
+        subject_id=pr.id,
+        project_id=project.id,
+        payload={"number": pr.number, "note": note},
+    )
+    await session.flush()
+    if not pr.url.startswith("local://") and (gh := await repos.client_for(session, project.id, user.id)):
+        try:
+            await gh.post_review(
+                number=pr.number,
+                body=f"✅ Approved in Software Karkhana by **{user.display_name}**" + (f": {note}" if note else "."),
+            )
+        except Exception:
+            logger.warning("Could not post the approval to PR %s", pr.number, exc_info=True)
+        finally:
+            await gh.aclose()
+    await session.commit()
+    if project.workspace_id:
+        await notify_workspace(project.workspace_id, "runs")
+    return await _pr_out(session, pr)
+
+
 @router.post("/prs/{pr_id}/merge", response_model=LearningOut)
 async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
     """Merges on GitHub only when every blocker is cleared, then captures a learning."""
@@ -147,7 +248,10 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
             )
         ).all()
     )
-    blockers = merge_blockers(pr, comments)
+    approvals = await _approvals(session, pr)
+    blockers = merge_blockers(
+        pr, comments, [a.decided_by for a in approvals], await _author(session, pr)
+    )
     if blockers:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Cannot merge: " + "; ".join(blockers)
@@ -158,20 +262,30 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
 
     merge_sha = ""
     if not pr.url.startswith("local://"):
-        gh = github.client()
+        gh = await repos.client_for(session, task.project_id, user.id)
         if gh is None:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "GitHub is not configured"
             )
         try:
-            merge_sha = await gh.merge(
-                number=pr.number, title=f"{task.key}: {task.title}"
-            )
+            remote = await gh.get_pull_request(number=pr.number)
+            if remote.get("merged"):
+                # Merged on GitHub already (a retry after a failure here): record it.
+                merge_sha = remote.get("merge_commit_sha") or ""
+            else:
+                failing = await pipelines.ci_blockers(gh, pr.head_sha)
+                if failing:
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT, "Cannot merge: CI is not green: " + "; ".join(failing)
+                    )
+                merge_sha = await gh.merge(
+                    number=pr.number, title=f"{task.key}: {task.title}"
+                )
         finally:
             await gh.aclose()
 
     pr.status, pr.merged_by, pr.merged_at = "merged", user.id, dt.datetime.now(dt.UTC)
-    process.move_task(task, "done")
+    await plan.move_task(session, task, "done")
     await ledger.append(
         session,
         actor=actor,
@@ -200,9 +314,19 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
         await advance_if_legal(
             session, project, Event.MERGED, actor=actor, payload={"pr": pr.number}
         )
-    return await memory.capture_on_merge(
+    # GitHub has merged: record that before the slower, optional learning step.
+    await session.commit()
+    learning = await memory.capture_on_merge(
         session, pr=pr, task=task, actor=ledger.Actor.ai("memory-curator")
     )
+    for role in ("developer", "reviewer"):
+        await agent_memory.remember(
+            project.id, role, f"{task.title}: {learning.text}"
+        )
+    await session.commit()
+    if project.workspace_id:
+        await notify_workspace(project.workspace_id, "runs")
+    return learning
 
 
 @router.post("/prs/{pr_id}/review", response_model=PullRequestOut)
@@ -267,7 +391,7 @@ async def rerun_review(pr_id: uuid.UUID, session: Session, user: Dev) -> PullReq
     await advance_if_legal(
         session, project, Event.REVIEW_POSTED, actor=reviewer, payload={"pr": pr.number}
     )
-    if not pr.url.startswith("local://") and (gh := github.client()) is not None:
+    if not pr.url.startswith("local://") and (gh := await repos.client_for(session, project.id, user.id)) is not None:
         try:
             await gh.post_inline_review(
                 number=pr.number,

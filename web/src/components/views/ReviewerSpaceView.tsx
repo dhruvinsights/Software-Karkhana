@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { FactoryState, factoryStore } from '../../store/factoryStore';
 import { IdeaReviewItem } from '../../types/factory';
+import { useChatFrames } from '../../lib/chatSocket';
+import { IdeaReportModal } from '../workspace/DocumentModal';
 import { BorderGlow } from '../reactbits/BorderGlow';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 
@@ -36,6 +38,7 @@ export const ReviewerSpaceView: React.FC<ReviewerSpaceViewProps> = ({ state }) =
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [decisionComment, setDecisionComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [reportFor, setReportFor] = useState<IdeaReviewItem | null>(null);
 
   const fetchReviews = async () => {
     if (!token) return;
@@ -76,6 +79,11 @@ export const ReviewerSpaceView: React.FC<ReviewerSpaceViewProps> = ({ state }) =
 
   useEffect(() => {
     fetchReviews();
+  }, [token, state.activeWorkspaceId]);
+
+  // New requests and finished reports arrive live.
+  useChatFrames('workspace_sync', (frame) => {
+    if (frame.scope === 'ideas') fetchReviews();
   }, [token, state.activeWorkspaceId]);
 
   const handleDecide = async () => {
@@ -239,17 +247,23 @@ export const ReviewerSpaceView: React.FC<ReviewerSpaceViewProps> = ({ state }) =
                 )}
               </div>
 
-              {/* Evaluation Report Summary if generated */}
-              {item.reviewReport && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl text-xs">
-                  <div>
-                    <div className="text-[10px] font-mono text-blue-400 uppercase font-semibold">Business Value</div>
-                    <p className="text-[#D1D5DB] mt-0.5 line-clamp-3">{item.reviewReport.business_value}</p>
+              {/* The evaluation report reviewers decide on */}
+              {item.reviewReport?.status === 'ready' && item.reviewReport.report && item.reviewReport.meta && (
+                <div className="flex items-center justify-between gap-3 p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl text-xs">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-mono text-blue-400 uppercase font-semibold">Evaluation report</div>
+                    <p className="text-[#D1D5DB] mt-0.5">
+                      <span className="text-white font-semibold">{item.reviewReport.report.verdict}</span>
+                      {' · '}{item.reviewReport.meta.overallScore.toFixed(1)}/10 · size {item.reviewReport.report.size}
+                    </p>
+                    <p className="text-[#A7ACB8] mt-1 line-clamp-2">{item.reviewReport.report.executive_summary}</p>
                   </div>
-                  <div>
-                    <div className="text-[10px] font-mono text-amber-400 uppercase font-semibold">Effort & Budget</div>
-                    <p className="text-[#D1D5DB] mt-0.5 line-clamp-3">{item.reviewReport.effort_budget}</p>
-                  </div>
+                  <button
+                    onClick={() => setReportFor(item)}
+                    className="shrink-0 px-3 py-1.5 bg-[#075BFF]/20 hover:bg-[#075BFF]/30 text-[#5B8FFF] rounded-lg text-xs font-medium cursor-pointer"
+                  >
+                    Read report
+                  </button>
                 </div>
               )}
 
@@ -353,6 +367,9 @@ export const ReviewerSpaceView: React.FC<ReviewerSpaceViewProps> = ({ state }) =
             </div>
           </div>
         </div>
+      )}
+      {reportFor && (
+        <IdeaReportModal ideaId={reportFor.ideaId} title={reportFor.ideaTitle} token={token} onClose={() => setReportFor(null)} />
       )}
     </div>
   );

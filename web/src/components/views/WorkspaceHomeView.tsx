@@ -1,3 +1,4 @@
+import { SpecularButton } from '../reactbits/SpecularButton';
 import React, { useState } from 'react';
 import {
   Layers,
@@ -101,23 +102,25 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
 
         <div className="flex items-center gap-3 shrink-0">
           {isAdmin && (
-          <button
+          <SpecularButton
+            size="md" radius={14} tint="#075bff" tintOpacity={0.3} lineColor="#ffffff" baseColor="#075bff" intensity={1.2} glow={1.2} followMouse proximity={250}
             onClick={() => factoryStore.setScreen('product_create')}
-            className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#075BFF]/20 transition-all cursor-pointer"
+            className="gap-2"
           >
             <Plus className="w-4 h-4" />
             <span>New Product</span>
-          </button>
+          </SpecularButton>
           )}
           {!isGuide && (
-          <button
+          <SpecularButton
+            size="md" radius={14} tint="#ffffff" tintOpacity={0.08} lineColor="#60a5fa" baseColor="#111524" intensity={0.9} glow={0.8} followMouse proximity={250}
             onClick={() => setCreateProjectOpen(true)}
             disabled={state.products.length === 0}
-            className="px-5 py-2.5 bg-[#101016] border border-white/[0.1] hover:border-white/20 hover:bg-[#17151D] disabled:opacity-40 disabled:cursor-not-allowed text-[#F6F5FA] rounded-xl text-xs font-medium flex items-center gap-2 transition-all cursor-pointer"
+            className="gap-2"
           >
             <FolderGit2 className="w-4 h-4 text-[#075BFF]" />
             <span>New Project</span>
-          </button>
+          </SpecularButton>
           )}
         </div>
       </div>
@@ -134,7 +137,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
         >
           <div className="text-[11px] uppercase font-mono tracking-wider text-[#827D8E] font-medium flex items-center justify-between">
             <span>Products</span>
-            <Layers className="w-4 h-4 text-[#075BFF]" />
+            <Layers className="w-4 h-4 text-[#5B8FFF]" />
           </div>
           <div className="text-4xl sm:text-5xl font-light tracking-tight text-white font-sans mt-2">
             {workspaceProducts.length}
@@ -148,7 +151,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
         >
           <div className="text-[11px] uppercase font-mono tracking-wider text-[#827D8E] font-medium flex items-center justify-between">
             <span>Projects</span>
-            <FolderGit2 className="w-4 h-4 text-[#514CE8]" />
+            <FolderGit2 className="w-4 h-4 text-[#5B8FFF]" />
           </div>
           <div className="text-4xl sm:text-5xl font-light tracking-tight text-white font-sans mt-2">
             {workspaceProjects.length}
@@ -162,7 +165,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
         >
           <div className="text-[11px] uppercase font-mono tracking-wider text-[#827D8E] font-medium flex items-center justify-between">
             <span>Pull Requests</span>
-            <GitPullRequest className="w-4 h-4 text-cyan-400" />
+            <GitPullRequest className="w-4 h-4 text-[#5B8FFF]" />
           </div>
           <div className="text-4xl sm:text-5xl font-light tracking-tight text-white font-sans mt-2">
             {workspacePRs.length}
@@ -176,7 +179,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
         >
           <div className="text-[11px] uppercase font-mono tracking-wider text-[#827D8E] font-medium flex items-center justify-between">
             <span>Feature Ideas</span>
-            <Sparkles className="w-4 h-4 text-purple-400" />
+            <Sparkles className="w-4 h-4 text-[#5B8FFF]" />
           </div>
           <div className="text-4xl sm:text-5xl font-light tracking-tight text-white font-sans mt-2">
             {state.ideas.length}
@@ -187,7 +190,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
 
       {/* Quick Interactive Execution Bar */}
       <div className="relative rounded-2xl bg-[#0c0e15]/90 border border-white/[0.08] p-5 text-[#F6F5FA] space-y-3">
-        <BorderBeam size={150} duration={14} colorFrom="#075BFF" colorTo="#514CE8" />
+        <BorderBeam size={150} duration={14} colorFrom="#075BFF" colorTo="#5B8FFF" />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#075BFF] animate-ping" />
@@ -208,7 +211,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
             <button
               type="submit"
               disabled={!isAdmin || !quickProductName.trim()}
-              className="px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-40 text-white rounded-xl text-xs font-medium transition-colors shrink-0 cursor-pointer"
+              className="k-btn-primary px-4 py-2 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-40 text-white rounded-xl text-xs font-medium transition-colors shrink-0 cursor-pointer"
             >
               + Add Product
             </button>
@@ -292,7 +295,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                 {isAdmin ? (
                 <button
                   onClick={() => factoryStore.setScreen('product_create')}
-                  className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#075BFF]/20"
+                  className="k-btn-primary px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#075BFF]/20"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create First Product</span>
@@ -385,7 +388,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                 <button
                   onClick={() => setCreateProjectOpen(true)}
                   disabled={state.products.length === 0}
-                  className="px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-50 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#075BFF]/20"
+                  className="k-btn-primary px-5 py-2.5 bg-[#075BFF] hover:bg-[#075BFF]/90 disabled:opacity-50 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#075BFF]/20"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create First Project</span>
@@ -398,7 +401,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                   return (
                     <SpotlightCard
                       key={proj.id}
-                      className="p-6 bg-[#0c0e15]/90 border-white/[0.08] hover:border-[#514CE8]/40 transition-all space-y-4 group"
+                      className="p-6 bg-[#0c0e15]/90 border-white/[0.08] hover:border-[#5B8FFF]/40 transition-all space-y-4 group"
                       spotlightColor="rgba(81, 76, 232, 0.15)"
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -406,7 +409,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                           <div className="flex items-center gap-2 text-xs font-mono text-[#827D8E]">
                             <span>{proj.code}</span>
                             <span>·</span>
-                            <span className="text-[#514CE8]">{product?.name || 'General Product'}</span>
+                            <span className="text-[#5B8FFF]">{product?.name || 'General Product'}</span>
                           </div>
                           <h3 className="text-2xl font-medium text-white tracking-tight truncate">
                             {proj.name}
@@ -428,7 +431,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                       </p>
 
                       <div className="text-xs font-mono text-[#827D8E]">
-                        Repo: <span className="text-cyan-400">{proj.repositoryUrl}</span>
+                        Repo: <span className="text-[#5B8FFF]">{proj.repositoryUrl}</span>
                       </div>
 
                       <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between">
@@ -440,7 +443,7 @@ export const WorkspaceHomeView: React.FC<WorkspaceHomeViewProps> = ({ state }) =
                             factoryStore.selectProject(proj.id);
                             factoryStore.setScreen('projects');
                           }}
-                          className="text-xs font-semibold text-[#514CE8] group-hover:text-indigo-400 flex items-center gap-1 transition-colors cursor-pointer"
+                          className="text-xs font-semibold text-[#5B8FFF] group-hover:text-[#5B8FFF] flex items-center gap-1 transition-colors cursor-pointer"
                         >
                           <span>Open Project</span>
                           <ChevronRight className="w-4 h-4" />

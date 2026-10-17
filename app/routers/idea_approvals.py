@@ -45,9 +45,10 @@ from app.models import (
     User,
     WorkspaceMember,
 )
+from app.notifications import email_people
 from app.process import Role
-from app.services.evaluation import run_evaluation
-from app.services.realtime import notify_activity
+from app.services import project_docs
+from app.services.realtime import notify_activity, notify_workspace
 
 router = APIRouter(prefix="/api", tags=["idea_flow"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]
@@ -248,6 +249,18 @@ async def request_approval(
             )
         await session.commit()
         await notify_activity(idea.workspace_id, reviewer_ids)
+        await notify_workspace(idea.workspace_id, "ideas")
+        await email_people(
+            session,
+            reviewer_ids,
+            subject=f"Review requested: {idea.title}",
+            heading=f"{user.display_name} asked you to review an idea",
+            lines=[
+                idea.title,
+                *([f"Note: {note}"] if note else []),
+                "Open Reviews to read the evaluation report, then approve or reject.",
+            ],
+        )
     return await _view(session, idea)
 
 
@@ -328,6 +341,19 @@ async def decide(
             )
         await session.commit()
         await notify_activity(idea.workspace_id, recipients)
+        await notify_workspace(idea.workspace_id, "ideas")
+        await email_people(
+            session,
+            recipients,
+            subject=f"Idea {verdict}: {idea.title}",
+            heading=f"{user.display_name} {verdict} \"{idea.title}\"",
+            lines=[
+                *([f"Reason: {reason}"] if reason else []),
+                "Every reviewer has approved; you can now create the project."
+                if idea.status == rules.IDEA_APPROVED
+                else f"Current status: {idea.status.replace('_', ' ')}.",
+            ],
+        )
     return await _view(session, idea)
 
 
@@ -553,7 +579,7 @@ async def promote_idea_to_project(
         },
     )
     await session.commit()
-    background.add_task(run_evaluation, project.id)
+    background.add_task(project_docs.run, project.id)
     return {
         "status": "promoted",
         "projectId": str(project.id),

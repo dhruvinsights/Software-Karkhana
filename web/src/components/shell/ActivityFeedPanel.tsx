@@ -23,11 +23,11 @@ function timeAgo(iso: string): string {
 
 const TYPE_META: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
   mention:      { icon: <AtSign size={13} />,        color: '#075BFF',  label: 'Mentioned you' },
-  comment:      { icon: <MessageSquare size={13} />, color: '#9b6dff',  label: 'Comment' },
+  comment:      { icon: <MessageSquare size={13} />, color: '#5B8FFF',  label: 'Comment' },
   review:       { icon: <GitPullRequest size={13} />,color: '#f0a500',  label: 'Review' },
   approval:     { icon: <CheckCircle2 size={13} />,  color: '#00d9a6',  label: 'Approval' },
   run_complete: { icon: <Play size={13} />,           color: '#00d9a6',  label: 'Agent run' },
-  pr_merged:    { icon: <GitPullRequest size={13} />, color: '#9b6dff', label: 'PR merged' },
+  pr_merged:    { icon: <GitPullRequest size={13} />, color: '#5B8FFF', label: 'PR merged' },
 };
 
 interface FeedItem {

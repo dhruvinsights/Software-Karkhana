@@ -47,3 +47,5 @@ third_party/
 
 # --- Local ledger anchors (dev only; production uses a locked bucket) ---
 .ledger-anchors.jsonl
+.venv-mem0/
+.mem0/

@@ -35,8 +35,8 @@ const TEAM_SPACES: {
   color: string;
   env: string[];
 }[] = [
-  { id: 'design', label: 'Design', icon: <Cpu className="w-4 h-4" />, color: '#9b6dff', env: ['AI prototype studio', 'Screen flow maps', 'Design tokens & review pins'] },
-  { id: 'architecture', label: 'Architecture', icon: <Workflow className="w-4 h-4" />, color: '#514CE8', env: ['System design (C4 / Mermaid)', 'ADR registry', 'API contracts & risk map'] },
+  { id: 'design', label: 'Design', icon: <Cpu className="w-4 h-4" />, color: '#5B8FFF', env: ['AI prototype studio', 'Screen flow maps', 'Design tokens & review pins'] },
+  { id: 'architecture', label: 'Architecture', icon: <Workflow className="w-4 h-4" />, color: '#5B8FFF', env: ['System design (C4 / Mermaid)', 'ADR registry', 'API contracts & risk map'] },
   { id: 'developer', label: 'Development', icon: <GitPullRequest className="w-4 h-4" />, color: '#075BFF', env: ['Agent sandboxes & sessions', 'Pull requests & AI review', 'Dependency manifest'] },
   { id: 'qa', label: 'QA / QC', icon: <CheckCircle2 className="w-4 h-4" />, color: '#00d9a6', env: ['AI test scenario generator', 'Manual & automated runs', 'Defects & QA sign-off'] },
   { id: 'security', label: 'Security & Pentest', icon: <Shield className="w-4 h-4" />, color: '#f43f5e', env: ['Threat model & assessments', 'Dependency / SAST / DAST scans', 'Findings & SLA tracking'] },
@@ -259,7 +259,7 @@ export const ProductSetupView: React.FC<{ state: FactoryState }> = ({ state }) =
                         border: on ? '1px solid rgba(0,217,166,0.45)' : '1px solid rgba(255,255,255,0.08)',
                       }}
                     >
-                      <span className="w-8 h-8 rounded-lg bg-indigo-600/30 flex items-center justify-center text-[11px] font-bold text-indigo-200 shrink-0 overflow-hidden">
+                      <span className="w-8 h-8 rounded-lg bg-[#075BFF]/20 flex items-center justify-center text-[11px] font-bold text-[#B5B1C0] shrink-0 overflow-hidden">
                         {m.avatar ? <img src={m.avatar} alt="" className="w-8 h-8 object-cover" referrerPolicy="no-referrer" /> : m.name.charAt(0).toUpperCase()}
                       </span>
                       <span className="min-w-0 flex-1">

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import access, db, issue_rules, ledger
 from app.auth import CurrentUser
 from app.models import Issue, Project, User
+from app.services import plan
 
 router = APIRouter(tags=["issues"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]
@@ -78,6 +79,10 @@ def _out(i: Issue, names: dict[uuid.UUID, str]) -> dict[str, Any]:
         "assigneeName": names.get(i.assignee_id, "") if i.assignee_id else None,
         "taskId": str(i.task_id) if i.task_id else None,
         "prId": str(i.pr_id) if i.pr_id else None,
+        "parentId": str(i.parent_id) if i.parent_id else None,
+        "acceptanceCriteria": i.acceptance_criteria or [],
+        "sourceQuote": i.source_quote,
+        "estimate": i.estimate,
         "createdAt": i.created_at.isoformat(),
         "updatedAt": i.updated_at.isoformat(),
         "closedAt": i.closed_at.isoformat() if i.closed_at else None,
@@ -238,6 +243,10 @@ async def update_issue(
     problem = issue_rules.validate(type_=body.type, priority=body.priority, status=body.status)
     if problem:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
+    if body.status == "done" and issue.type == "story" and issue.source == "plan":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "A planned story is Done only through QA sign-off."
+        )
 
     changes: dict[str, Any] = {}
     if assigning:
@@ -260,6 +269,7 @@ async def update_issue(
         changes["status"] = body.status
         issue.status = body.status
         issue.closed_at = dt.datetime.now(dt.UTC) if body.status in issue_rules.CLOSED else None
+        await plan.task_follows_issue(session, issue)
 
     if changes:
         issue.updated_at = dt.datetime.now(dt.UTC)

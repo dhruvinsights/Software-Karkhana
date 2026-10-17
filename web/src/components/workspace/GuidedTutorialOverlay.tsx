@@ -162,7 +162,7 @@ export const GuidedTutorialOverlay: React.FC<GuidedTutorialOverlayProps> = ({
           </div>
 
           {/* Station Target Pill */}
-          <div className="p-3 bg-[#06080e] rounded-xl border border-white/10 flex items-center gap-2 text-xs font-mono text-cyan-400">
+          <div className="p-3 bg-[#06080e] rounded-xl border border-white/10 flex items-center gap-2 text-xs font-mono text-[#5B8FFF]">
             <Sparkles className="w-3.5 h-3.5 shrink-0" />
             <span>Target: {currentStep.highlightLabel}</span>
           </div>

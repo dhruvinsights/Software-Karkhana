@@ -15,8 +15,9 @@ export type ChatFrame =
   | { type: 'presence'; onlineUsers: string[] }
   | { type: 'project_comment'; id: string; projectId: string; authorId: string; authorName: string; authorAvatar?: string; body: string; mentions: string[]; createdAt: string }
   | { type: 'channel_created'; channel: { id: string; name: string; visibility: string } }
-  | { type: 'workspace_sync'; scope: 'projects' | 'products' | 'members' }
+  | { type: 'workspace_sync'; scope: 'projects' | 'products' | 'members' | 'ideas' | string }
   | { type: 'scan_progress'; scanId: string; step: string; percent: number; note?: string }
+  | { type: 'run_log'; runId: string; lines: { level: string; message: string }[] }
   | { type: 'reconnected' }
   | { type: 'activity' }
   | { type: 'pong' }

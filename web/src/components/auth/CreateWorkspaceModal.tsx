@@ -170,7 +170,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                   />
                 </div>
                 {workspaceName.trim() && (
-                  <p className="text-[11px] font-mono text-cyan-400 pt-1">
+                  <p className="text-[11px] font-mono text-[#5B8FFF] pt-1">
                     Workspace URL: https://{workspaceName.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'workspace'}.internal
                   </p>
                 )}
@@ -244,7 +244,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                   {teammateEmails.map((email) => (
                     <span
                       key={email}
-                      className="px-2.5 py-1 bg-[#075bff]/20 text-cyan-300 border border-[#075bff]/30 rounded-xl text-[11px] font-mono flex items-center gap-1.5"
+                      className="px-2.5 py-1 bg-[#075bff]/20 text-[#5B8FFF] border border-[#075bff]/30 rounded-xl text-[11px] font-mono flex items-center gap-1.5"
                     >
                       {email}
                       <button
@@ -284,7 +284,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                   className="w-full p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-between text-xs text-slate-300 hover:text-white transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
-                    <Link className="w-4 h-4 text-cyan-400" />
+                    <Link className="w-4 h-4 text-[#5B8FFF]" />
                     <span>Copy shareable invite link</span>
                   </div>
                   {copiedLink ? (
@@ -330,7 +330,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleFinalSubmit}
-                className="px-6 py-2.5 bg-gradient-to-r from-[#075bff] to-cyan-500 hover:opacity-90 disabled:opacity-40 text-white font-semibold text-xs rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-cyan-500/20 cursor-pointer"
+                className="px-6 py-2.5 bg-gradient-to-r from-[#075bff] to-[#075BFF] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-xs rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-cyan-500/20 cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
                 <span>{isSubmitting ? 'Creating Workspace...' : 'Launch Workspace'}</span>

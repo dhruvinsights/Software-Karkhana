@@ -93,6 +93,24 @@ class FileDiff:
         }
 
 
+def number_diff(text: str) -> str:
+    """Re-renders a diff with the new-file line number on every added/context line.
+
+    Models cannot count lines in a raw hunk, so they cite none. With the number
+    printed next to the line they can cite it, and ``anchor`` then checks it.
+    """
+    out: list[str] = []
+    for f in parse_unified_diff(text):
+        out.append(f"=== {f.path} ({f.status}) ===")
+        for h in f.hunks:
+            out.append(h.header)
+            for ln in h.lines:
+                mark = {"add": "+", "del": "-", "ctx": " "}[ln.kind]
+                num = f"{ln.new:>5}" if ln.new is not None else "     "
+                out.append(f"{num} {mark}{ln.text}")
+    return "\n".join(out)
+
+
 def normalize_path(path: str) -> str:
     """Strips ``a/``, ``b/`` and ``./`` prefixes and surrounding quotes/space."""
     p = path.strip().strip('"').strip()

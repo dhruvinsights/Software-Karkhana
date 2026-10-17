@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 
 from app.schemas import EvaluationOutput, LearningOutput, ReviewOutput
+from app.services.project_docs import Backlog, Erd, Prd
 from tests import fixtures as fallbacks
 
 IDEAS = {i["key"]: i for i in fallbacks.demo_ideas()}
@@ -33,6 +34,41 @@ def fake_vector(text: str) -> list[float]:
     for i in range(1, 16):
         base[i] = h[i] / 2550.0
     return base
+
+
+PRD = {
+    "summary": "Add percentage discounts to invoices.",
+    "problem": "Invoices cannot carry a discount.",
+    "goals": ["Apply a discount to an invoice total"],
+    "non_goals": [],
+    "personas": [{"name": "Billing clerk", "needs": "Discount an invoice"}],
+    "journeys": [{"name": "Discount", "steps": ["Open invoice", "Apply discount"]}],
+    "functional": [
+        {"id": "FR-1", "title": "Discount", "description": "Apply a percentage.", "priority": "Must",
+         "acceptance_criteria": ["10% off 100.00 is 90.00"]},
+        {"id": "FR-2", "title": "Rounding", "description": "Round half up.", "priority": "Should",
+         "acceptance_criteria": ["Rounds to the minor unit"]},
+    ],
+    "non_functional": [],
+    "success_metrics": ["Discounted invoices total correctly"],
+    "dependencies": [],
+    "risks": [],
+    "open_questions": [],
+    "milestones": ["Discounts live"],
+}
+ERD = {
+    "entities": [{"name": "invoices", "status": "new", "description": "Invoices",
+                  "columns": [{"name": "id", "type": "uuid", "key": "PK"}]}],
+    "relations": [],
+    "notes": [],
+}
+BACKLOG = {
+    "epics": [{"title": "Discounts", "description": "Discounts on invoices", "stories": [
+        {"title": "As a clerk, I want a discount so that invoices are correct.",
+         "acceptance_criteria": ["Given 100.00, when 10% off, then 90.00", "Given a total, then round half up"],
+         "requirement_ids": ["FR-1", "FR-2"], "estimate": 2, "layer": "backend"},
+    ]}],
+}
 
 
 class FakeGemini:
@@ -70,6 +106,12 @@ class FakeGemini:
             )
         if schema is ReviewOutput:
             return fallbacks.review()
+        if schema is Prd:
+            return Prd.model_validate(PRD)
+        if schema is Erd:
+            return Erd.model_validate(ERD)
+        if schema is Backlog:
+            return Backlog.model_validate(BACKLOG)
         raise AssertionError(f"unexpected schema {schema}")
 
     async def embed(self, text, *, task_type="RETRIEVAL_DOCUMENT"):

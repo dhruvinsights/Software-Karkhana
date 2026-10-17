@@ -129,6 +129,26 @@ class IdeaScan(Base):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class RepoSnapshot(Base):
+    """A product's repository at one commit, packed by repomix (migration 027)."""
+
+    __tablename__ = "repo_snapshots"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    repo_url: Mapped[str] = mapped_column(String)
+    commit_sha: Mapped[str] = mapped_column(String)
+    tree: Mapped[str] = mapped_column(Text)
+    files: Mapped[dict[str, str]] = mapped_column(JSONB)
+    paths: Mapped[list[str]] = mapped_column(JSONB, default=list)  # git ls-files (031)
+    file_count: Mapped[int] = mapped_column(Integer)
+    chars: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = _now()
+
+
 class Idea(Base):
     """A feature idea under validation with AI feasibility radar and reviewer approval."""
 
@@ -222,12 +242,32 @@ class Project(Base):
     idea_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("ideas.id", ondelete="SET NULL"), nullable=True
     )
+    # Progress of the PRD/ERD/backlog drafting job (migration 028).
+    docs_status: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ProjectDocument(Base):
+    """A versioned PRD, ERD or design spec: drafted by AI, approved by people (028)."""
+
+    __tablename__ = "project_documents"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String)  # prd | erd | design
+    version: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String, default="draft")  # draft | approved
+    model: Mapped[str] = mapped_column(String)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
 
 
 class WorkspaceInvite(Base):
@@ -588,6 +628,11 @@ class Issue(Base):
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
     pr_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pull_requests.id", ondelete="SET NULL"), nullable=True)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), nullable=True)
+    epic_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("epics.id", ondelete="SET NULL"), nullable=True)
+    acceptance_criteria: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    source_quote: Mapped[str] = mapped_column(Text, default="")
+    estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -728,4 +773,80 @@ class RagChatMessage(Base):
     sources: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.clock_timestamp()
+    )
+
+
+class AgentDevice(Base):
+    """A developer machine running karkhana-agent (029). Secrets are stored hashed."""
+
+    __tablename__ = "agent_devices"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String)
+    platform: Mapped[str] = mapped_column(String, default="")
+    harness: Mapped[str] = mapped_column(String, default="")
+    token_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    pairing_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    pairing_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String, default="pending")  # pending | active | revoked
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class AgentJob(Base):
+    """One agent execution; for builds on a machine, tied to the run it executes (026, 029)."""
+
+    __tablename__ = "agent_jobs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("issues.id", ondelete="SET NULL"), nullable=True)
+    role: Mapped[str] = mapped_column(String)
+    engine: Mapped[str] = mapped_column(String, default="bob")
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="queued")
+    instruction: Mapped[str] = mapped_column(Text, default="")
+    output: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sandbox: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    device_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_devices.id", ondelete="SET NULL"), nullable=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentJobLog(Base):
+    """One line of an agent job's live log (026). Append-only."""
+
+    __tablename__ = "agent_job_logs"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_jobs.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    level: Mapped[str] = mapped_column(String, default="info")  # info | thinking | output | error
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class Release(Base):
+    """A release record: what ships, its evidence, and who approved it (030)."""
+
+    __tablename__ = "releases"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    version: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="draft")  # draft | published
+    manifest: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    blockers: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    commit_sha: Mapped[str] = mapped_column(String, default="")
+    release_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

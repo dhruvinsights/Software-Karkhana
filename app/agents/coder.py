@@ -35,7 +35,8 @@ from google.genai import types
 
 from app.agents.ollama_llm import OllamaLlm
 from app.agents.tools import Workspace, make_tools
-from app.ai import compression
+from app.ai import compression, llm
+from app.ai.providers import bob
 from app.config import get_settings
 from app.schemas import ReviewOutput
 
@@ -83,8 +84,12 @@ or delete existing tests to make them pass.
 REVIEWER_INSTRUCTION = """\
 You are the Reviewer agent in Software Karkhana. You review a unified diff for
 correctness, missing tests, money and rounding errors, error handling and
-readability. Return 3 to 5 specific, actionable comments, each tied to a file
-path in the diff. Rank severity honestly: use "high" only for real bugs.
+readability. Return at most 5 specific, actionable comments, each tied to a file
+path in the diff. Comment only on real problems: if the diff is sound, return
+no comments rather than inventing nits. Each added or context line is prefixed with its line number in
+the new file: set "line" to that number for the exact line you mean, and leave it
+null only for a whole-file remark. Rank severity honestly: use "high" only for
+real bugs, such as injection, data loss or wrong results.
 Your comments are AI-generated and unverified; a developer will triage each one.
 """
 
@@ -167,13 +172,29 @@ async def run_coder(
             "earlier runs; follow decisions, do not repeat finished work):\n"
             + "\n".join(context)
         )
+    if get_settings().llm_provider == "bob":
+        # Bob is itself a coding agent with file tools, so it works on the
+        # checkout directly. It runs inside the worker, which holds no secrets.
+        out = await bob.run(
+            f"{CODER_INSTRUCTION}\n\n{message}",
+            workspace_dir=str(ws.root),
+            max_turns=60,
+        )
+        return out.text
     summary, _ = await _run(build_coder(ws), message, max_llm_calls=40)
     return summary
 
 
 async def run_reviewer(diff: str, *, title: str) -> ReviewOutput:
     """Runs the Reviewer on a diff and returns validated comments."""
-    message = f"STORY: {title}\n\nDIFF:\n```diff\n{diff[:60_000]}\n```"
+    from app.review.diff import number_diff
+
+    shown = number_diff(diff) or diff
+    message = f"STORY: {title}\n\nDIFF:\n```\n{shown[:60_000]}\n```"
+    if get_settings().llm_provider == "bob":
+        return await llm.generate_structured(
+            prompt=message, schema=ReviewOutput, system=REVIEWER_INSTRUCTION
+        )
     final, state = await _run(build_reviewer(), message, max_llm_calls=3)
     raw = state.get("review") or final
     if isinstance(raw, dict):

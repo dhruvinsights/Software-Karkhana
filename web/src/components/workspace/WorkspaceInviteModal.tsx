@@ -109,7 +109,7 @@ export const WorkspaceInviteModal: React.FC<WorkspaceInviteModalProps> = ({ isOp
   const roleColor = (role: string) => {
     if (role === 'admin' || role === 'owner') return '#f0a500';
     if (role === 'developer' || role === 'lead') return '#075BFF';
-    return '#9b6dff';
+    return '#5B8FFF';
   };
 
   return (

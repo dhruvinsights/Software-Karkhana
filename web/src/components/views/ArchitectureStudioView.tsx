@@ -250,8 +250,8 @@ export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ 
                 <div className="font-bold text-sm text-white">{selectedProject.name}</div>
                 <div className="text-[11px] text-slate-400">FastAPI / Envoy Proxy</div>
               </div>
-              <div className="p-5 bg-[#10131d] rounded-xl border border-purple-500/20 text-center space-y-2">
-                <Cpu className="w-5 h-5 text-purple-400 mx-auto" />
+              <div className="p-5 bg-[#10131d] rounded-xl border border-[#075BFF]/25 text-center space-y-2">
+                <Cpu className="w-5 h-5 text-[#5B8FFF] mx-auto" />
                 <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">AGENT WORKER SWARM</span>
                 <div className="font-bold text-sm text-white">Distributed Runners</div>
                 <div className="text-[11px] text-slate-400">Celery / Redis Broker</div>
@@ -282,7 +282,7 @@ export const ArchitectureStudioView: React.FC<ArchitectureStudioViewProps> = ({ 
           <div className="p-4 bg-[#0a0c12] rounded-xl border border-white/10 font-mono text-xs text-slate-300 space-y-2 overflow-x-auto">
             <div className="text-blue-400 font-semibold">// protobuf / v1 / factory_events.proto</div>
             <div className="text-slate-400">syntax = "proto3";</div>
-            <div className="text-purple-400">package karkhana.v1;</div>
+            <div className="text-[#5B8FFF]">package karkhana.v1;</div>
             <br />
             <div>message TaskExecutionEvent &#123;</div>
             <div className="pl-4 text-emerald-400">string task_id = 1;</div>

@@ -160,3 +160,4 @@ Plan, select task, build, assign reviewer, review, merge.
 | 2026-10-17 | Station cards, per-station invite, live member lists | tsc and build ok |
 | 2026-10-17 | QA: finished-story queue, AI scenarios and script, new QA screen | 239 tests pass, ruff, tsc, build ok |
 | 2026-10-17 | Browser check of project page found markdown title leak and loose Agent Swarm button | logged as 1.5 and 1.9 |
+| 2026-10-17 | Idea-to-release flow: local agent, build to PR, QA gate, pipeline PR, release record; merged with `main` | 239 tests, 6 agent tests, ruff, tsc, build ok; runbook in `docs/E2E_FACTORY.md` |

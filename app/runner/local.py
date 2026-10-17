@@ -82,6 +82,9 @@ _OS_PASSTHROUGH = (
 _WORKER_SETTINGS = (
     "llm_provider",
     "embed_provider",
+    "bob_api_key",
+    "bob_bin",
+    "bob_timeout_s",
     "gemini_api_key",
     "ollama_base_url",
     "ollama_model",

@@ -31,9 +31,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, db, ledger
+from app import access, db, issue_rules, ledger
 from app.auth import CurrentUser
-from app.models import Adr, Project, SecurityFinding, TestScenario, User
+from app.models import Adr, Issue, Project, SecurityFinding, TestScenario, User
+from app.services import qa_gate
 
 router = APIRouter(tags=["stations"])
 Session = Annotated[AsyncSession, Depends(db.get_session)]
@@ -388,6 +389,64 @@ async def create_scenario(
     return _scenario_out(scenario, await _names(session, [scenario]))
 
 
+@router.get("/api/projects/{project_id}/qa-queue")
+async def qa_queue(project_id: uuid.UUID, session: Session, user: CurrentUser) -> list[dict[str, Any]]:
+    """Stories developers finished and QA has not signed off, with how many scenarios each has."""
+    await _project_for(session, user, project_id, "qa")
+    issues = (
+        await session.scalars(
+            select(Issue)
+            .where(
+                Issue.project_id == project_id,
+                Issue.type != "epic",
+                Issue.status.in_(("ready_for_qa", "in_qa", "done")),
+            )
+            .order_by(Issue.number)
+        )
+    ).all()
+    counts = dict(
+        (
+            await session.execute(
+                select(TestScenario.issue_id, func.count())
+                .where(TestScenario.project_id == project_id, TestScenario.issue_id.is_not(None))
+                .group_by(TestScenario.issue_id)
+            )
+        ).all()
+    )
+    return [
+        {
+            "id": str(i.id),
+            "key": f"#{i.number}",
+            "title": i.title,
+            "status": i.status,
+            "acceptanceCriteria": i.acceptance_criteria or [],
+            "scenarios": counts.get(i.id, 0),
+        }
+        for i in issues
+    ]
+
+
+@router.post("/api/issues/{issue_id}/test-scenarios", status_code=status.HTTP_201_CREATED)
+async def synthesize_scenarios(issue_id: uuid.UUID, session: Session, user: CurrentUser) -> list[dict[str, Any]]:
+    """AI drafts manual scenarios and an automation script for one finished story."""
+    from app.ai.errors import ModelError
+    from app.services import qa_synth
+
+    issue = await _record_for(session, Issue, issue_id, "Issue")
+    project = await _project_for(session, user, issue.project_id, "qa")
+    try:
+        made = await qa_synth.synthesize_for_issue(session, project, issue, user)
+    except ModelError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"The model could not draft tests: {exc}") from exc
+    names = await _names(session, made)
+    for row in made:
+        await _log(
+            session, user, kind="test_scenario", created=True, row=row, changes={},
+            extra={"title": row.title, "issue": issue.number, "by": "ai-qa-synthesiser"},
+        )
+    return [_scenario_out(t, names) for t in made]
+
+
 @router.patch("/api/test-scenarios/{scenario_id}")
 async def update_scenario(
     scenario_id: uuid.UUID, body: ScenarioPatch, session: Session, user: CurrentUser
@@ -407,7 +466,31 @@ async def update_scenario(
             extra={"title": scenario.title},
             status_fields=frozenset({"status", "actual_result", "evidence_uri"}),
         )
+        if "status" in changes and scenario.issue_id:
+            await qa_gate.record_result(session, scenario, user)
     return _scenario_out(scenario, await _names(session, [scenario]))
+
+
+@router.post("/api/issues/{issue_id}/qa-signoff")
+async def qa_signoff(issue_id: uuid.UUID, session: Session, user: CurrentUser) -> dict[str, Any]:
+    """QA signs a story off: every scenario for it has passed, so it is Done."""
+    issue = await _record_for(session, Issue, issue_id, "Issue")
+    await _project_for(session, user, issue.project_id, "qa")
+    problem = await qa_gate.signoff_problem(session, issue)
+    if problem:
+        raise HTTPException(status.HTTP_409_CONFLICT, problem)
+    issue.status, issue.closed_at = "done", dt.datetime.now(dt.UTC)
+    issue.updated_at = issue.closed_at
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="qa.signed_off",
+        subject_type="issue",
+        subject_id=issue.id,
+        project_id=issue.project_id,
+        payload={"key": issue_rules.key(issue.number)},
+    )
+    return {"id": str(issue.id), "status": issue.status}
 
 
 # ── Security findings ────────────────────────────────────────────────────────

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ idea.title }} · Idea evaluation</title>
+{% include "_style.html.j2" %}
+</head>
+<body>
+{% set verdict_class = {"Go": "v-go", "Go with conditions": "v-cond", "Needs more evidence": "v-more", "No-go": "v-nogo"}[r.verdict] %}
+
+<div class="cover">
+  <div class="eyebrow">Idea evaluation · {{ product.name if product else "Unassigned product" }}</div>
+  <h1>{{ idea.title }}</h1>
+  <div class="meta">
+    <div>Prepared<b>{{ generated_on }}</b></div>
+    <div>Requested by<b>{{ author or "—" }}</b></div>
+    <div>Code evidence<b>{% if meta.commit %}{{ repo_name }} @ {{ meta.commit[:8] }}{% else %}No repository connected{% endif %}</b></div>
+    <div>Size · duration<b>{{ r.size }} · {{ total_weeks }} weeks</b></div>
+  </div>
+</div>
+
+<div class="headline">
+  <div class="summary">{{ r.executive_summary }}</div>
+  <div class="verdict {{ verdict_class }}">
+    <div>
+      <div class="label">Recommendation</div>
+      <div class="value">{{ r.verdict }}</div>
+    </div>
+    <div class="score">{{ "%.1f"|format(meta.overallScore) }}<small> / 10</small></div>
+  </div>
+</div>
+
+<section>
+  <h2><span class="n">01</span>Scorecard</h2>
+  <div class="scores">
+    {% for key, label, hint in score_rows %}
+      {% set s = r.scores[key] %}
+      <div class="score-row">
+        <div class="name">{{ label }}<small>{{ hint }}</small></div>
+        <div class="bar"><i class="{{ 'inv' if key in ('effort', 'risk') }}" style="width: {{ s.score * 10 }}%"></i></div>
+        <div class="num">{{ s.score }}</div>
+        <div class="rationale">{{ s.rationale }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">02</span>Problem and users</h2>
+  <p>{{ r.problem }}</p>
+  <div class="two">
+    <div class="card">
+      <h3>Who it is for</h3>
+      <ul class="clean">{% for u in r.target_users %}<li>{{ u }}</li>{% endfor %}</ul>
+    </div>
+    <div class="card">
+      <h3>How we will know it worked</h3>
+      <ul class="clean">{% for m in r.success_metrics %}<li>{{ m }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+  <h3>Value hypothesis</h3>
+  <div class="callout">{{ r.value_hypothesis }}</div>
+</section>
+
+<section>
+  <h2><span class="n">03</span>Technical feasibility</h2>
+  <h3>Today</h3>
+  <p>{{ r.current_state }}</p>
+  <h3>Proposed approach</h3>
+  <p>{{ r.proposed_approach }}</p>
+  {% if r.affected_areas %}
+  <h3>Where the change lands</h3>
+  <table>
+    <thead><tr><th style="width:44%">Path</th><th style="width:11%">Change</th><th>What changes</th></tr></thead>
+    <tbody>
+    {% for a in r.affected_areas %}
+      <tr><td><code>{{ a.path }}</code></td><td><span class="chip c-{{ a.kind }}">{{ a.kind }}</span></td><td>{{ a.change }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <h3>Architecture impact</h3>
+  <p>{{ r.architecture_impact }}</p>
+  <div class="two">
+    <div class="card">
+      <h3>Data model changes</h3>
+      {% if r.data_model_changes %}<ul class="clean">{% for d in r.data_model_changes %}<li>{{ d }}</li>{% endfor %}</ul>{% else %}<p class="muted">None.</p>{% endif %}
+    </div>
+    <div class="card">
+      <h3>New dependencies</h3>
+      {% if r.new_dependencies %}<ul class="clean">{% for d in r.new_dependencies %}<li>{{ d }}</li>{% endfor %}</ul>{% else %}<p class="muted">None.</p>{% endif %}
+    </div>
+  </div>
+  {% if r.alternatives %}
+  <h3>Alternatives considered</h3>
+  <table>
+    <thead><tr><th style="width:35%">Option</th><th>Trade-off</th></tr></thead>
+    <tbody>{% for a in r.alternatives %}<tr><td>{{ a.option }}</td><td>{{ a.tradeoff }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section>
+  <h2><span class="n">04</span>Risks</h2>
+  <table>
+    <thead><tr><th style="width:30%">Risk</th><th style="width:11%">Likelihood</th><th style="width:11%">Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+    {% for k in r.risks %}
+      <tr>
+        <td><b>{{ k.title }}</b></td>
+        <td><span class="chip c-{{ k.likelihood|lower }}">{{ k.likelihood }}</span></td>
+        <td><span class="chip c-{{ k.impact|lower }}">{{ k.impact }}</span></td>
+        <td>{{ k.mitigation }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="n">05</span>Delivery plan</h2>
+  <p><b>Team:</b> {{ r.team|join(", ") }}</p>
+  <table>
+    <thead><tr><th style="width:26%">Phase</th><th style="width:10%">Weeks</th><th>Deliverables</th></tr></thead>
+    <tbody>
+    {% for p in r.phases %}
+      <tr><td><b>{{ p.name }}</b></td><td>{{ p.weeks|round(1) }}</td><td><ul class="clean">{% for d in p.deliverables %}<li>{{ d }}</li>{% endfor %}</ul></td></tr>
+    {% endfor %}
+      <tr><td><b>Total</b></td><td><b>{{ total_weeks }}</b></td><td class="muted">Sequential estimate; phases may overlap with a larger team.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="n">06</span>Assumptions and open questions</h2>
+  <div class="two">
+    <div class="card">
+      <h3>Assumptions (not verified)</h3>
+      {% if r.assumptions %}<ul class="clean">{% for a in r.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>{% else %}<p class="muted">None.</p>{% endif %}
+    </div>
+    <div class="card">
+      <h3>Open questions</h3>
+      {% if r.open_questions %}<ul class="clean">{% for q in r.open_questions %}<li>{{ q }}</li>{% endfor %}</ul>{% else %}<p class="muted">None.</p>{% endif %}
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">07</span>Recommendation</h2>
+  <p><b>{{ r.verdict }}.</b> Overall score {{ "%.1f"|format(meta.overallScore) }} out of 10.</p>
+  {% if r.conditions %}
+  <h3>Conditions for approval</h3>
+  <ul class="clean">{% for c in r.conditions %}<li>{{ c }}</li>{% endfor %}</ul>
+  {% endif %}
+  <h3>Next steps</h3>
+  <ol class="clean">{% for s in r.next_steps %}<li>{{ s }}</li>{% endfor %}</ol>
+</section>
+
+<div class="appendix">
+  <b>How this report was made.</b>
+  {% if meta.commit %}The repository {{ meta.repoUrl }} was read at commit {{ meta.commit }} and compressed with repomix; every
+  file path in section 03 was checked against that commit by the platform, not by the model.{% else %}No repository was connected, so the technical assessment rests on the idea text alone.{% endif %}
+  The overall score is computed by the platform:
+  {% for key, label, hint in score_rows %}{{ label|lower }} {{ (meta.weights[key] * 100)|round|int }}%{{ ", " if not loop.last }}{% endfor %},
+  with effort and risk inverted (11 − score). Written by {{ meta.model }}; AI-generated and pending human review.
+</div>
+</body>
+</html>

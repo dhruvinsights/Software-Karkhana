@@ -37,9 +37,11 @@ from app import db
 from app.app_utils.telemetry import setup_telemetry
 from app.config import get_settings
 from app.routers import (
+    agent_devices,
     auth,
     chat,
     context,
+    delivery,
     gemini,
     github_oauth,
     home,
@@ -48,8 +50,10 @@ from app.routers import (
     invites,
     issues,
     operations,
+    plan,
     platform,
     products,
+    project_docs,
     projects,
     rag,
     reviews,
@@ -106,8 +110,10 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
     for r in (
+        agent_devices.router,
         auth.router,
         chat.router,
+        delivery.router,
         gemini.router,
         github_oauth.router,
         home.router,
@@ -117,6 +123,8 @@ def create_app() -> FastAPI:
         invites.router,
         issues.router,
         operations.router,
+        plan.router,
+        project_docs.router,
         projects.router,
         rag.router,
         runs.router,

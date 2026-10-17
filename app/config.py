@@ -42,10 +42,10 @@ class Settings(BaseSettings):
     )
 
     # --- Model providers -----------------------------------------------
-    # Two providers only: Gemini (hosted) and Ollama (local). Chat and
-    # embeddings are chosen independently, so you can run Gemini for text and
-    # Ollama's nomic-embed-text for vectors.
-    llm_provider: Literal["gemini", "ollama"] = "gemini"
+    # Chat: Gemini (hosted), Ollama (local) or IBM Bob (its CLI). Embeddings:
+    # Gemini or Ollama. They are chosen independently, so you can run Bob for
+    # text and Ollama's nomic-embed-text for vectors.
+    llm_provider: Literal["gemini", "ollama", "bob"] = "gemini"
     embed_provider: Literal["gemini", "ollama"] = "gemini"
 
     # Gemini through a Google AI Studio key (GEMINI_API_KEY), or through
@@ -135,6 +135,8 @@ class Settings(BaseSettings):
     github_token: str | None = Field(default=None, repr=False)
     github_repo: str | None = None  # "owner/name" of the demo repo
     github_base_branch: str = "main"
+    # Comma-separated GitHub logins asked to review every PR Karkhana opens.
+    github_reviewers: str = ""
     github_api_url: str = "https://api.github.com"
     # Comma-separated Fernet keys for encrypting stored OAuth tokens; the first
     # encrypts, all decrypt (rotation). Required outside AUTH_MODE=dev. See
@@ -148,6 +150,12 @@ class Settings(BaseSettings):
     # plain-diff mode. "adk" uses the built-in ADK reviewer agent.
     review_engine: Literal["pr_agent", "adk"] = "adk"
     pr_agent_python: str | None = None  # Python of the isolated pr-agent venv.
+
+    # --- Agent memory (mem0, isolated venv; see scripts/setup_mem0.sh) ----
+    mem0_python: str | None = None
+    mem0_store: Literal["qdrant", "pgvector"] = "qdrant"
+    mem0_path: str = ".mem0/store"  # local file store when mem0_store=qdrant
+    mem0_dsn: str | None = None  # libpq DSN when mem0_store=pgvector
     review_timeout_s: float = 300.0
 
     # --- Context compression (Headroom) ----------------------------------
@@ -166,6 +174,12 @@ class Settings(BaseSettings):
     # Aggressive mode only: allow the Kompress ML text compressor if its model
     # is already cached locally (offline mode never downloads it).
     headroom_kompress: bool = False
+
+    # --- Repository context (repomix) -------------------------------------
+    # Pinned so a repomix release cannot change what the models see.
+    repomix_cmd: str = "npx --yes repomix@1.18.1"
+    # How much packed code goes into one prompt (about 4 characters per token).
+    repo_context_budget_chars: int = 160_000
 
     # --- Shared context --------------------------------------------------
     # Directory of Markdown context files kept in Git (TeamContext-style).

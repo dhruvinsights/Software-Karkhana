@@ -77,7 +77,7 @@ export const DreamTransitionScreen: React.FC<DreamTransitionScreenProps> = ({
         {/* Cinematic Pulsing Loader */}
         <div className="flex flex-col items-center gap-3 pt-4">
           <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-[#075bff] via-cyan-400 to-[#075bff] animate-pulse rounded-full w-full" />
+            <div className="h-full bg-gradient-to-r from-[#075bff] via-[#075BFF] to-[#075bff] animate-pulse rounded-full w-full" />
           </div>
           <span className="text-[11px] font-mono text-slate-400">
             Mounting factory stations & telemetry streams...

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ project.name }} · Product requirements</title>
+{% include "_style.html.j2" %}
+<style>
+  .status { display: inline-block; padding: 2pt 8pt; border-radius: 10pt; font-size: 7.5pt; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+  .s-approved { background: #e7f4ec; color: var(--go); } .s-draft { background: #fdf1e0; color: var(--cond); }
+  .req { break-inside: avoid; border-bottom: 1px solid var(--rule); padding: 7pt 0; }
+  .req h3 { margin: 0 0 3pt; display: flex; gap: 8pt; align-items: baseline; }
+  .req .id { font: 600 8.6pt/1 "JetBrains Mono", Menlo, monospace; color: var(--accent); }
+  .p-must { background: #fde8e7; color: var(--nogo); } .p-should { background: #fdf1e0; color: var(--cond); } .p-could { background: #eef0f4; color: var(--ink-2); }
+  .entity { break-inside: avoid; margin-bottom: 10pt; }
+  .entity h3 { display: flex; gap: 8pt; align-items: baseline; }
+  .e-existing { background: #eef0f4; color: var(--ink-2); } .e-changed { background: #fdf1e0; color: var(--cond); } .e-new { background: #e8efff; color: var(--accent); }
+  .story { break-inside: avoid; padding: 6pt 0; border-bottom: 1px solid var(--rule); }
+  .story .smeta { font-size: 7.8pt; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="eyebrow">Product requirements · {{ product.name if product else "" }}</div>
+  <h1>{{ project.name }}</h1>
+  <div class="meta">
+    <div>PRD<b>v{{ prd_doc.version }} · <span class="status s-{{ prd_doc.status }}">{{ prd_doc.status }}</span></b></div>
+    <div>Approved by<b>{{ approver or "Pending approval" }}</b></div>
+    <div>Prepared<b>{{ prepared_on }}</b></div>
+    <div>Scope<b>{{ prd.functional|length }} requirements · {{ stories|length }} stories</b></div>
+  </div>
+</div>
+
+<div class="summary" style="margin-bottom:14pt">{{ prd.summary }}</div>
+
+<section>
+  <h2><span class="n">01</span>Problem and goals</h2>
+  <p>{{ prd.problem }}</p>
+  <div class="two">
+    <div class="card"><h3>Goals</h3><ul class="clean">{% for g in prd.goals %}<li>{{ g }}</li>{% endfor %}</ul></div>
+    <div class="card"><h3>Non-goals</h3>{% if prd.non_goals %}<ul class="clean">{% for g in prd.non_goals %}<li>{{ g }}</li>{% endfor %}</ul>{% else %}<p class="muted">None stated.</p>{% endif %}</div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">02</span>Users and journeys</h2>
+  <table>
+    <thead><tr><th style="width:28%">Persona</th><th>Needs</th></tr></thead>
+    <tbody>{% for p in prd.personas %}<tr><td><b>{{ p.name }}</b></td><td>{{ p.needs }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% for j in prd.journeys %}
+  <h3>{{ j.name }}</h3>
+  <ol class="clean">{% for s in j.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+  {% endfor %}
+</section>
+
+<section>
+  <h2><span class="n">03</span>Functional requirements</h2>
+  {% for r in prd.functional %}
+  <div class="req">
+    <h3><span class="id">{{ r.id }}</span> {{ r.title }} <span class="chip p-{{ r.priority|lower }}">{{ r.priority }}</span></h3>
+    <p>{{ r.description }}</p>
+    <ul class="clean small">{% for c in r.acceptance_criteria %}<li>{{ c }}</li>{% endfor %}</ul>
+  </div>
+  {% endfor %}
+  {% if prd.non_functional %}
+  <h3>Non-functional requirements</h3>
+  <table>
+    <thead><tr><th style="width:12%">Id</th><th style="width:20%">Category</th><th>Requirement</th></tr></thead>
+    <tbody>{% for q in prd.non_functional %}<tr><td><code>{{ q.id }}</code></td><td>{{ q.category }}</td><td>{{ q.requirement }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+</section>
+
+{% if erd %}
+<section>
+  <h2><span class="n">04</span>Data model</h2>
+  {% for e in erd.entities %}
+  <div class="entity">
+    <h3><code>{{ e.name }}</code> <span class="chip e-{{ e.status }}">{{ e.status }}</span></h3>
+    <p class="small muted">{{ e.description }}</p>
+    <table>
+      <thead><tr><th style="width:28%">Column</th><th style="width:22%">Type</th><th style="width:10%">Key</th><th style="width:10%">Null</th><th>Note</th></tr></thead>
+      <tbody>{% for c in e.columns %}<tr><td><code>{{ c.name }}</code></td><td><code>{{ c.type }}</code></td><td>{{ c.key }}</td><td>{{ "yes" if c.nullable else "no" }}</td><td>{{ c.note }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endfor %}
+  {% if erd.relations %}
+  <h3>Relationships</h3>
+  <table>
+    <thead><tr><th>From</th><th>Cardinality</th><th>To</th><th>Meaning</th></tr></thead>
+    <tbody>{% for r in erd.relations %}<tr><td><code>{{ r.source }}</code></td><td>{{ r.cardinality }}</td><td><code>{{ r.target }}</code></td><td>{{ r.label }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% if erd.notes %}<h3>Notes</h3><ul class="clean">{% for n in erd.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+
+<section>
+  <h2><span class="n">05</span>Delivery backlog</h2>
+  {% for epic in epics %}
+  <h3>{{ epic.title }} <span class="muted small">· {{ epic.source_quote }}</span></h3>
+  {% for s in stories if s.epic_id == epic.id %}
+  <div class="story">
+    <b>{{ s.key }}</b> {{ s.title }}
+    <div class="smeta">{{ s.description }}</div>
+    <ul class="clean small">{% for c in s.acceptance_criteria %}<li>{{ c }}</li>{% endfor %}</ul>
+  </div>
+  {% endfor %}
+  {% endfor %}
+</section>
+
+<section>
+  <h2><span class="n">06</span>Measures, dependencies and risks</h2>
+  <div class="two">
+    <div class="card"><h3>Success metrics</h3><ul class="clean">{% for m in prd.success_metrics %}<li>{{ m }}</li>{% endfor %}</ul></div>
+    <div class="card"><h3>Milestones</h3><ol class="clean">{% for m in prd.milestones %}<li>{{ m }}</li>{% endfor %}</ol></div>
+  </div>
+  <div class="two" style="margin-top:10pt">
+    <div class="card"><h3>Dependencies</h3>{% if prd.dependencies %}<ul class="clean">{% for d in prd.dependencies %}<li>{{ d }}</li>{% endfor %}</ul>{% else %}<p class="muted">None.</p>{% endif %}</div>
+    <div class="card"><h3>Risks</h3>{% if prd.risks %}<ul class="clean">{% for d in prd.risks %}<li>{{ d }}</li>{% endfor %}</ul>{% else %}<p class="muted">None.</p>{% endif %}</div>
+  </div>
+  {% if prd.open_questions %}<h3>Open questions</h3><ul class="clean">{% for q in prd.open_questions %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+</section>
+
+<div class="appendix">
+  <b>How this document was made.</b> Drafted by {{ prd_doc.model }} from the approved idea, its evaluation report and the
+  repository. The platform checked that every story cites a requirement in this PRD, that every "Must" requirement has a
+  story, and that tables marked "existing" appear in the code. {% if approver %}Approved by {{ approver }} on {{ approved_on }}.{% else %}Not yet approved.{% endif %}
+</div>
+</body>
+</html>

@@ -140,7 +140,9 @@ export type ScreenId =
   // Group Q — Chat & Activity
   | 'chat_dm'
   | 'chat_channel'
-  | 'activity_feed';
+  | 'activity_feed'
+  // Group R — IdeaQ full-screen overlay
+  | 'ideaq';
 
 export type WorkspaceTemplate =
   | 'empty'
@@ -254,14 +256,13 @@ export interface IdeaAssessment {
   openQuestions: string[];
 }
 
-export interface IdeaEvaluationReport {
-  business_value?: string;
-  market_differentiation?: string;
-  effort_budget?: string;
-  risk_assessment?: string;
-  research_evidence?: string;
-  recommendation?: string;
-  recommendation_rationale?: string;
+/** The evaluation report the server writes for an idea (ideas.review_report). */
+export interface IdeaReportState {
+  status: 'running' | 'ready' | 'failed';
+  error?: string;
+  startedAt?: string;
+  report?: { verdict: 'Go' | 'Go with conditions' | 'Needs more evidence' | 'No-go'; executive_summary: string; size: string };
+  meta?: { overallScore: number; generatedAt: string; commit: string | null; model: string };
 }
 
 export interface Idea {
@@ -283,8 +284,7 @@ export interface Idea {
   source?: 'manual' | 'agent';
   scanId?: string;
   evidence?: string[];
-  reviewReport?: IdeaEvaluationReport;
-  reportHtml?: string;
+  reviewReport?: IdeaReportState | null;
 }
 
 export interface IdeaScan {
@@ -333,7 +333,7 @@ export interface IdeaReviewItem {
   complexity: string;
   tags: string[];
   evidence?: string[];
-  reviewReport?: IdeaEvaluationReport;
+  reviewReport?: IdeaReportState | null;
   productName: string;
   productId?: string;
   decision: 'pending' | 'approved' | 'rejected';

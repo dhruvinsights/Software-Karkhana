@@ -434,7 +434,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   >
                     {isRobotVerified && <CheckCircle2 className="w-4 h-4 text-white" />}
                     {isVerifyingBot && (
-                      <div className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-3 h-3 border-2 border-[#075BFF]/25 border-t-transparent rounded-full animate-spin" />
                     )}
                   </div>
                   <span className="text-xs text-slate-300 font-medium">I am not a robot</span>

@@ -1,7 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { factoryStore, FactoryState } from './store/factoryStore';
 import { stashPendingInvite, takeInviteFromUrl } from './lib/invites';
-import { COMING_SOON_SCREENS, ComingSoonBanner } from './components/views/StationBanners';
 import { ChatPage } from './components/chat/ChatPage';
 
 // Every screen is its own chunk: the marketing page (WebGL/GSAP), auth flow and each
@@ -18,18 +17,21 @@ const IdeaValidationView = lazy(() => import('./components/views/IdeaValidationV
 const ExecutivePortfolioView = lazy(() => import('./components/views/ExecutivePortfolioView').then((m) => ({ default: m.ExecutivePortfolioView })));
 const ProjectHubView = lazy(() => import('./components/views/ProjectHubView').then((m) => ({ default: m.ProjectHubView })));
 const PlanningRoadmapView = lazy(() => import('./components/views/PlanningRoadmapView').then((m) => ({ default: m.PlanningRoadmapView })));
-const DesignStudioView = lazy(() => import('./components/views/DesignStudioView').then((m) => ({ default: m.DesignStudioView })));
 const ArchitectureStudioView = lazy(() => import('./components/views/ArchitectureStudioView').then((m) => ({ default: m.ArchitectureStudioView })));
-const DeveloperWorkspaceView = lazy(() => import('./components/views/DeveloperWorkspaceView').then((m) => ({ default: m.DeveloperWorkspaceView })));
 const QAVerificationView = lazy(() => import('./components/views/QAVerificationView').then((m) => ({ default: m.QAVerificationView })));
 const SecurityAppSecView = lazy(() => import('./components/views/SecurityAppSecView').then((m) => ({ default: m.SecurityAppSecView })));
-const DevOpsPipelinesView = lazy(() => import('./components/views/DevOpsPipelinesView').then((m) => ({ default: m.DevOpsPipelinesView })));
-const ReleaseManagementView = lazy(() => import('./components/views/ReleaseManagementView').then((m) => ({ default: m.ReleaseManagementView })));
-const FeedbackIncidentsView = lazy(() => import('./components/views/FeedbackIncidentsView').then((m) => ({ default: m.FeedbackIncidentsView })));
-const KnowledgeLearningView = lazy(() => import('./components/views/KnowledgeLearningView').then((m) => ({ default: m.KnowledgeLearningView })));
 const WorkflowAdminView = lazy(() => import('./components/views/WorkflowAdminView').then((m) => ({ default: m.WorkflowAdminView })));
 const ProductWorkspaceView = lazy(() => import('./components/views/ProductWorkspaceView').then((m) => ({ default: m.ProductWorkspaceView })));
 const ProductSetupView = lazy(() => import('./components/views/ProductSetupView').then((m) => ({ default: m.ProductSetupView })));
+const ProjectScoped = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.ProjectScoped })));
+const KnowledgeScreen = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.KnowledgeScreen })));
+const GovernanceScreen = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.GovernanceScreen })));
+const IncidentsPanel = lazy(() => import('./components/views/WorkspaceScreens').then((m) => ({ default: m.IncidentsPanel })));
+const ProjectDesignPanel = lazy(() => import('./components/views/ProjectDesignPanel').then((m) => ({ default: m.ProjectDesignPanel })));
+const ProjectBuildPanel = lazy(() => import('./components/views/ProjectBuildPanel').then((m) => ({ default: m.ProjectBuildPanel })));
+const ProjectPipelinePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectPipelinePanel })));
+const ProjectReleasePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectReleasePanel })));
+const PRReviewPanel = lazy(() => import('./components/views/PRReviewPanel'));
 const ReviewerSpaceView = lazy(() => import('./components/views/ReviewerSpaceView').then((m) => ({ default: m.ReviewerSpaceView })));
 
 const ScreenFallback: React.FC = () => (
@@ -50,13 +52,6 @@ const COMING_SOON_NAMES: Record<string, string> = {
   feedback: 'Incidents & Triage',
   knowledge: 'Knowledge Base & Governance',
 };
-
-function comingSoonName(screen: string): string {
-  if (screen.startsWith('release')) return COMING_SOON_NAMES.release;
-  if (screen.startsWith('feedback') || screen === 'incidents' || screen === 'public_portal') return COMING_SOON_NAMES.feedback;
-  if (['knowledge_hub', 'learning_capture', 'rule_governance', 'skills_library', 'memory_inspector'].includes(screen)) return COMING_SOON_NAMES.knowledge;
-  return COMING_SOON_NAMES.devops;
-}
 
 export default function App() {
   const [state, setState] = useState<FactoryState>(factoryStore.getState());
@@ -191,6 +186,7 @@ export default function App() {
         return <ChatPage />;
 
       case 'product_detail':
+      case 'ideaq':
         return <ProductWorkspaceView state={state} />;
 
       case 'ideas':
@@ -233,7 +229,7 @@ export default function App() {
       case 'flow_map':
       case 'design_review':
       case 'design_tokens':
-        return <DesignStudioView state={state} />;
+        return <ProjectScoped state={state} title="Design" render={(id) => <ProjectDesignPanel projectId={id} canDesign />} />;
 
       case 'architecture_dashboard':
       case 'system_design':
@@ -250,7 +246,18 @@ export default function App() {
       case 'ai_code_review':
       case 'dependencies':
       case 'dev_handoff':
-        return <DeveloperWorkspaceView state={state} />;
+        return (
+          <ProjectScoped
+            state={state}
+            title="Engineering"
+            render={(id) => (
+              <div className="space-y-6">
+                <ProjectBuildPanel projectId={id} />
+                <PRReviewPanel projectId={id} token={state.token ?? ''} />
+              </div>
+            )}
+          />
+        );
 
       case 'qa_dashboard':
       case 'feature_test':
@@ -273,27 +280,29 @@ export default function App() {
       case 'infra_manager':
       case 'deployment_readiness':
       case 'deployment_history':
-        return <DevOpsPipelinesView state={state} />;
+        return <ProjectScoped state={state} title="CI/CD pipelines" render={(id) => <ProjectPipelinePanel projectId={id} />} />;
 
       case 'release_dashboard':
       case 'release_detail':
       case 'release_notes':
       case 'release_signoff':
       case 'release_execution':
-        return <ReleaseManagementView state={state} />;
+        return <ProjectScoped state={state} title="Releases" render={(id) => <ProjectReleasePanel projectId={id} />} />;
 
       case 'feedback_inbox':
       case 'feedback_detail':
       case 'public_portal':
       case 'incidents':
-        return <FeedbackIncidentsView state={state} />;
+        return <ProjectScoped state={state} title="Incidents and bugs" render={(id) => <IncidentsPanel projectId={id} />} />;
 
       case 'knowledge_hub':
       case 'learning_capture':
-      case 'rule_governance':
       case 'skills_library':
       case 'memory_inspector':
-        return <KnowledgeLearningView state={state} />;
+        return <KnowledgeScreen />;
+
+      case 'rule_governance':
+        return <GovernanceScreen />;
 
       case 'workflow_templates':
       case 'workflow_designer':
@@ -308,12 +317,10 @@ export default function App() {
     }
   };
 
-  const comingSoon = COMING_SOON_SCREENS.has(state.currentScreen);
 
   return (
     <Suspense fallback={<ScreenFallback />}>
       <AppShell state={state}>
-        {comingSoon && <ComingSoonBanner station={comingSoonName(state.currentScreen)} />}
         <Suspense fallback={<ViewFallback />}>{renderCurrentView()}</Suspense>
       </AppShell>
       {showTutorial && (
