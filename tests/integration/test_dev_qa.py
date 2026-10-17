@@ -279,3 +279,38 @@ async def test_station_channels_and_linking_to_the_workspace(client, fakes):
     rows = (await client.get("/api/chat/channels", headers=_in(LEAD))).json()
     linked = next(c for c in rows if c["name"] == name)
     assert linked["projectId"] == pid and linked["station"] == "developer"
+
+
+async def test_frontend_workspace_lists_stories_with_their_design(client, fakes):
+    from app.models import ProjectDocument
+
+    pid, story = await _story(client)
+    r = (await client.get(f"/api/projects/{pid}/frontend", headers=as_(DEV))).json()
+    assert r["design"] is None and r["stories"] == []  # a backend story, no screens yet
+
+    async with db.sessionmaker()() as s:
+        s.add(
+            ProjectDocument(
+                project_id=uuid.UUID(pid),
+                kind="design",
+                version=1,
+                title="Design",
+                content={
+                    "overview": "Discount UI",
+                    "principles": ["Clear totals"],
+                    "api_contracts": [],
+                    "screens": [
+                        {"name": "Cart", "purpose": "Totals", "story_keys": [story["key"]], "states": ["empty"], "html": "<p>cart</p>"}
+                    ],
+                    "tokens": [],
+                    "accessibility": [],
+                    "handoff_notes": ["Use paise"],
+                },
+                model="test",
+            )
+        )
+        await s.commit()
+    r = (await client.get(f"/api/projects/{pid}/frontend", headers=as_(DEV))).json()
+    assert r["design"]["handoffNotes"] == ["Use paise"]
+    [row] = r["stories"]
+    assert row["key"] == story["key"] and row["screens"][0]["name"] == "Cart"

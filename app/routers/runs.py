@@ -58,7 +58,7 @@ from app.schemas import (
     RunSpec,
     SuiteReport,
 )
-from app.services import context_notes, plan, repos, test_suites
+from app.services import context_notes, design_handoff, plan, repos, test_suites
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -274,6 +274,11 @@ async def run_spec(
             run.project_id, f"{task.title}\n{task.description}", role="developer"
         )
     ]
+    # A story the designer drew screens or contracts for: hand its slice to the agent.
+    design = await design_handoff.latest_design(session, project.id)
+    if design is not None and task.key:
+        if body := design_handoff.as_note(design.content, task.key, design.version):
+            notes.append(ContextNote(kind="design", title=f"Design for {task.key}", body=body, author="design station"))
     target = await repos.for_project(session, project.id)
     return RunSpec(
         run_id=run.id,

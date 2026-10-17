@@ -43,7 +43,7 @@ Tick an item only after its check passes. Commit code and this file together.
 
 ## 5. Frontend & design inside Dev
 - [x] Stories carry their layer (`layer:frontend` label from the plan).
-- [ ] Dev → Frontend workspace: frontend stories, the design handoff for each story
+- [x] Dev → Frontend workspace (API; UI in step 6): frontend stories, the design handoff for each story
       (screens and API contracts from the Design station), and its agent runs.
       Frontend stories and their agent jobs land there automatically.
 
@@ -70,3 +70,4 @@ Tick an item only after its check passes. Commit code and this file together.
 | 2026-10-18 | Dev accountability: manual checks, bug lifecycle, reviewer requests, dev board |
 | 2026-10-18 | QA agent suggests bugs grounded in code; QA accepts or dismisses; QA board by stage |
 | 2026-10-18 | Station channels: team / project / linked to workspace |
+| 2026-10-18 | Frontend workspace API; coding runs get their story's design slice |

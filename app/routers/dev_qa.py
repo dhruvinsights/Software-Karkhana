@@ -56,7 +56,7 @@ from app.models import (
 )
 from app.notifications import email_people
 from app.routers.reviews import _approvals
-from app.services import repos
+from app.services import design_handoff, repos
 from app.services.realtime import notify_activity, notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -628,4 +628,89 @@ async def dev_board(
         "projectId": str(project.id),
         "stories": out_stories,
         "bugs": [_bug_out(b, names, keys) for b in bugs],
+    }
+
+
+@router.get("/api/projects/{project_id}/frontend")
+async def frontend_workspace(
+    project_id: uuid.UUID, session: Session, user: CurrentUser
+) -> dict[str, Any]:
+    """The Developer station's Frontend workspace: UI stories with their slice of the design.
+
+    A story is frontend work when the plan says so (``layer:frontend``) or when
+    the designer drew a screen for it. Its coding runs get the same slice.
+    """
+    project = await access.get_visible_project(session, user, project_id)
+    design = await design_handoff.latest_design(session, project.id)
+    spec = design.content if design else {}
+    drawn = design_handoff.keys_with_screens(spec)
+    stories = [
+        s
+        for s in (
+            await session.scalars(
+                select(Issue)
+                .where(
+                    Issue.project_id == project.id,
+                    Issue.type == "story",
+                    Issue.status != "draft",
+                )
+                .order_by(Issue.number)
+            )
+        ).all()
+        if rules.layer_of(s.labels, s.description) == "frontend"
+        or issue_rules.key(s.number) in drawn
+    ]
+    names = {
+        u.id: u.display_name
+        for u in (
+            await session.scalars(
+                select(User).where(
+                    User.id.in_([s.assignee_id for s in stories if s.assignee_id])
+                )
+            )
+        ).all()
+    }
+    latest_run: dict[uuid.UUID, Run] = {}
+    for r in (
+        await session.scalars(
+            select(Run)
+            .where(Run.task_id.in_([s.task_id for s in stories if s.task_id]))
+            .order_by(Run.created_at.desc())
+        )
+    ).all():
+        latest_run.setdefault(r.task_id, r)
+    return {
+        "design": {
+            "version": design.version,
+            "status": design.status,
+            "overview": spec.get("overview", ""),
+            "principles": spec.get("principles", []),
+            "tokens": spec.get("tokens", []),
+            "accessibility": spec.get("accessibility", []),
+            "handoffNotes": spec.get("handoff_notes", []),
+        }
+        if design
+        else None,
+        "stories": [
+            {
+                "id": str(s.id),
+                "key": issue_rules.key(s.number),
+                "title": s.title,
+                "status": s.status,
+                "taskId": str(s.task_id) if s.task_id else None,
+                "assigneeId": str(s.assignee_id) if s.assignee_id else None,
+                "assigneeName": names.get(s.assignee_id) if s.assignee_id else None,
+                "acceptanceCriteria": s.acceptance_criteria or [],
+                **design_handoff.slice_for(spec, issue_rules.key(s.number)),
+                "run": {
+                    "id": str(run.id),
+                    "status": run.status,
+                    "phase": run.phase,
+                    "testSuites": run.test_suites or [],
+                }
+                if (run := latest_run.get(s.task_id) if s.task_id else None)
+                else None,
+            }
+            for s in stories
+        ],
     }
