@@ -184,6 +184,15 @@ class Settings(BaseSettings):
     ledger_anchor_prefix: str = "ledger-anchors"
     ledger_anchor_path: str = ".ledger-anchors.jsonl"
 
+    # --- Chat -------------------------------------------------------------
+    # Messages older than this are purged hourly (migration 023).
+    chat_retention_days: int = 90
+    # Cross-instance fan-out for chat/activity frames, via `broadcaster`.
+    # Unset: in-process only (one API instance, dev, tests).
+    # Kafka/Redpanda: "kafka://redpanda:9092". Redis also works: "redis://host:6379".
+    realtime_broker_url: str | None = None
+    realtime_topic: str = "karkhana-realtime"
+
     # --- Email (Resend) --------------------------------------------------
     # Used for transactional email (invites, notifications, magic links).
     # Set RESEND_API_KEY in .env locally or via Secret Manager on Cloud Run.

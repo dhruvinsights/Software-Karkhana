@@ -36,6 +36,7 @@ dependencies = [
     # The worker runs the demo repo's tests inside the same image.
     "pytest>=8.3.4,<9.0.0",
     "anthropic>=1.15.0",
+    "broadcaster[kafka]>=0.3.1",
 ]
 
 [dependency-groups]
