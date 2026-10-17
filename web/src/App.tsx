@@ -32,6 +32,7 @@ const ProjectBuildPanel = lazy(() => import('./components/views/ProjectBuildPane
 const ProjectPipelinePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectPipelinePanel })));
 const ProjectReleasePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectReleasePanel })));
 const PRReviewPanel = lazy(() => import('./components/views/PRReviewPanel'));
+const ProjectLaunchView = lazy(() => import('./components/views/ProjectLaunchView').then((m) => ({ default: m.ProjectLaunchView })));
 const ReviewerSpaceView = lazy(() => import('./components/views/ReviewerSpaceView').then((m) => ({ default: m.ReviewerSpaceView })));
 
 const ScreenFallback: React.FC = () => (
@@ -205,6 +206,9 @@ export default function App() {
       case 'project_health':
       case 'approval_policy':
         return <ExecutivePortfolioView state={state} />;
+
+      case 'project_launch':
+        return <ProjectLaunchView state={state} />;
 
       case 'projects':
       case 'project_detail':

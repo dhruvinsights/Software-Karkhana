@@ -46,6 +46,7 @@ import { ShinyText } from '../reactbits/ShinyText';
 import { IdeaApprovalPanel } from './IdeaApprovalPanel';
 import { IdeaReportModal } from '../workspace/DocumentModal';
 import { downloadIdeaReportPdf, reportLabel, startIdeaReport } from '../../lib/ideaReports';
+import { IdeaGroupsBar, IdeaScopeActions, ScopeBadge } from '../workspace/IdeaScope';
 
 interface ProductWorkspaceViewProps {
   state: FactoryState;
@@ -125,7 +126,9 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
 
   // Filtered Ideas
   const filteredIdeas = useMemo(() => {
+    // Features inside a project group are listed under it, not on their own.
     return enrolledIdeas.filter((idea) => {
+      if (idea.parentId) return false;
       const matchSearch =
         idea.title.toLowerCase().includes(ideaSearch.toLowerCase()) ||
         idea.problemStatement.toLowerCase().includes(ideaSearch.toLowerCase()) ||
@@ -523,6 +526,8 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
             </GlassCard>
           </div>
 
+          <IdeaGroupsBar product={activeProduct} ideas={enrolledIdeas} projects={enrolledProjects} />
+
           {/* Search, Filter & Action Toolbar */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
             <div className="flex items-center gap-2 flex-1 max-w-md">
@@ -589,7 +594,7 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
             <div className="space-y-4">
               {filteredIdeas.map((idea) => {
                 const badge = STATUS_BADGE[idea.status] || STATUS_BADGE.draft;
-                const linkedProject = state.projects.find((p) => p.id === idea.promotedProjectId || p.productId === idea.productId && p.name.includes(idea.title));
+                const linkedProject = state.projects.find((p) => p.id === idea.promotedProjectId);
                 const author = state.members.find((m) => m.id === idea.authorId)?.name || 'Workspace Lead';
 
                 return (
@@ -602,6 +607,7 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                       <div className="space-y-1.5 flex-1">
                         <div className="flex items-center gap-2.5 flex-wrap">
+                          <ScopeBadge idea={idea} ideas={enrolledIdeas} />
                           <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border ${badge.bg} ${badge.text} ${badge.border}`}>
                             {badge.label}
                           </span>
@@ -630,14 +636,6 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
                           <span>Project: {linkedProject.code}</span>
                           <ArrowRight className="w-3 h-3" />
                         </button>
-                      ) : idea.status === 'approved' ? (
-                        <button
-                          onClick={() => setCreateProjectModalOpen(true)}
-                          className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-                        >
-                          <Rocket className="w-3.5 h-3.5" />
-                          <span>Launch Project</span>
-                        </button>
                       ) : null}
                     </div>
 
@@ -660,6 +658,8 @@ export const ProductWorkspaceView: React.FC<ProductWorkspaceViewProps> = ({ stat
                         </p>
                       </div>
                     </div>
+
+                    <IdeaScopeActions idea={idea} ideas={enrolledIdeas} projects={enrolledProjects} />
 
                     {/* Tags & Assignee */}
                     <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/[0.06] text-xs">

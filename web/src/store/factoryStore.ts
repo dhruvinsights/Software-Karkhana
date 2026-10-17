@@ -464,6 +464,7 @@ export const factoryStore = {
             constraints: p.constraints || [],
             teamSpaces: p.teamSpaces || [],
             reviewerIds: p.reviewerIds || [],
+            profile: p.profile ?? null,
             settings: {
               repositoryUrl: p.repositoryUrl || '',
               reviewerIds: p.reviewerIds || [],
@@ -491,7 +492,7 @@ export const factoryStore = {
               phase: pr.stage || '',
               health: 'healthy',
               leadId: pr.lead_id || state.currentUser?.id || 'usr-lead',
-              teamsAssigned: ['tm-core'],
+              teamsAssigned: Array.isArray(pr.settings?.teams) ? pr.settings.teams : [],
               targetReleaseDate: pr.settings?.target_release_date || '',
               repositoryUrl:
                 pr.settings?.repository_url ||
@@ -528,6 +529,9 @@ export const factoryStore = {
             evidence: i.evidence || [],
             reviewReport: i.reviewReport ?? null,
             promotedProjectId: i.promotedProjectId || undefined,
+            scope: i.scope || 'feature',
+            parentId: i.parentId ?? null,
+            delivery: i.delivery ?? null,
             workspaceId: i.workspaceId || undefined,
             createdAt: i.createdAt,
             updatedAt: i.updatedAt,
@@ -665,6 +669,9 @@ export const factoryStore = {
         constraints: product.constraints || [],
         team_spaces: product.teamSpaces || [],
         reviewer_ids: product.reviewerIds || [],
+        profile: product.profile
+          ? { size: product.profile.size, summary: product.profile.summary, areas: product.profile.areas, reason: product.profile.reason }
+          : undefined,
       }),
     });
     if (!res.ok) throw await apiError(res);
@@ -879,6 +886,12 @@ export const factoryStore = {
 
   selectIdea: (id: string) => {
     state = { ...state, selectedIdeaId: id };
+    notify();
+  },
+
+  /** Opens the multi-step launch screen for an approved idea. */
+  openProjectLaunch: (ideaId: string) => {
+    state = { ...state, selectedIdeaId: ideaId, currentScreen: 'project_launch' };
     notify();
   },
 

@@ -59,6 +59,7 @@ export type ScreenId =
   // Group E
   | 'projects'
   | 'project_create'
+  | 'project_launch'
   | 'project_detail'
   | 'project_onboarding'
   | 'project_team'
@@ -224,6 +225,17 @@ export interface Product {
   /** Station ids this product's projects use; people are picked per project. */
   teamSpaces?: string[];
   reviewerIds?: string[];
+  /** The AI's sizing; decides whether ideas are features of one project or several projects. */
+  profile?: ProductProfile | null;
+}
+
+export interface ProductProfile {
+  size: 'small' | 'medium' | 'large';
+  summary: string;
+  areas: string[];
+  reason: string;
+  source?: 'ai' | 'heuristic';
+  analysedAt?: string;
 }
 
 export interface ProductKnowledge {
@@ -285,6 +297,12 @@ export interface Idea {
   scanId?: string;
   evidence?: string[];
   reviewReport?: IdeaReportState | null;
+  /** A feature lands in an existing project; a project groups related features. */
+  scope?: 'feature' | 'project';
+  /** The project idea that groups this feature. */
+  parentId?: string | null;
+  /** An approved feature being drafted into an existing project. */
+  delivery?: { state: 'running' | 'ready' | 'failed'; projectId?: string; projectName?: string; error?: string; stories?: number } | null;
 }
 
 export interface IdeaScan {

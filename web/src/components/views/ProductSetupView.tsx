@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,7 +16,8 @@ import {
   Workflow,
 } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
-import type { Product } from '../../types/factory';
+import type { Product, ProductProfile } from '../../types/factory';
+import { ideaGroupsApi, SIZE_COPY } from '../../lib/ideaGroupsApi';
 import { CreateProductModal } from '../workspace/CreateProductModal';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
 import { ShinyText } from '../reactbits/ShinyText';
@@ -58,6 +59,33 @@ export const ProductSetupView: React.FC<{ state: FactoryState }> = ({ state }) =
   const [reviewerIds, setReviewerIds] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The AI sizes the product on the review step; the size decides what counts as a project.
+  const [profile, setProfile] = useState<ProductProfile | null>(null);
+  const [sizing, setSizing] = useState(false);
+  const [sizeError, setSizeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (step !== 4 || !spec?.name || profile || sizing) return;
+    setSizing(true);
+    setSizeError(null);
+    ideaGroupsApi
+      .analyse({
+        name: spec.name,
+        description: spec.description,
+        problem_statement: spec.problemStatement,
+        target_users: spec.targetUsers,
+        tech_stack: spec.techStack,
+        key_features: spec.keyFeatures,
+        constraints: spec.constraints,
+      })
+      .then(setProfile)
+      .catch((e) => setSizeError((e as Error).message))
+      .finally(() => setSizing(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, spec]);
+
+  // A changed spec needs a fresh sizing.
+  useEffect(() => setProfile(null), [spec]);
 
   const isAdmin = state.myAccess === 'owner' || state.myAccess === 'admin';
   const others = state.workspaceMembers.filter((m) => m.id !== state.currentUser?.id);
@@ -101,6 +129,7 @@ export const ProductSetupView: React.FC<{ state: FactoryState }> = ({ state }) =
         ...spec,
         teamSpaces: TEAM_SPACES.filter((t) => teamSpaces.has(t.id)).map((t) => t.id),
         reviewerIds: [...reviewerIds],
+        profile,
       });
     } catch (e) {
       setError((e as Error).message || 'Could not create the product.');
@@ -315,8 +344,45 @@ export const ProductSetupView: React.FC<{ state: FactoryState }> = ({ state }) =
               </SpotlightCard>
             </div>
           </div>
+          <SpotlightCard className="p-5 bg-[#0c0e15]/90 border-white/[0.08] space-y-2" spotlightColor="rgba(192, 38, 211, 0.12)">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[11px] uppercase font-mono tracking-wider text-[#827D8E]">AI sizing</div>
+              {profile && (
+                <div className="flex gap-1">
+                  {(['small', 'medium', 'large'] as const).map((sz) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, size: sz })}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] capitalize cursor-pointer ${
+                        profile.size === sz ? 'bg-fuchsia-500/20 text-white border border-fuchsia-500/50' : 'text-[#827D8E] border border-white/[0.08] hover:text-white'
+                      }`}
+                    >
+                      {sz}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {sizing ? (
+              <p className="text-sm text-[#B5B1C0] flex items-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white/70 rounded-full animate-spin" /> Reading the product to size it…
+              </p>
+            ) : profile ? (
+              <>
+                <p className="text-sm text-white font-medium">{SIZE_COPY[profile.size].label}</p>
+                <p className="text-xs text-[#B5B1C0]">{SIZE_COPY[profile.size].rule}</p>
+                {profile.summary && <p className="text-xs text-[#827D8E]">{profile.summary}</p>}
+                <p className="text-[11px] text-[#827D8E]">{profile.reason}</p>
+              </>
+            ) : (
+              <p className="text-xs text-[#827D8E]">
+                {sizeError ? `Could not size it now (${sizeError}); it will be sized after creation.` : 'Not sized yet.'}
+              </p>
+            )}
+          </SpotlightCard>
           {error && <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5">{error}</div>}
-          <StepNav onBack={() => setStep(3)} onNext={create} nextLabel={creating ? 'Creating…' : 'Create Product'} nextDisabled={creating} primary />
+          <StepNav onBack={() => setStep(3)} onNext={create} nextLabel={creating ? 'Creating…' : 'Create Product'} nextDisabled={creating || sizing} primary />
         </div>
       )}
     </div>

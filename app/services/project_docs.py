@@ -310,12 +310,24 @@ async def _set_status(session: AsyncSession, project: Project, **status: Any) ->
         await notify_workspace(project.workspace_id, "projects")
 
 
-def _context(project: Project, idea: Idea | None, product: Product | None, code: str) -> str:
+def _context(
+    project: Project,
+    idea: Idea | None,
+    product: Product | None,
+    code: str,
+    features: list[Idea] | None = None,
+) -> str:
     report = (idea.review_report or {}).get("report") if idea else None
+    grouped = ""
+    if features:
+        grouped = "FEATURES THIS PROJECT DELIVERS (each needs at least one epic or story):\n" + "\n".join(
+            f"- {f.title}: {f.problem_statement} Value: {f.expected_value}" for f in features
+        ) + "\n\n"
     return (
         f"PRODUCT: {product.name if product else '(none)'}\n{product.description if product else ''}\n\n"
         f"PROJECT: {project.name}\n\n"
         f"APPROVED IDEA:\n{project.idea_text}\n\n"
+        f"{grouped}"
         f"EVALUATION REPORT (approved by reviewers):\n{json.dumps(report) if report else '(none)'}\n\n"
         f"{code}"
     )
@@ -373,7 +385,18 @@ async def run(project_id: uuid.UUID) -> None:
                     session, product, project.created_by
                 )
             code = repo_context.render(snapshot, 110_000) if snapshot else "REPOSITORY: none connected."
-            context = _context(project, idea, product, code)
+            features = (
+                list(
+                    (
+                        await session.scalars(
+                            select(Idea).where(Idea.parent_id == idea.id).order_by(Idea.created_at)
+                        )
+                    ).all()
+                )
+                if idea
+                else []
+            )
+            context = _context(project, idea, product, code, features)
 
             await _set_status(session, project, step="Writing the PRD")
             prd = await _generate(Prd, PRD_SYSTEM, context, check_prd)

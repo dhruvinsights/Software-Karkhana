@@ -172,6 +172,12 @@ class Idea(Base):
     scan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("idea_scans.id", ondelete="SET NULL"), nullable=True)
     evidence: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     review_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # "feature" (lands in an existing project) or "project" (groups related features).
+    scope: Mapped[str] = mapped_column(String, default="feature")
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ideas.id", ondelete="SET NULL"), nullable=True
+    )
+    delivery: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

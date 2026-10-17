@@ -6,7 +6,7 @@
  *
  *  1. Request approval: pick reviewers from the workspace.
  *  2. Reviewers approve / reject (all must approve; one rejection stops it).
- *  3. Once approved, a manager creates the project and names the station leads.
+ *  3. Once approved, a manager launches the project from the launch screen.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -39,8 +39,6 @@ interface ApprovalView {
   totalReviewers: number;
 }
 
-// Roles that can be named as station leads when creating the project.
-const LEAD_ROLES = ['designer', 'architect', 'developer', 'qa', 'devops', 'security', 'release_manager'];
 
 interface Props {
   idea: Idea;
@@ -62,8 +60,6 @@ export const IdeaApprovalPanel: React.FC<Props> = ({ idea, token, workspaceId, c
   const [picked, setPicked] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
-  const [name, setName] = useState(idea.title);
-  const [leads, setLeads] = useState<Record<string, string>>({}); // role -> userId
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -140,21 +136,6 @@ export const IdeaApprovalPanel: React.FC<Props> = ({ idea, token, workspaceId, c
         body: JSON.stringify({ decision, reason: reason || null }),
       }),
     );
-
-  const promote = async () => {
-    setBusy(true);
-    setError(null);
-    const res = await factoryStore.promoteIdeaToProject(
-      idea.id,
-      name,
-      Object.entries(leads)
-        .filter(([, userId]) => userId)
-        .map(([role, userId]) => ({ user_id: userId, role, is_lead: true })),
-    );
-    if (!res.ok) setError(res.error ?? 'Could not create the project.');
-    await load();
-    setBusy(false);
-  };
 
   const icon = (s: ApprovalRow['status']) =>
     s === 'approved' ? <CheckCircle2 size={14} color="#2ea043" /> : s === 'rejected' ? <XCircle size={14} color="#f85149" /> : <Clock size={14} color="#f0a500" />;
@@ -238,31 +219,15 @@ export const IdeaApprovalPanel: React.FC<Props> = ({ idea, token, workspaceId, c
 
       {status === 'approved' && (
         <div>
-          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>Approved. Create the project and name the leads of each station.</div>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ width: '100%', padding: 8, fontSize: 12, marginBottom: 8 }}
-          />
-          {LEAD_ROLES.map((role) => (
-            <div key={role} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
-              <span style={{ width: 110 }}>{role.replace('_', ' ')} lead</span>
-              <select
-                value={leads[role] ?? ''}
-                onChange={(e) => setLeads((l) => ({ ...l, [role]: e.target.value }))}
-                style={{ flex: 1, padding: 4, fontSize: 12 }}
-              >
-                <option value="">— none yet —</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name || m.email} ({m.role})
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-          <button disabled={busy || name.trim().length < 2} onClick={promote} className="btn btn-primary" style={{ marginTop: 8, fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
-            {busy ? <Loader2 size={13} /> : <Rocket size={13} />} Create project
+          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>
+            Approved. Launch the project: connect its repository, pick the teams and draft the plan.
+          </div>
+          <button
+            onClick={() => factoryStore.openProjectLaunch(idea.id)}
+            className="btn btn-primary"
+            style={{ marginTop: 4, fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}
+          >
+            <Rocket size={13} /> Launch project
           </button>
         </div>
       )}

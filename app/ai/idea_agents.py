@@ -32,16 +32,18 @@ import datetime as dt
 import logging
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import idea_flow
 from app.ai import llm
 from app.ai.errors import ModelError
 from app.db import sessionmaker
 from app.models import Idea, IdeaScan, Product, RepoSnapshot
-from app.services import repo_context
+from app.services import idea_scope, repo_context
 from app.services.realtime import manager, notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -68,7 +70,7 @@ class DiscoveredIdea(BaseModel):
 class SpecialistPassOutput(BaseModel):
     """What one specialist returns."""
 
-    ideas: list[DiscoveredIdea] = Field(max_length=4)
+    ideas: list[DiscoveredIdea] = Field(max_length=3)
 
 
 PASSES: dict[str, str] = {
@@ -97,9 +99,15 @@ Find concrete, buildable ideas in your assigned focus area only.
 Rules:
 - Every idea must be supported by what you see in the REPOSITORY section.
   Cite evidence as paths copied exactly from the tree.
-- Prefer ideas a small team can ship in weeks over vague programmes.
+- Each idea is a substantial feature: several user stories of work that change
+  what users or the team can do. Never return tweaks, renames, single-file
+  fixes, lint or cosmetic changes; those belong in a bug tracker, not here.
+- Size ideas to the product: for a small product, features that extend its one
+  project; for larger products, features big enough to anchor a project with
+  related ones. Related features will be grouped into projects afterwards.
 - Never invent metrics, customers or market data.
-- Return at most 4 ideas, best first. Return fewer rather than weak ones.
+- Return at most 3 ideas, best first. Return fewer rather than weak ones; none
+  is a valid answer.
 """
 
 
@@ -129,14 +137,41 @@ def verify(
 
 
 async def _pass(focus: str, brief: str, context: str, product: Product) -> list[DiscoveredIdea]:
+    prof = (product.settings or {}).get("profile") or {}
+    size = (
+        f"PRODUCT SIZE: {prof.get('size')}. {prof.get('summary', '')}\n"
+        if prof.get("size")
+        else ""
+    )
     prompt = (
-        f"PRODUCT: {product.name}\n{product.description or ''}\n\n"
+        f"PRODUCT: {product.name}\n{product.description or ''}\n{size}\n"
         f"YOUR FOCUS ({focus}): {brief}\n\n{context}"
     )
     out = await llm.generate_structured(
         prompt=prompt, schema=SpecialistPassOutput, system=SYSTEM, timeout_s=600
     )
     return out.ideas
+
+
+async def _group_after_scan(
+    session: AsyncSession,
+    product: Product,
+    user_id: uuid.UUID | None,
+    progress: Callable[[str, int], Awaitable[None]],
+) -> int:
+    """Sizes the product with its code, then bundles related features into projects."""
+    await progress("Sizing the product and grouping related features", 90)
+    try:
+        # Size it with the code unless a person or the AI already did.
+        if (idea_scope.profile_of(product) or {}).get("source") in (None, "heuristic"):
+            await idea_scope.refresh_profile(session, product)
+        groups = await idea_scope.group_ideas(session, product, user_id)
+        await session.commit()
+        return len(groups)
+    except (idea_scope.GroupingError, ModelError) as exc:
+        logger.info("No grouping after scan of %s: %s", product.id, exc)
+        await session.rollback()
+        return 0
 
 
 async def run_codebase_scan(
@@ -183,8 +218,12 @@ async def run_codebase_scan(
             if len(failed) == len(PASSES):
                 raise ModelError("Every specialist pass failed: " + "; ".join(failed.values()))
 
-            await progress("Checking evidence against the code", 85)
+            await progress("Checking evidence against the code", 80)
             ideas, dropped = verify(found, snapshot)
+            # Small, low-value items are not ideas; keep them out of the backlog.
+            small = [i for i in ideas if i.effort == "S" and i.value_score != "High"]
+            ideas = [i for i in ideas if i not in small]
+            dropped += len(small)
             for item in ideas:
                 session.add(
                     Idea(
@@ -220,7 +259,12 @@ async def run_codebase_scan(
                 "commit": snapshot.commit_sha,
                 "snapshotId": str(snapshot.id),
             }
-            note = f"{len(ideas)} ideas, each tied to real files"
+            await session.commit()
+            groups = await _group_after_scan(session, product, started_by_id, progress)
+            scan.stats = {**scan.stats, "groups": groups}
+            note = f"{len(ideas)} features, each tied to real files" + (
+                f", grouped into {groups} project{'s' if groups != 1 else ''}" if groups else ""
+            )
         except (ModelError, repo_context.RepoContextError) as exc:
             logger.warning("Idea scan %s failed: %s", scan_id, exc)
             scan.status = "failed"
