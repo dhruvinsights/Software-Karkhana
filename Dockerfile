@@ -17,12 +17,25 @@ COPY tools/axcheck ./tools/axcheck
 WORKDIR /src/tools/axcheck
 RUN CGO_ENABLED=0 go build -o /out/axcheck .
 
+# --- Stage 1c: OSV-Scanner (google/osv-scanner), pinned ----------------------
+# Scans dependency manifests for known vulnerabilities (Security station).
+FROM golang:1.27 AS osvtools
+RUN CGO_ENABLED=0 GOBIN=/out go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.7.0
+
 # --- Stage 2: Python runtime -------------------------------------------
 FROM python:3.12-slim
 # git: the worker clones and pushes. No compilers, no shells beyond the base.
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir uv==0.8.13
+# repomix packs a repository for the AI (scans, PRDs, chat, QA agent). It runs
+# from a pinned global install, never fetched at request time.
+COPY --from=web /usr/local/bin/node /usr/local/bin/node
+COPY --from=web /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && npm install -g --no-audit --no-fund repomix@1.18.1 \
+    && npm cache clean --force
+ENV REPOMIX_CMD=/usr/local/bin/repomix
 
 WORKDIR /code
 # Precompile bytecode at build time: the code is read-only at runtime, and
@@ -35,14 +48,18 @@ RUN uv sync --no-dev --no-install-project --frozen
 COPY app ./app
 COPY db ./db
 COPY --from=axtools /out/axcheck /usr/local/bin/axcheck
+COPY --from=osvtools /out/osv-scanner /usr/local/bin/osv-scanner
 COPY --from=web /web/dist ./web/dist
 RUN uv sync --no-dev --frozen
+# Headless Chromium for the PDF reports (idea evaluations, PRDs).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN /code/.venv/bin/playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 
 # Run as an unprivileged user. /code stays root-owned, so the process cannot
 # modify its own code; all runtime writes go to temp directories.
 RUN useradd --create-home --uid 10001 karkhana
 USER karkhana
-ENV AXCHECK_BIN=/usr/local/bin/axcheck PATH="/code/.venv/bin:$PATH" PYTHONUNBUFFERED=1 STATIC_DIR=/code/web/dist
+ENV OSV_SCANNER_BIN=/usr/local/bin/osv-scanner AXCHECK_BIN=/usr/local/bin/axcheck PATH="/code/.venv/bin:$PATH" PYTHONUNBUFFERED=1 STATIC_DIR=/code/web/dist
 
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=${COMMIT_SHA}

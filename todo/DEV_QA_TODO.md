@@ -7,7 +7,7 @@ Tick an item only after its check passes. Commit code and this file together.
 
 ## 0. Setup
 - [x] Branch `feat/dev-qa-stations` (stacked on `feat/project-launch-idea-scope`, PR #7)
-- [ ] Deployed-mode audit: list every place that assumes `localhost`
+- [x] Deployed-mode audit: list every place that assumes `localhost`
       (agent server URL, pairing command, email links, CORS, websocket URL) and fix
       or document it in `docs/DEPLOYED_MODE.md`.
       Check: grep for localhost in app/ and web/src, each hit justified.
@@ -72,3 +72,4 @@ Tick an item only after its check passes. Commit code and this file together.
 | 2026-10-18 | Station channels: team / project / linked to workspace |
 | 2026-10-18 | Frontend workspace API; coding runs get their story's design slice |
 | 2026-10-18 | Dev and QA workspace screens with channels; mounted in project and standalone screens |
+| 2026-10-18 | Deployed mode: image now carries Node + repomix and Chromium (verified in a local build); settings documented |
