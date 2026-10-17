@@ -41,9 +41,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import idea_flow
 from app.ai import llm
 from app.ai.errors import ModelError
+from app.config import get_settings
 from app.db import sessionmaker
 from app.models import Idea, IdeaScan, Product, RepoSnapshot
-from app.services import idea_scope, repo_context
+from app.services import greenfield, idea_scope, repo_context
 from app.services.realtime import manager, notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -143,8 +144,16 @@ async def _pass(focus: str, brief: str, context: str, product: Product) -> list[
         if prof.get("size")
         else ""
     )
+    st = product.settings or {}
+    setup = (
+        f"Problem: {st.get('problemStatement') or 'n/a'}\n"
+        f"Target users: {st.get('targetUsers') or 'n/a'}\n"
+        f"Tech stack: {', '.join(st.get('techStack') or []) or 'n/a'}\n"
+        f"Key features planned: {'; '.join(st.get('keyFeatures') or []) or 'n/a'}\n"
+        f"Constraints: {'; '.join(st.get('constraints') or []) or 'n/a'}\n"
+    )
     prompt = (
-        f"PRODUCT: {product.name}\n{product.description or ''}\n{size}\n"
+        f"PRODUCT: {product.name}\n{product.description or ''}\n{setup}{size}\n"
         f"YOUR FOCUS ({focus}): {brief}\n\n{context}"
     )
     out = await llm.generate_structured(
@@ -195,6 +204,9 @@ async def run_codebase_scan(
         assert scan is not None and product is not None
         try:
             await progress("Reading the repository", 10, scan.repo_url)
+            # An empty repository is started from the product setup first.
+            if await greenfield.ensure_started(session, product, started_by_id):
+                await progress("Started the empty repository from the product setup", 20)
             snapshot = await repo_context.take_snapshot(session, product, started_by_id)
             await session.commit()
             await progress(
@@ -202,7 +214,7 @@ async def run_codebase_scan(
                 35,
                 f"{snapshot.file_count} files at {snapshot.commit_sha[:8]}",
             )
-            context = repo_context.render(snapshot)
+            context = greenfield.context_for(snapshot, get_settings().repo_context_budget_chars)
             results = await asyncio.gather(
                 *(_pass(focus, brief, context, product) for focus, brief in PASSES.items()),
                 return_exceptions=True,

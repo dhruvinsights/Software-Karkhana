@@ -59,7 +59,7 @@ from app.models import (
     Task,
     User,
 )
-from app.services import plan, repo_context
+from app.services import greenfield, plan, repo_context
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -381,10 +381,9 @@ async def run(project_id: uuid.UUID) -> None:
         try:
             snapshot = None
             if product and repo_context.repo_url(product):
-                snapshot = await repo_context.latest(session, product.id) or await repo_context.take_snapshot(
-                    session, product, project.created_by
-                )
-            code = repo_context.render(snapshot, 110_000) if snapshot else "REPOSITORY: none connected."
+                # An empty repository is started from the product setup first.
+                snapshot = await greenfield.snapshot_for(session, product, project.created_by)
+            code = greenfield.context_for(snapshot, 110_000)
             features = (
                 list(
                     (

@@ -38,9 +38,10 @@ from pydantic import BaseModel, Field
 
 from app.ai import llm
 from app.ai.errors import ModelError
+from app.config import get_settings
 from app.db import sessionmaker
 from app.models import Idea, Product, RepoSnapshot
-from app.services import repo_context
+from app.services import greenfield, repo_context
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -196,7 +197,7 @@ async def generate(
 ) -> IdeaReport:
     """Writes and validates the report. Raises ``ModelError`` if it stays ungrounded."""
     code = (
-        repo_context.render(snapshot)
+        greenfield.context_for(snapshot, get_settings().repo_context_budget_chars)
         if snapshot
         else "REPOSITORY: none connected. Say so in current_state and keep affected_areas empty."
     )
@@ -233,9 +234,7 @@ async def run(idea_id: uuid.UUID, user_id: uuid.UUID) -> None:
         try:
             snapshot = None
             if product and repo_context.repo_url(product):
-                snapshot = await repo_context.latest(session, product.id)
-                if snapshot is None:
-                    snapshot = await repo_context.take_snapshot(session, product, user_id)
+                snapshot = await greenfield.snapshot_for(session, product, user_id)
             report = await generate(idea, product, snapshot)
             stored = {
                 "status": "ready",

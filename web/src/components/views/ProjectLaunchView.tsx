@@ -193,7 +193,7 @@ const RepoVerified: React.FC<{ repo: RepoCheck; onChange: () => void; locked: bo
           Access: {repo.permissions?.admin ? 'admin' : repo.permissions?.maintain ? 'maintain' : 'write'}
           {repo.login ? ` as @${repo.login}` : ''}
         </span>
-        {repo.empty && <span className="text-amber-300">Empty repository</span>}
+        {repo.empty && <span className="text-[#7aa7ff]">Empty: Karkhana starts it from your product setup</span>}
       </p>
     </div>
     {!locked && (

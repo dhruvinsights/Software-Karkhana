@@ -37,7 +37,7 @@ from app.ai import llm
 from app.ai.errors import ModelError
 from app.db import sessionmaker
 from app.models import Product, Project, ProjectDocument, Task
-from app.services import repo_context
+from app.services import greenfield, repo_context
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -174,7 +174,7 @@ async def run(project_id: uuid.UUID, user_id: uuid.UUID) -> None:
             ]
             product = await session.get(Product, project.product_id) if project.product_id else None
             snapshot = await repo_context.latest(session, product.id) if product else None
-            code = repo_context.render(snapshot, 90_000) if snapshot else "REPOSITORY: none connected."
+            code = greenfield.context_for(snapshot, 90_000)
             prompt = (
                 f"PROJECT: {project.name}\n\nAPPROVED PRD:\n{json.dumps(prd.content)}\n\n"
                 f"STORIES:\n{json.dumps(stories)}\n\n{code}"
