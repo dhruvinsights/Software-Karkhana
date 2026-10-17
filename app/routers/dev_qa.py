@@ -56,7 +56,7 @@ from app.models import (
 )
 from app.notifications import email_people
 from app.routers.reviews import _approvals
-from app.services import design_handoff, repos
+from app.services import design_handoff, plan, repos
 from app.services.realtime import notify_activity, notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -714,3 +714,69 @@ async def frontend_workspace(
             for s in stories
         ],
     }
+
+
+class ReworkIn(BaseModel):
+    """Why the change goes back to the developer."""
+
+    reason: str = Field(min_length=rules.MIN_NOTES, max_length=2000)
+
+
+@router.post("/api/prs/{pr_id}/rework")
+async def rework(
+    pr_id: uuid.UUID, body: ReworkIn, session: Session, user: CurrentUser
+) -> dict[str, Any]:
+    """Sends an open PR's story back for another build: the PR closes, the story is Ready again.
+
+    For when tests failed or a reviewer asked for changes the agent should make.
+    The PR is closed on GitHub with the reason; the next run opens a new one.
+    """
+    pr = await session.scalar(
+        select(PullRequest).where(PullRequest.id == pr_id).with_for_update()
+    )
+    if pr is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pull request not found.")
+    if pr.status != "open":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"This pull request is {pr.status}."
+        )
+    task = await session.get(Task, pr.task_id)
+    assert task is not None
+    project = await _station(session, user, task.project_id, "developer")
+    if task.status != "review":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"{task.key} is {task.status}, not in review."
+        )
+    pr.status = "closed"
+    await plan.move_task(session, task, "in_progress")
+    await plan.move_task(session, task, "ready")
+    await ledger.append(
+        session,
+        actor=ledger.Actor.human(user),
+        action="pr.rework",
+        subject_type="pull_request",
+        subject_id=pr.id,
+        project_id=project.id,
+        payload={"number": pr.number, "task": task.key, "reason": body.reason[:300]},
+    )
+    await session.commit()
+    closed_on_github = False
+    if not pr.url.startswith("local://"):
+        gh = await repos.client_for(session, project.id, user.id)
+        if gh is not None:
+            try:
+                await gh.close_pull_request(
+                    number=pr.number,
+                    comment=f"Sent back for rework by {user.display_name} in Karkhana: {body.reason.strip()}\n\n"
+                    "The next build opens a new pull request.",
+                )
+                closed_on_github = True
+            except Exception:  # the rework stands even if GitHub refuses
+                logger.warning(
+                    "Could not close PR %s on GitHub", pr.number, exc_info=True
+                )
+            finally:
+                await gh.aclose()
+    if project.workspace_id:
+        await notify_workspace(project.workspace_id, "runs")
+    return {"status": "ready", "task": task.key, "closedOnGitHub": closed_on_github}

@@ -27,6 +27,7 @@ import {
   MessagesSquare,
   Palette,
   Play,
+  RotateCcw,
   Terminal,
   UserPlus,
   Wrench,
@@ -159,6 +160,8 @@ const StoryCard: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [reworking, setReworking] = useState(false);
+  const [reason, setReason] = useState('');
   const run = story.run;
   const pr = story.pr;
   const mine = story.assigneeId === myId;
@@ -278,6 +281,45 @@ const StoryCard: React.FC<{
               </p>
               {pr.requestedReviewers.length > 0 && (
                 <p className="text-[#B5B1C0]">Asked: {pr.requestedReviewers.map((r) => r.name).join(', ')}</p>
+              )}
+              {pr.status === 'open' && mine && !reworking && (
+                <button
+                  onClick={() => {
+                    setReworking(true);
+                    setReason(pr.testsPassed ? '' : 'Tests failed in the build; fix them and build again.');
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 text-xs cursor-pointer flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Send back for rework
+                </button>
+              )}
+              {reworking && pr && (
+                <div className="space-y-1.5">
+                  <textarea
+                    rows={2}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="What must change (goes on the PR when it closes)"
+                    className="w-full px-3 py-2 bg-[#07070B] border border-white/[0.1] rounded-lg text-xs text-white"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      disabled={busy || reason.trim().length < 10}
+                      onClick={() =>
+                        act(async () => {
+                          await devQaApi.rework(pr.id, reason);
+                          setReworking(false);
+                        })
+                      }
+                      className="px-2.5 py-1.5 rounded-lg bg-amber-600 text-white text-xs cursor-pointer disabled:opacity-40"
+                    >
+                      Close PR and make it Ready
+                    </button>
+                    <button onClick={() => setReworking(false)} className="px-2.5 py-1.5 text-xs text-[#827D8E] cursor-pointer">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
               {pr.status === 'open' && (
                 <ReviewerPicker

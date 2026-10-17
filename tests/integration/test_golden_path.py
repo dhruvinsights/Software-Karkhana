@@ -653,3 +653,35 @@ async def test_concurrent_review_retries_post_one_review(client, fakes):
     assert sorted([r1.status_code, r2.status_code]) == [200, 409]
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
     assert len(pr["comments"]) == 4  # Not 8.
+
+
+async def test_rework_sends_a_failing_pr_back_for_another_build(client, fakes):
+    idea = IDEAS["discounts"]
+    pid = (
+        await client.post("/api/projects", json={"name": "Rework", "idea_text": idea["idea_text"]}, headers=as_(PM))
+    ).json()["id"]
+    detail = await wait_for_stage(client, pid, "evaluated")
+    await client.post(f"/api/projects/{pid}/approve", json={"decision": "approved"}, headers=as_(DIR))
+    tid = detail["tasks"][0]["id"]
+    run_id = (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).json()["id"]
+    auth = {"Authorization": f"Run {run_token(run_id)}"}
+    r = await client.post(
+        f"/internal/runs/{run_id}/complete",
+        json={"ok": True, "patch": "diff --git a b", "test_command": "pytest", "test_exit_code": 1,
+              "test_output": "1 failed", "review": [], "reviewed": True},
+        headers=auth,
+    )
+    assert r.json()["status"] == "succeeded"
+    pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
+    assert not pr["tests_passed"]
+    # Stuck in review: no new build until the PR goes back.
+    assert (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).status_code == 409
+    r = await client.post(f"/api/prs/{pr['id']}/rework", json={"reason": "no"}, headers=as_(DEV))
+    assert r.status_code == 422
+    r = await client.post(
+        f"/api/prs/{pr['id']}/rework", json={"reason": "Integration tests fail on the new endpoint."}, headers=as_(DEV)
+    )
+    assert r.status_code == 200 and r.json()["status"] == "ready", r.text
+    again = await client.post(f"/api/prs/{pr['id']}/rework", json={"reason": "Integration tests fail again."}, headers=as_(DEV))
+    assert again.status_code == 409
+    assert (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).status_code == 202
