@@ -85,7 +85,8 @@ def database():
         await conn.close()
 
     asyncio.run(setup())
-    owner_url = OWNER_DSN.replace("/postgres", f"/{TEST_DB}").replace(
+    # Swap only the database name: the user in the DSN may also be "postgres" (CI).
+    owner_url = (OWNER_DSN.rsplit("/", 1)[0] + f"/{TEST_DB}").replace(
         "postgresql://", "postgresql+asyncpg://"
     )
     from app.config import get_settings
