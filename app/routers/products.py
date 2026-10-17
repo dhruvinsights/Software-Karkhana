@@ -20,9 +20,9 @@ import datetime as dt
 import logging
 import re
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +46,7 @@ from app.schemas import (
     DocumentExtractResponse,
     ExtractedProductSpec,
 )
+from app.services import idea_scope
 from app.services.realtime import notify_activity, notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,9 @@ class ProductCreatePayload(BaseModel):
     team_spaces: list[str] = []
     # Workspace members who review ideas for this product.
     reviewer_ids: list[uuid.UUID] = []
+    # The sizing shown on the setup screen (POST /api/products/analyse). When
+    # missing, the product is sized in the background after it is created.
+    profile: idea_scope.ProductProfile | None = None
 
 
 # Station ids from app.idea_flow, minus "product" (the PM side is always there).
@@ -95,6 +99,7 @@ def _product_dict(p: Product) -> dict[str, Any]:
         "constraints": st.get("constraints", []),
         "teamSpaces": wa.normalize_stations(st.get("teamSpaces")) or list(TEAM_SPACES),
         "reviewerIds": st.get("reviewerIds", []),
+        "profile": st.get("profile"),
         "createdAt": (p.created_at or dt.datetime.now(dt.UTC)).isoformat(),
     }
 
@@ -110,6 +115,8 @@ class IdeaCreatePayload(BaseModel):
     workspace_id: str | None = None
     complexity: str = "Medium"
     tags: list[str] = Field(default_factory=list)
+    # A person may propose a whole project directly; small products only take features.
+    scope: Literal["feature", "project"] = "feature"
 
 
 class IdeaUpdatePayload(BaseModel):
@@ -155,6 +162,7 @@ async def list_products(
 @router.post("/api/products", status_code=status.HTTP_201_CREATED)
 async def create_product(
     payload: ProductCreatePayload,
+    background: BackgroundTasks,
     session: Session,
     user: CurrentUser,
 ) -> dict[str, Any]:
@@ -203,6 +211,18 @@ async def create_product(
             "constraints": [c.strip() for c in payload.constraints if c.strip()],
             "teamSpaces": team_spaces,
             "reviewerIds": [str(r) for r in reviewer_ids],
+            **(
+                {
+                    "profile": {
+                        **payload.profile.model_dump(),
+                        # Confirmed (or corrected) by the admin on the setup screen.
+                        "source": "setup",
+                        "analysedAt": dt.datetime.now(dt.UTC).isoformat(),
+                    }
+                }
+                if payload.profile
+                else {}
+            ),
         },
     )
     session.add(product)
@@ -244,6 +264,8 @@ async def create_product(
     await session.commit()
     await notify_workspace(ws_uuid, "products")
     await notify_activity(ws_uuid, reviewer_ids)
+    if payload.profile is None:
+        background.add_task(idea_scope.profile_in_background, product.id)
     return _product_dict(product)
 
 
@@ -305,6 +327,9 @@ def _idea_dict(i: Idea, user: Any) -> dict[str, Any]:
         "evidence": i.evidence or [],
         "reviewReport": i.review_report,
         "promotedProjectId": str(i.project_id) if i.project_id else None,
+        "scope": i.scope or idea_scope.FEATURE,
+        "parentId": str(i.parent_id) if i.parent_id else None,
+        "delivery": i.delivery,
         "createdAt": i.created_at.isoformat(),
         "updatedAt": i.updated_at.isoformat() if i.updated_at else i.created_at.isoformat(),
     }
@@ -342,10 +367,17 @@ async def create_idea(
     # promotion are governed by that workspace's roles.
     ws_uuid = await access.resolve_workspace(session, user, ws_requested)
     await wa.forbid_read_only(session, user, ws_uuid)
+    product = None
     if prod_uuid:
         product = await session.get(Product, prod_uuid)
         if product is None or product.workspace_id != ws_uuid or product.archived_at is not None:
             raise HTTPException(status_code=400, detail="That product is not in this workspace.")
+    if payload.scope == idea_scope.PROJECT and (idea_scope.profile_of(product) or {}).get("size") == "small":
+        raise HTTPException(
+            status_code=422,
+            detail=f"{product.name if product else 'This product'} is a small product: propose features, "
+            "and they are added to its project.",
+        )
 
     idea = Idea(
         id=uuid.uuid4(),
@@ -360,6 +392,7 @@ async def create_idea(
         complexity=payload.complexity,
         tags=payload.tags,
         assessment=None,
+        scope=payload.scope,
     )
     session.add(idea)
     await session.flush()

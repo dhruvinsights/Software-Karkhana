@@ -64,8 +64,11 @@ def for_product(product: Product | None) -> RepoTarget | None:
 
 
 async def for_project(session: AsyncSession, project_id: uuid.UUID) -> RepoTarget | None:
-    """The repository of the project's product."""
+    """The project's own repository (set at launch), else its product's."""
     project = await session.get(Project, project_id)
+    own = parse_slug(str((project.settings or {}).get("repository_url") or "")) if project else None
+    if own:
+        return RepoTarget(own, get_settings().github_base_branch)
     product = await session.get(Product, project.product_id) if project and project.product_id else None
     return for_product(product)
 

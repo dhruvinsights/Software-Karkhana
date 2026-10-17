@@ -18,6 +18,7 @@ import {
   Eye,
   LayoutGrid,
   FileText,
+  Paperclip,
 } from 'lucide-react';
 import { FactoryState, factoryStore } from '../../store/factoryStore';
 import { AIProviderInfo, Idea, IdeaChat, IdeaChatMessage, IdeaScan } from '../../types/factory';
@@ -28,6 +29,7 @@ import { IdeaApprovalPanel } from './IdeaApprovalPanel';
 import { fetchGitHubStatus, startGitHubDeviceFlow, pollGitHubDeviceFlow, saveGitHubTokenDirect, GitHubStatus } from '../../lib/githubApi';
 import { chatSocket, useChatFrames } from '../../lib/chatSocket';
 import { reportLabel, startIdeaReport } from '../../lib/ideaReports';
+import { IdeaGroupsBar, IdeaScopeActions, ScopeBadge } from '../workspace/IdeaScope';
 import { IdeaReportModal } from '../workspace/DocumentModal';
 import { MarkdownMessage } from '../MarkdownMessage';
 
@@ -65,6 +67,8 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<IdeaChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
+  // Ideas attached to the next message; the server puts their full details in the prompt.
+  const [attachedIdeaIds, setAttachedIdeaIds] = useState<string[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([]);
 
@@ -251,7 +255,10 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
       return;
     }
 
-    if (!customText) setInputText('');
+    if (!customText) {
+      setInputText('');
+      setAttachedIdeaIds([]);
+    }
 
     // Append optimistic user message
     const tempUserMsg: IdeaChatMessage = {
@@ -272,6 +279,7 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
           content: textToSend,
           provider: selectedProvider,
           model: selectedModel,
+          idea_ids: attachedIdeaIds,
         }),
       });
       const assistantMsg: IdeaChatMessage = await res.json();
@@ -343,6 +351,8 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
       setScanChatId(null);
     }
   };
+
+  const productProjects = state.projects.filter((p) => p.productId === activeProduct?.id);
 
   const reloadIdeas = () => {
     if (!token || !activeProduct) return;
@@ -716,6 +726,29 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
 
           {/* Bottom Floating Pill Composer (Gemini Design System) */}
           <div className="px-8 pb-6 pt-2">
+            {attachedIdeaIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {attachedIdeaIds.map((id) => {
+                  const idea = ideas.find((i) => i.id === id);
+                  return (
+                    <span
+                      key={id}
+                      className="pl-2.5 pr-1 py-1 rounded-full bg-[#075BFF]/15 border border-[#075BFF]/40 text-[11px] text-white flex items-center gap-1.5"
+                    >
+                      <Paperclip className="w-3 h-3 text-[#7aa7ff]" />
+                      <span className="max-w-[220px] truncate">{idea?.title ?? 'Idea'}</span>
+                      <button
+                        onClick={() => setAttachedIdeaIds((prev) => prev.filter((x) => x !== id))}
+                        aria-label="Remove attached idea"
+                        className="p-0.5 rounded-full hover:bg-white/10 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div className="w-full relative bg-[#12121A] border border-white/[0.12] focus-within:border-[#075BFF]/60 focus-within:ring-2 focus-within:ring-[#075BFF]/20 rounded-full p-2.5 pl-5 shadow-2xl flex items-center gap-3 transition-all">
               <Sparkles className="w-5 h-5 text-[#075BFF] shrink-0" />
               <textarea
@@ -770,6 +803,9 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
             {/* ── IDEAS TAB ── */}
             {rightTab === 'ideas' && (
               <>
+                {activeProduct && (
+                  <IdeaGroupsBar product={activeProduct} ideas={ideas} projects={productProjects} onChanged={reloadIdeas} compact />
+                )}
                 {/* Active Scan Progress banner */}
                 {scanning && (
                   <div className="p-3.5 rounded-2xl bg-[#075BFF]/10 border border-[#075BFF]/30 space-y-2">
@@ -795,8 +831,9 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
                     </button>
                   </div>
                 ) : (
-                  ideas.map((idea) => {
+                  ideas.filter((i) => !i.parentId).map((idea) => {
                     const isApproved = idea.status === 'approved';
+                    const isProject = idea.scope === 'project';
                     const reviewer = ideaReviewers[idea.id];
                     return (
                       <BorderGlow
@@ -809,8 +846,11 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
                       >
                         {/* Header Chips */}
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-white/[0.06] text-[#A7ACB8] font-medium">
-                            {idea.source === 'agent' ? 'Agent scan' : 'Manual'}
+                          <span className="flex items-center gap-1.5">
+                            <ScopeBadge idea={idea} ideas={ideas} />
+                            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-white/[0.06] text-[#A7ACB8] font-medium">
+                              {idea.source === 'agent' ? 'Agent scan' : 'Manual'}
+                            </span>
                           </span>
                           <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded font-medium ${
                             idea.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
@@ -846,6 +886,8 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
                           </div>
                         )}
 
+                        <IdeaScopeActions idea={idea} ideas={ideas} projects={productProjects} onChanged={reloadIdeas} />
+
                         {/* Actions */}
                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/[0.06]">
                           <div className="flex items-center gap-1.5">
@@ -856,6 +898,22 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
                             >
                               <MessageSquare className="w-3.5 h-3.5" />
                               <span>Chat</span>
+                            </button>
+                            <button
+                              onClick={() =>
+                                setAttachedIdeaIds((prev) =>
+                                  prev.includes(idea.id) ? prev.filter((x) => x !== idea.id) : [...prev, idea.id].slice(-10),
+                                )
+                              }
+                              title="Add this idea to your next chat message"
+                              className={`p-1.5 rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors ${
+                                attachedIdeaIds.includes(idea.id)
+                                  ? 'bg-[#075BFF]/20 text-white'
+                                  : 'hover:bg-white/[0.08] text-[#A7ACB8] hover:text-white'
+                              }`}
+                            >
+                              {attachedIdeaIds.includes(idea.id) ? <Check className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
+                              <span>{attachedIdeaIds.includes(idea.id) ? 'Added' : 'Add to prompt'}</span>
                             </button>
                             <button
                               onClick={() => handleReport(idea)}
@@ -870,14 +928,16 @@ export const ProductIdeaLab: React.FC<ProductIdeaLabProps> = ({ state, productId
                             </button>
                           </div>
                           <button
-                            onClick={() => setReviewModalIdea(idea)}
-                            className={isApproved
+                            onClick={() => (isApproved && isProject ? factoryStore.openProjectLaunch(idea.id) : setReviewModalIdea(idea))}
+                            className={isApproved && isProject
                               ? 'px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-md flex items-center gap-1 transition-all'
                               : 'px-2.5 py-1 bg-[#075BFF]/20 hover:bg-[#075BFF]/30 text-[#5B8FFF] rounded-lg text-xs font-medium cursor-pointer transition-all'
                             }
                           >
-                            {isApproved ? (
-                              <><span>Create project</span><ArrowRight className="w-3 h-3" /></>
+                            {isApproved && isProject ? (
+                              <><span>Launch project</span><ArrowRight className="w-3 h-3" /></>
+                            ) : isApproved ? (
+                              'Approved'
                             ) : idea.status === 'draft' ? 'Send for review' : 'Review status'}
                           </button>
                         </div>

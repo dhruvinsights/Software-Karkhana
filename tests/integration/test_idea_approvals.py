@@ -34,19 +34,20 @@ async def _uid(client, email):
     return (await client.get("/api/me", headers=as_(email))).json()["id"]
 
 
-async def _new_idea(client, title="Cart discounts"):
+async def _new_idea(client, title="Cart discounts", scope="project"):
+    # Only project ideas can be promoted; a lone feature joins an existing project.
     r = await client.post(
         "/api/ideas",
         headers=as_(PM),
-        json={"title": title, "problem_statement": IDEA_TEXT},
+        json={"title": title, "problem_statement": IDEA_TEXT, "scope": scope},
     )
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
-async def _approved_idea(client, title="Cart discounts"):
+async def _approved_idea(client, title="Cart discounts", scope="project"):
     """An idea that its single reviewer (the director) has approved."""
-    idea = await _new_idea(client, title)
+    idea = await _new_idea(client, title, scope)
     director = await _uid(client, DIR)
     r = await client.post(
         f"/api/ideas/{idea}/request-approval",

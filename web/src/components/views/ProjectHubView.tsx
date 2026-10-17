@@ -49,6 +49,7 @@ import { GlassCard } from '../reactbits/GlassCard';
 import { ShinyText } from '../reactbits/ShinyText';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { ProjectPlanPanel } from './ProjectPlanPanel';
+import { ProjectBriefStrip } from './ProjectBriefStrip';
 import { ProjectDesignPanel } from './ProjectDesignPanel';
 import { ProjectBuildPanel } from './ProjectBuildPanel';
 import { ProjectPipelinePanel, ProjectReleasePanel } from './ProjectDeliveryPanels';
@@ -311,6 +312,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   }
 
   const projectEpics = state.epics.filter((e) => e.projectId === selectedProject.id);
+  const projectTeams = selectedProject.teamsAssigned ?? [];
   const projectTasks = state.issues.filter((i) => i.projectId === selectedProject.id);
   const projectPRs = state.pullRequests.filter((pr) => pr.projectId === selectedProject.id);
 
@@ -387,6 +389,15 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
         </div>
       )}
 
+      {/* Everyone sees the scope: the epics dashboard and the PRD sit above every workspace. */}
+      {activeStationTab !== 'plan' && (
+        <ProjectBriefStrip
+          projectId={selectedProject.id}
+          projectName={selectedProject.name}
+          onOpenPlan={() => setActiveStationTab('plan')}
+        />
+      )}
+
       {/* Station screens: the board is home; each station opens as its own screen. */}
       {activeStationTab !== 'overview' && (
         <StationBar
@@ -443,7 +454,12 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
           {/* One card per station, each with its own team and reviewers */}
           <ProjectStationBoard
             members={projectMembers}
-            visible={(station) => station === null || myStations.includes(station)}
+            visible={(station) =>
+              station === null ||
+              (myStations.includes(station) &&
+                // Only the team spaces chosen at launch; older projects have every station.
+                (station === 'product' || projectTeams.length === 0 || projectTeams.includes(station)))
+            }
             counts={{
               plan: `${projectEpics.length} epics`,
               product: `${projectEpics.length} epics defined`,

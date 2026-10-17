@@ -47,7 +47,7 @@ from app.models import (
 )
 from app.notifications import email_people
 from app.process import Role
-from app.services import project_docs
+from app.services import idea_scope, project_docs
 from app.services.realtime import notify_activity, notify_workspace
 
 router = APIRouter(prefix="/api", tags=["idea_flow"])
@@ -84,6 +84,10 @@ class PromoteIn(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     repository_url: str | None = Field(default=None, max_length=500)
     target_release_date: str | None = Field(default=None, max_length=40)
+    code: str | None = Field(default=None, max_length=12)
+    # Team spaces this project has (the launch screen's AI suggestion, as edited).
+    # Empty means every station. "product" is always included.
+    teams: list[str] = Field(default_factory=list, max_length=len(rules.ALL_STATIONS))
     leads: list[LeadIn] = Field(default_factory=list, max_length=30)
 
 
@@ -458,6 +462,12 @@ async def promote_idea_to_project(
             "Every assigned reviewer must approve the idea first "
             f"(current status: {idea.status}).",
         )
+    if idea.scope != idea_scope.PROJECT:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A single feature is not a project. Add it to an existing project, "
+            "or group it with related features into one.",
+        )
 
     valid_roles = {r.value for r in Role}
     leads: dict[uuid.UUID, LeadIn] = {}
@@ -474,6 +484,17 @@ async def promote_idea_to_project(
             )
         leads[lead.user_id] = lead  # last entry for a person wins
     leads.pop(user.id, None)  # the caller is enrolled below
+    bad_teams = set(body.teams) - set(rules.ALL_STATIONS)
+    if bad_teams:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown team(s): " + ", ".join(sorted(bad_teams)),
+        )
+    teams = (
+        [s for s in rules.ALL_STATIONS if s == "product" or s in body.teams]
+        if body.teams
+        else list(rules.ALL_STATIONS)
+    )
 
     people = {
         u.id: u
@@ -513,6 +534,9 @@ async def promote_idea_to_project(
         settings["repository_url"] = body.repository_url
     if body.target_release_date:
         settings["target_release_date"] = body.target_release_date
+    if body.code:
+        settings["code"] = body.code.strip().upper()
+    settings["teams"] = teams
 
     project = Project(
         id=uuid.uuid4(),
@@ -547,14 +571,17 @@ async def promote_idea_to_project(
             {"userId": str(uid), "role": role, "stations": stations, "isLead": is_lead}
         )
 
-    enrol(user.id, my_role if my_role in rules.ROLE_STATIONS else user.role, list(rules.ALL_STATIONS), True)
+    enrol(user.id, my_role if my_role in rules.ROLE_STATIONS else user.role, teams, True)
     for uid, lead in leads.items():
-        enrol(
-            uid, lead.role, lead.stations or rules.stations_for(lead.role), lead.is_lead
-        )
+        stations = [s for s in (lead.stations or rules.stations_for(lead.role)) if s in teams]
+        enrol(uid, lead.role, stations or ["product"], lead.is_lead)
 
     idea.status = rules.IDEA_PROMOTED
     idea.project_id = project.id
+    # The features the project groups are delivered by it.
+    for child in await idea_scope.children_of(session, idea.id):
+        child.status = rules.IDEA_PROMOTED
+        child.project_id = project.id
     await session.flush()
 
     actor = ledger.Actor.human(user)

@@ -18,7 +18,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 from app.models import User
 from app.routers.gemini import (
@@ -101,14 +101,14 @@ async def test_products_and_ideas_endpoints(mock_user):
     prod_req = ProductCreatePayload(name="Enterprise Engine", domain="Cloud Services", workspace_id=str(ws_id))
     with patch("app.access.workspace_member", AsyncMock(return_value=object())):
         with patch("app.workspace_access.workspace_access", level("member")), pytest.raises(HTTPException) as denied:
-            await create_product(prod_req, mock_session, mock_user)
+            await create_product(prod_req, BackgroundTasks(), mock_session, mock_user)
         assert denied.value.status_code == 403
         with (
             patch("app.workspace_access.workspace_access", level("owner", owner=True)),
             patch("app.routers.products.notify_workspace", AsyncMock()),
             patch("app.routers.products.notify_activity", AsyncMock()),
         ):
-            prod = await create_product(prod_req, mock_session, mock_user)
+            prod = await create_product(prod_req, BackgroundTasks(), mock_session, mock_user)
     assert prod["name"] == "Enterprise Engine"
     assert prod["code"] == "ENTERP"
 

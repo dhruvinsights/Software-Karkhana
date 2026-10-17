@@ -21,6 +21,7 @@ Approving an idea is not here: that is the reviewers' decision, made through
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import re
 import uuid
@@ -39,7 +40,7 @@ from app.ai.idea_agents import run_codebase_scan
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.models import Idea, IdeaChat, IdeaChatMessage, IdeaScan, Product, User
-from app.services import idea_report
+from app.services import idea_report, repo_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["idea_lab"])
@@ -204,6 +205,78 @@ class IdeaChatMessagePayload(BaseModel):
     content: str
     provider: str | None = None
     model: str | None = None
+    # Ideas the user attached to this message; their full details go in the prompt.
+    idea_ids: list[str] = []
+
+
+# Room for repository code in the brainstorm prompt (local models have small windows).
+_CHAT_REPO_BUDGET = 40_000
+
+
+def _idea_block(idea: Idea, *, full: bool) -> str:
+    head = f"- [{idea.status}] {idea.title} (complexity {idea.complexity})"
+    if not full:
+        return head
+    report = (idea.review_report or {}).get("report") if idea.review_report else None
+    lines = [
+        head,
+        f"  Problem: {idea.problem_statement}",
+        f"  Expected value: {idea.expected_value}",
+        f"  Target user: {idea.target_user}",
+        f"  Tags: {', '.join(idea.tags or [])}",
+    ]
+    if idea.evidence:
+        lines.append(f"  Evidence files: {', '.join(map(str, idea.evidence))}")
+    if idea.assessment:
+        lines.append(f"  Feasibility assessment: {json.dumps(idea.assessment)[:3000]}")
+    if report:
+        lines.append(f"  Evaluation report: {json.dumps(report)[:6000]}")
+    return "\n".join(lines)
+
+
+async def _chat_context(
+    session: AsyncSession, product: Product | None, chat_session: IdeaChat, attached: list[uuid.UUID]
+) -> str:
+    """Everything the brainstorm should know: the product setup, its ideas and its code."""
+    if product is None:
+        return "PRODUCT: (unknown)"
+    st = product.settings or {}
+    parts = [
+        f"PRODUCT: {product.name} ({product.code}) · domain {product.domain or 'n/a'}",
+        f"Description: {product.description}",
+        f"Problem it solves: {st.get('problemStatement') or 'n/a'}",
+        f"Target users: {st.get('targetUsers') or 'n/a'}",
+        f"Tech stack: {', '.join(st.get('techStack') or []) or 'n/a'}",
+        f"Key features: {'; '.join(st.get('keyFeatures') or []) or 'n/a'}",
+        f"Constraints: {'; '.join(st.get('constraints') or []) or 'n/a'}",
+        f"Repository: {st.get('repositoryUrl') or 'none connected'}",
+    ]
+    ideas = list(
+        (
+            await session.scalars(
+                select(Idea).where(Idea.product_id == product.id).order_by(Idea.created_at.desc()).limit(40)
+            )
+        ).all()
+    )
+    focus = set(attached) | ({chat_session.idea_id} if chat_session.idea_id else set())
+    focused = [i for i in ideas if i.id in focus]
+    # Attached ideas from outside the newest 40 still count.
+    missing = focus - {i.id for i in focused}
+    for iid in missing:
+        extra = await session.get(Idea, iid)
+        if extra is not None and extra.product_id == product.id:
+            focused.append(extra)
+    if focused:
+        parts.append("\nIDEAS THE USER IS DISCUSSING (full detail):")
+        parts.extend(_idea_block(i, full=True) for i in focused)
+    others = [i for i in ideas if i.id not in focus]
+    if others:
+        parts.append("\nOTHER IDEAS ALREADY PROPOSED FOR THIS PRODUCT (avoid duplicates):")
+        parts.extend(_idea_block(i, full=False) for i in others)
+    snapshot = await repo_context.latest(session, product.id)
+    if snapshot is not None:
+        parts.append("\n" + repo_context.render(snapshot, _CHAT_REPO_BUDGET))
+    return "\n".join(parts)
 
 
 @router.get("/api/products/{product_id}/idea-chats")
@@ -357,10 +430,15 @@ async def send_idea_chat_message(
         raise HTTPException(status_code=404, detail="Chat not found.")
     await wa.workspace_access(session, user, chat_session.workspace_id)
 
-    # Fetch product metadata for context
     product = await session.get(Product, chat_session.product_id)
     prod_name = product.name if product else "Product"
-    prod_desc = product.description if product else ""
+    attached: list[uuid.UUID] = []
+    for raw in payload.idea_ids[:10]:
+        try:
+            attached.append(uuid.UUID(raw))
+        except ValueError:
+            continue
+    context = await _chat_context(session, product, chat_session, attached)
 
     # Record user message
     user_msg = IdeaChatMessage(
@@ -391,7 +469,12 @@ async def send_idea_chat_message(
     )
 
     system_prompt = f"""You are the Lead Autonomous Architect for {prod_name}.
-Product Context: {prod_desc}
+Use the product context below as the truth about the product, its ideas and its code.
+When the user attaches ideas, build on them and say how they fit with the others.
+
+<product_context>
+{context}
+</product_context>
 
 Engage in visionary, actionable, engineering-grounded brainstorming.
 Help refine ideas, write specifications, identify risks, and plan architectures.
