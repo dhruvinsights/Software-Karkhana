@@ -158,6 +158,13 @@ class Settings(BaseSettings):
     mem0_dsn: str | None = None  # libpq DSN when mem0_store=pgvector
     review_timeout_s: float = 300.0
 
+    # --- Knowledge graph (FalkorDB; see docs/KNOWLEDGE_GRAPH.md) ----------
+    # A derived projection of Postgres, rebuilt from the ledger. Unset = off,
+    # and every graph call returns an empty result instead of failing.
+    falkordb_url: str | None = None  # e.g. "redis://localhost:6379"
+    kg_sync_interval_s: float = 15.0
+    kg_lesson_min_similarity: float = 0.75  # Cross-project SIMILAR_TO cutoff.
+
     # --- Context compression (Headroom) ----------------------------------
     # Every prompt, tool output and document we send to a model goes through
     # app/ai/compression.py. "lossless" (default) only applies Headroom's
