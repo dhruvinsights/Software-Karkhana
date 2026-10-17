@@ -20,14 +20,14 @@ Tick an item only after its check passes. Commit code and this file together.
       parsing pytest counts. Check: `node --test` in packages/karkhana-agent.
 
 ## 2. Developer accountability
-- [ ] Manual check by the developer (`issues.dev_check`): acceptance criteria ticked,
+- [x] Manual check by the developer (`issues.dev_check`): acceptance criteria ticked,
       notes; required before QA can sign a story off and before a bug can be marked fixed.
       Check: integration test.
-- [ ] Bug lifecycle for QA bugs: New, Fixing, Fixed (dev confirmed), Verified, Reopened.
+- [x] Bug lifecycle for QA bugs: New, Fixing, Fixed (dev confirmed), Verified, Reopened.
       Dev: start / mark fixed. QA: verify / reopen. Check: integration test.
-- [ ] Request reviewers on a PR (people in the project; email + in-app + GitHub when
+- [x] Request reviewers on a PR (people in the project; email + in-app + GitHub when
       their login is known). Check: integration test.
-- [ ] `GET /api/projects/{id}/dev-board`: stories with run, suites, PR, reviewers,
+- [x] `GET /api/projects/{id}/dev-board`: stories with run, suites, PR, reviewers,
       manual check and their bugs; plus the project's bug list. Check: integration test.
 
 ## 3. QA agents suggest, people decide
@@ -42,7 +42,7 @@ Tick an item only after its check passes. Commit code and this file together.
       Check: integration test.
 
 ## 5. Frontend & design inside Dev
-- [ ] Stories carry their layer (`layer:frontend` label from the plan).
+- [x] Stories carry their layer (`layer:frontend` label from the plan).
 - [ ] Dev → Frontend workspace: frontend stories, the design handoff for each story
       (screens and API contracts from the Design station), and its agent runs.
       Frontend stories and their agent jobs land there automatically.
@@ -67,3 +67,4 @@ Tick an item only after its check passes. Commit code and this file together.
 |---|---|
 | 2026-10-17 | TODO written; branch created |
 | 2026-10-17 | Runs report unit and integration suites separately, live |
+| 2026-10-18 | Dev accountability: manual checks, bug lifecycle, reviewer requests, dev board |

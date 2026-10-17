@@ -28,7 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import issue_rules, ledger
-from app.models import Issue, Project, TestScenario, User
+from app.models import ActivityEvent, Issue, Project, TestScenario, User
 
 
 def _bug_label(scenario: TestScenario) -> str:
@@ -47,6 +47,33 @@ async def record_result(session: AsyncSession, scenario: TestScenario, user: Use
     label = _bug_label(scenario)
     if await session.scalar(select(Issue.id).where(Issue.project_id == story.project_id, Issue.labels.contains([label]))):
         return
+    await file_bug(
+        session,
+        story,
+        user,
+        title=f"QA: {scenario.title}",
+        description=(
+            f"Failed scenario on {issue_rules.key(story.number)}.\n\n"
+            f"Expected: {scenario.expected_result}\nActual: {scenario.actual_result or '(not recorded)'}"
+        ),
+        priority=scenario.priority,
+        labels=["qa", label],
+        payload={"scenario": str(scenario.id)},
+    )
+
+
+async def file_bug(
+    session: AsyncSession,
+    story: Issue,
+    user: User,
+    *,
+    title: str,
+    description: str,
+    priority: str,
+    labels: list[str],
+    payload: dict[str, str] | None = None,
+) -> Issue:
+    """Files a QA bug under ``story``, assigned to the story's developer, who is told."""
     project = await session.scalar(select(Project).where(Project.id == story.project_id).with_for_update())
     assert project is not None
     number = (
@@ -56,18 +83,17 @@ async def record_result(session: AsyncSession, scenario: TestScenario, user: Use
         id=uuid.uuid4(),
         project_id=project.id,
         number=number,
-        title=f"QA: {scenario.title}"[:200],
-        description=(
-            f"Failed scenario on {issue_rules.key(story.number)}.\n\n"
-            f"Expected: {scenario.expected_result}\nActual: {scenario.actual_result or '(not recorded)'}"
-        ),
+        title=title[:200],
+        description=description,
         type="bug",
-        priority=scenario.priority if scenario.priority in issue_rules.PRIORITIES else "P1",
+        priority=priority if priority in issue_rules.PRIORITIES else "P1",
         status="backlog",
         source="qa",
         reporter_id=user.id,
+        # The bug goes straight back to the developer who built the story.
+        assignee_id=story.assignee_id,
         parent_id=story.id,
-        labels=["qa", label],
+        labels=labels,
     )
     session.add(bug)
     await session.flush()
@@ -78,14 +104,30 @@ async def record_result(session: AsyncSession, scenario: TestScenario, user: Use
         subject_type="issue",
         subject_id=bug.id,
         project_id=project.id,
-        payload={"story": issue_rules.key(story.number), "scenario": str(scenario.id)},
+        payload={"story": issue_rules.key(story.number), **(payload or {})},
     )
+    if story.assignee_id and story.assignee_id != user.id and project.workspace_id:
+        session.add(
+            ActivityEvent(
+                workspace_id=project.workspace_id,
+                actor_id=user.id,
+                recipient_id=story.assignee_id,
+                type="bug_filed",
+                summary=f"{user.display_name} found a bug in {issue_rules.key(story.number)}: {bug.title}",
+                target_type="issue",
+                target_id=str(bug.id),
+                project_id=project.id,
+            )
+        )
+    return bug
 
 
 async def signoff_problem(session: AsyncSession, story: Issue) -> str | None:
     """Why the story cannot be signed off yet, or ``None`` when it can."""
     if story.status not in ("ready_for_qa", "in_qa"):
         return f"{issue_rules.key(story.number)} is {story.status.replace('_', ' ')}, not waiting for QA."
+    if not story.dev_check:
+        return "The developer has not confirmed their manual check of this story yet."
     results = list(
         (await session.scalars(select(TestScenario.status).where(TestScenario.issue_id == story.id))).all()
     )

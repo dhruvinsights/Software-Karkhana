@@ -442,6 +442,8 @@ class PullRequest(Base):
     head_sha: Mapped[str] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default="open")
     tests_passed: Mapped[bool] = mapped_column(Boolean)
+    # [{"userId", "name", "by", "at"}]: people asked to review (migration 034).
+    requested_reviewers: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     merged_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     merged_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # Set once a review engine has produced a verdict, even with zero comments.
@@ -641,6 +643,9 @@ class Issue(Base):
     acceptance_criteria: Mapped[list[str]] = mapped_column(JSONB, default=list)
     source_quote: Mapped[str] = mapped_column(Text, default="")
     estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The developer's manual check (story) or fix confirmation (bug); migration 034.
+    dev_check: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    reopen_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

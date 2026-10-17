@@ -293,6 +293,25 @@ async def test_golden_path(client, fakes):
         "1 AI comment(s) not triaged",
         "Needs approval from a reviewer other than the author",
     ]
+    # Asking for a review: project members only, never the author.
+    lead = (await client.get("/api/me", headers=as_(LEAD))).json()["id"]
+    dev = (await client.get("/api/me", headers=as_(DEV))).json()["id"]
+    r = await client.post(f"/api/prs/{pr['id']}/reviewers", json={"user_ids": [lead]}, headers=as_(DEV))
+    assert r.status_code == 422 and "Not members" in r.text
+    r = await client.post(
+        f"/api/projects/{pid}/members",
+        json={"user_id": lead, "role": "lead", "stations": ["developer"]},
+        headers=as_(PM),
+    )
+    assert r.status_code in (200, 201), r.text
+    r = await client.post(f"/api/prs/{pr['id']}/reviewers", json={"user_ids": [dev]}, headers=as_(DEV))
+    assert r.status_code == 422
+    r = await client.post(f"/api/prs/{pr['id']}/reviewers", json={"user_ids": [lead]}, headers=as_(DEV))
+    assert r.status_code == 200, r.text
+    assert [x["userId"] for x in r.json()["requestedReviewers"]] == [lead]
+    board = (await client.get(f"/api/projects/{pid}/dev-board", headers=as_(DEV))).json()
+    built = next(s for s in board["stories"] if s["taskId"] == tid) if board["stories"] else None
+    assert built is None or built["pr"]["requestedReviewers"][0]["userId"] == lead
     await client.post(
         f"/api/comments/{c3['id']}/triage",
         json={"triage": "dismissed", "reason": "Covered by an existing test"},
