@@ -1,0 +1,1578 @@
+{
+ "results": [
+  {
+   "source": {
+    "path": "requirements.txt",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "jinja2",
+      "version": "2.10.0",
+      "ecosystem": "PyPI",
+      "purl": "pkg:pypi/jinja2@2.10.0"
+     },
+     "groups": [
+      {
+       "ids": [
+        "PYSEC-2019-217",
+        "GHSA-462w-v97r-4m45"
+       ],
+       "aliases": [
+        "CVE-2019-10906",
+        "GHSA-462w-v97r-4m45",
+        "PYSEC-2019-217"
+       ],
+       "max_severity": "8.6"
+      },
+      {
+       "ids": [
+        "PYSEC-2021-66",
+        "GHSA-g3rq-g295-4j3m"
+       ],
+       "aliases": [
+        "CVE-2020-28493",
+        "GHSA-g3rq-g295-4j3m",
+        "PYSEC-2021-66",
+        "SNYK-PYTHON-JINJA2-1012994"
+       ],
+       "max_severity": "6.9"
+      },
+      {
+       "ids": [
+        "PYSEC-2026-1471",
+        "GHSA-cpwx-vrp4-4pq7"
+       ],
+       "aliases": [
+        "CVE-2025-27516",
+        "GHSA-cpwx-vrp4-4pq7",
+        "PYSEC-2026-1471"
+       ],
+       "max_severity": "5.4"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/jinja2/PYSEC-2019-217.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "purl": "pkg:pypi/jinja2"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.10.1"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2019-10906",
+        "GHSA-462w-v97r-4m45"
+       ],
+       "details": "In Pallets Jinja before 2.10.1, str.format_map allows a sandbox escape.",
+       "id": "PYSEC-2019-217",
+       "modified": "2023-11-08T04:00:58.644982Z",
+       "published": "2019-04-07T00:29:00Z",
+       "references": [
+        {
+         "type": "ARTICLE",
+         "url": "https://palletsprojects.com/blog/jinja-2-10-1-released"
+        },
+        {
+         "type": "WEB",
+         "url": "https://lists.apache.org/thread.html/b2380d147b508bbcb90d2cad443c159e63e12555966ab4f320ee22da@%3Ccommits.airflow.apache.org%3E"
+        },
+        {
+         "type": "WEB",
+         "url": "https://lists.apache.org/thread.html/46c055e173b52d599c648a98199972dbd6a89d2b4c4647b0500f2284@%3Cdevnull.infra.apache.org%3E"
+        }
+       ],
+       "schema_version": "1.7.3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/jinja2/PYSEC-2021-66.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "purl": "pkg:pypi/jinja2"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.11.3"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2020-28493",
+        "GHSA-g3rq-g295-4j3m",
+        "SNYK-PYTHON-JINJA2-1012994"
+       ],
+       "details": "This affects the package jinja2 from 0.0.0 and before 2.11.3. The ReDoS vulnerability is mainly due to the `_punctuation_re regex` operator and its use of multiple wildcards. The last wildcard is the most exploitable as it searches for trailing punctuation. This issue can be mitigated by Markdown to format user content instead of the urlize filter, or by implementing request timeouts and limiting process memory.",
+       "id": "PYSEC-2021-66",
+       "modified": "2023-11-08T04:03:28.543308Z",
+       "published": "2021-02-01T20:15:00Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/pallets/jinja/blob/ab81fd9c277900c85da0c322a2ff9d68a235b2e6/src/jinja2/utils.py%23L20"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/pallets/jinja/pull/1343"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://snyk.io/vuln/SNYK-PYTHON-JINJA2-1012994"
+        }
+       ],
+       "schema_version": "1.7.3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/jinja2/PYSEC-2026-1471.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "purl": "pkg:pypi/jinja2"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "3.1.6"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2025-27516",
+        "GHSA-cpwx-vrp4-4pq7"
+       ],
+       "details": "An oversight in how the Jinja sandboxed environment interacts with the `|attr` filter allows an attacker that controls the content of a template to execute arbitrary Python code.\n\nTo exploit the vulnerability, an attacker needs to control the content of a template. Whether that is the case depends on the type of application using Jinja. This vulnerability impacts users of applications which execute untrusted templates.\n\nJinja's sandbox does catch calls to `str.format` and ensures they don't escape the sandbox. However, it's possible to use the `|attr` filter to get a reference to a string's plain format method, bypassing the sandbox. After the fix, the `|attr` filter no longer bypasses the environment's attribute lookup.",
+       "id": "PYSEC-2026-1471",
+       "modified": "2026-07-07T17:46:43.358335981Z",
+       "published": "2026-07-07T14:34:50.446969Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/pallets/jinja/security/advisories/GHSA-cpwx-vrp4-4pq7"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-27516"
+        },
+        {
+         "type": "FIX",
+         "url": "https://github.com/pallets/jinja/commit/90457bbf33b8662926ae65cdde4c4c32e756e403"
+        }
+       ],
+       "schema_version": "1.7.5",
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:L/AC:L/AT:P/PR:L/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Jinja2 vulnerable to sandbox breakout through attr filter selecting format method"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2019/04/GHSA-462w-v97r-4m45/GHSA-462w-v97r-4m45.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "purl": "pkg:pypi/jinja2"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.10.1"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2019-10906",
+        "PYSEC-2019-217"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-693"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2020-06-16T20:57:35Z",
+        "nvd_published_at": "2019-04-07T00:29:00Z",
+        "severity": "HIGH"
+       },
+       "details": "In Pallets Jinja before 2.10.1, `str.format_map` allows a sandbox escape.\n\nThe sandbox is used to restrict what code can be evaluated when rendering untrusted, user-provided templates. Due to the way string formatting works in Python, the `str.format_map` method could be used to escape the sandbox.\n\nThis issue was previously addressed for the `str.format` method in Jinja 2.8.1, which discusses the issue in detail. However, the less-common `str.format_map` method was overlooked. This release applies the same sandboxing to both methods.\n\nIf you cannot upgrade Jinja, you can override the `is_safe_attribute` method on the sandbox and explicitly disallow the `format_map` method on string objects.",
+       "id": "GHSA-462w-v97r-4m45",
+       "modified": "2024-09-24T21:03:59.802687Z",
+       "published": "2019-04-10T14:30:24Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2019-10906"
+        },
+        {
+         "type": "WEB",
+         "url": "https://usn.ubuntu.com/4011-2"
+        },
+        {
+         "type": "WEB",
+         "url": "https://usn.ubuntu.com/4011-1"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:H/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Jinja2 sandbox escape via string formatting"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "last_known_affected_version_range": "<= 3.1.5",
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2025/03/GHSA-cpwx-vrp4-4pq7/GHSA-cpwx-vrp4-4pq7.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "purl": "pkg:pypi/jinja2"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "3.1.6"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2025-27516",
+        "PYSEC-2026-1471"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-1336"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2025-03-05T20:40:14Z",
+        "nvd_published_at": "2025-03-05T21:15:20Z",
+        "severity": "MODERATE"
+       },
+       "details": "An oversight in how the Jinja sandboxed environment interacts with the `|attr` filter allows an attacker that controls the content of a template to execute arbitrary Python code.\n\nTo exploit the vulnerability, an attacker needs to control the content of a template. Whether that is the case depends on the type of application using Jinja. This vulnerability impacts users of applications which execute untrusted templates.\n\nJinja's sandbox does catch calls to `str.format` and ensures they don't escape the sandbox. However, it's possible to use the `|attr` filter to get a reference to a string's plain format method, bypassing the sandbox. After the fix, the `|attr` filter no longer bypasses the environment's attribute lookup.",
+       "id": "GHSA-cpwx-vrp4-4pq7",
+       "modified": "2026-09-10T03:49:48.526758681Z",
+       "published": "2025-03-05T20:40:14Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/pallets/jinja/security/advisories/GHSA-cpwx-vrp4-4pq7"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-27516"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/pallets/jinja/commit/90457bbf33b8662926ae65cdde4c4c32e756e403"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:L/AC:L/AT:P/PR:L/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Jinja2 vulnerable to sandbox breakout through attr filter selecting format method"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/03/GHSA-g3rq-g295-4j3m/GHSA-g3rq-g295-4j3m.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "jinja2",
+          "purl": "pkg:pypi/jinja2"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.11.3"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2020-28493",
+        "PYSEC-2021-66",
+        "SNYK-PYTHON-JINJA2-1012994"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-400"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2021-03-13T01:08:09Z",
+        "nvd_published_at": "2021-02-01T20:15:00Z",
+        "severity": "MODERATE"
+       },
+       "details": "This affects the package jinja2 from 0.0.0 and before 2.11.3. The ReDOS vulnerability of the regex is mainly due to the sub-pattern [a-zA-Z0-9._-]+.[a-zA-Z0-9._-]+ This issue can be mitigated by Markdown to format user content instead of the urlize filter, or by implementing request timeouts and limiting process memory.",
+       "id": "GHSA-g3rq-g295-4j3m",
+       "modified": "2025-02-14T05:26:14.565160Z",
+       "published": "2021-03-19T21:28:05Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-28493"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/pallets/jinja/pull/1343"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/pallets/jinja/commit/15ef8f09b659f9100610583938005a7a10472d4d"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Regular Expression Denial of Service (ReDoS) in Jinja2"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "requests",
+      "version": "2.19.0",
+      "ecosystem": "PyPI",
+      "purl": "pkg:pypi/requests@2.19.0"
+     },
+     "groups": [
+      {
+       "ids": [
+        "PYSEC-2018-28",
+        "GHSA-x84v-xcm2-53pg"
+       ],
+       "aliases": [
+        "CVE-2018-18074",
+        "GHSA-x84v-xcm2-53pg",
+        "PYSEC-2018-28"
+       ],
+       "max_severity": "7.5"
+      },
+      {
+       "ids": [
+        "PYSEC-2023-74",
+        "GHSA-j8r2-6x86-q33q"
+       ],
+       "aliases": [
+        "CVE-2023-32681",
+        "GHSA-j8r2-6x86-q33q",
+        "PYSEC-2023-74"
+       ],
+       "max_severity": "6.1"
+      },
+      {
+       "ids": [
+        "PYSEC-2026-1872",
+        "GHSA-9hjg-9r4m-mvj7"
+       ],
+       "aliases": [
+        "CVE-2024-47081",
+        "GHSA-9hjg-9r4m-mvj7",
+        "PYSEC-2026-1872"
+       ],
+       "max_severity": "5.3"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/requests/PYSEC-2018-28.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "purl": "pkg:pypi/requests"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "c45d7c49ea75133e52ab22a8e9e13173938e36ff"
+            }
+           ],
+           "repo": "https://github.com/requests/requests",
+           "type": "GIT"
+          },
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.20.0"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2018-18074",
+        "GHSA-x84v-xcm2-53pg"
+       ],
+       "details": "The Requests package before 2.20.0 for Python sends an HTTP Authorization header to an http URI upon receiving a same-hostname https-to-http redirect, which makes it easier for remote attackers to discover credentials by sniffing the network.",
+       "id": "PYSEC-2018-28",
+       "modified": "2023-11-08T04:00:04.815794Z",
+       "published": "2018-10-09T17:29:00Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/requests/requests/pull/4718"
+        },
+        {
+         "type": "REPORT",
+         "url": "https://github.com/requests/requests/issues/4716"
+        },
+        {
+         "type": "FIX",
+         "url": "https://github.com/requests/requests/commit/c45d7c49ea75133e52ab22a8e9e13173938e36ff"
+        }
+       ],
+       "schema_version": "1.7.3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/requests/PYSEC-2023-74.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "purl": "pkg:pypi/requests"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5"
+            }
+           ],
+           "repo": "https://github.com/psf/requests",
+           "type": "GIT"
+          },
+          {
+           "events": [
+            {
+             "introduced": "2.3.0"
+            },
+            {
+             "fixed": "2.31.0"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2023-32681",
+        "GHSA-j8r2-6x86-q33q"
+       ],
+       "details": "Requests is a HTTP library. Since Requests 2.3.0, Requests has been leaking Proxy-Authorization headers to destination servers when redirected to an HTTPS endpoint. This is a product of how we use `rebuild_proxies` to reattach the `Proxy-Authorization` header to requests. For HTTP connections sent through the tunnel, the proxy will identify the header in the request itself and remove it prior to forwarding to the destination server. However when sent over HTTPS, the `Proxy-Authorization` header must be sent in the CONNECT request as the proxy has no visibility into the tunneled request. This results in Requests forwarding proxy credentials to the destination server unintentionally, allowing a malicious actor to potentially exfiltrate sensitive information. This issue has been patched in version 2.31.0.\n\n",
+       "id": "PYSEC-2023-74",
+       "modified": "2023-11-08T04:12:35.436175Z",
+       "published": "2023-05-26T18:15:00Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://github.com/psf/requests/security/advisories/GHSA-j8r2-6x86-q33q"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/psf/requests/releases/tag/v2.31.0"
+        },
+        {
+         "type": "FIX",
+         "url": "https://github.com/psf/requests/commit/74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5"
+        }
+       ],
+       "schema_version": "1.7.3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/requests/PYSEC-2026-1872.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "purl": "pkg:pypi/requests"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.32.4"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2024-47081",
+        "GHSA-9hjg-9r4m-mvj7"
+       ],
+       "details": "### Impact\n\nDue to a URL parsing issue, Requests releases prior to 2.32.4 may leak .netrc credentials to third parties for specific maliciously-crafted URLs.\n\n### Workarounds\nFor older versions of Requests, use of the .netrc file can be disabled with `trust_env=False` on your Requests Session ([docs](https://requests.readthedocs.io/en/latest/api/#requests.Session.trust_env)).\n\n### References\nhttps://github.com/psf/requests/pull/6965\nhttps://seclists.org/fulldisclosure/2025/Jun/2",
+       "id": "PYSEC-2026-1872",
+       "modified": "2026-07-07T17:47:00.332079836Z",
+       "published": "2026-07-07T16:02:54.151964Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/psf/requests/security/advisories/GHSA-9hjg-9r4m-mvj7"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-47081"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/psf/requests/pull/6965"
+        }
+       ],
+       "schema_version": "1.7.5",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N",
+         "type": "CVSS_V3"
+        }
+       ],
+       "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2025/06/GHSA-9hjg-9r4m-mvj7/GHSA-9hjg-9r4m-mvj7.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "purl": "pkg:pypi/requests"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.32.4"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2024-47081",
+        "PYSEC-2026-1872"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-522"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2025-06-09T19:06:08Z",
+        "nvd_published_at": "2025-06-09T18:15:24Z",
+        "severity": "MODERATE"
+       },
+       "details": "### Impact\n\nDue to a URL parsing issue, Requests releases prior to 2.32.4 may leak .netrc credentials to third parties for specific maliciously-crafted URLs.\n\n### Workarounds\nFor older versions of Requests, use of the .netrc file can be disabled with `trust_env=False` on your Requests Session ([docs](https://requests.readthedocs.io/en/latest/api/#requests.Session.trust_env)).\n\n### References\nhttps://github.com/psf/requests/pull/6965\nhttps://seclists.org/fulldisclosure/2025/Jun/2",
+       "id": "GHSA-9hjg-9r4m-mvj7",
+       "modified": "2026-09-10T03:50:25.139398550Z",
+       "published": "2025-06-09T19:06:08Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/psf/requests/security/advisories/GHSA-9hjg-9r4m-mvj7"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-47081"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/psf/requests/pull/6965"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N",
+         "type": "CVSS_V3"
+        }
+       ],
+       "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2023/05/GHSA-j8r2-6x86-q33q/GHSA-j8r2-6x86-q33q.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "purl": "pkg:pypi/requests"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "2.3.0"
+            },
+            {
+             "fixed": "2.31.0"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2023-32681",
+        "PYSEC-2023-74"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-200"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2023-05-22T20:36:32Z",
+        "nvd_published_at": "2023-05-26T18:15:14Z",
+        "severity": "MODERATE"
+       },
+       "details": "### Impact\n\nSince Requests v2.3.0, Requests has been vulnerable to potentially leaking `Proxy-Authorization` headers to destination servers, specifically during redirects to an HTTPS origin. This is a product of how `rebuild_proxies` is used to recompute and [reattach the `Proxy-Authorization` header](https://github.com/psf/requests/blob/f2629e9e3c7ce3c3c8c025bcd8db551101cbc773/requests/sessions.py#L319-L328) to requests when redirected. Note this behavior has _only_ been observed to affect proxied requests when credentials are supplied in the URL user information component (e.g. `https://username:password@proxy:8080`).\n\n**Current vulnerable behavior(s):**\n\n1. HTTP \u2192 HTTPS: **leak**\n2. HTTPS \u2192 HTTP: **no leak**\n3. HTTPS \u2192 HTTPS: **leak**\n4. HTTP \u2192 HTTP: **no leak**\n\nFor HTTP connections sent through the proxy, the proxy will identify the header in the request itself and remove it prior to forwarding to the destination server. However when sent over HTTPS, the `Proxy-Authorization` header must be sent in the CONNECT request as the proxy has no visibility into further tunneled requests. This results in Requests forwarding the header to the destination server unintentionally, allowing a malicious actor to potentially exfiltrate those credentials.\n\nThe reason this currently works for HTTPS connections in Requests is the `Proxy-Authorization` header is also handled by urllib3 with our usage of the ProxyManager in adapters.py with [`proxy_manager_for`](https://github.com/psf/requests/blob/f2629e9e3c7ce3c3c8c025bcd8db551101cbc773/requests/adapters.py#L199-L235). This will compute the required proxy headers in `proxy_headers` and pass them to the Proxy Manager, avoiding attaching them directly to the Request object. This will be our preferred option going forward for default usage.\n\n### Patches\nStarting in Requests v2.31.0, Requests will no longer attach this header to redirects with an HTTPS destination. This should have no negative impacts on the default behavior of the library as the proxy credentials are already properly being handled by urllib3's ProxyManager.\n\nFor users with custom adapters, this _may_ be potentially breaking if you were already working around this behavior. The previous functionality of `rebuild_proxies` doesn't make sense in any case, so we would encourage any users impacted to migrate any handling of Proxy-Authorization directly into their custom adapter.\n\n### Workarounds\nFor users who are not able to update Requests immediately, there is one potential workaround.\n\nYou may disable redirects by setting `allow_redirects` to `False` on all calls through Requests top-level APIs. Note that if you're currently relying on redirect behaviors, you will need to capture the 3xx response codes and ensure a new request is made to the redirect destination.\n```\nimport requests\nr = requests.get('http://github.com/', allow_redirects=False)\n```\n\n### Credits\n\nThis vulnerability was discovered and disclosed by the following individuals.\n\nDennis Brinkrolf, Haxolot (https://haxolot.com/)\nTobias Funke, (tobiasfunke93@gmail.com)",
+       "id": "GHSA-j8r2-6x86-q33q",
+       "modified": "2026-09-10T03:50:01.756149727Z",
+       "published": "2023-05-22T20:36:32Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/psf/requests/security/advisories/GHSA-j8r2-6x86-q33q"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-32681"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/psf/requests/commit/74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:N/A:N",
+         "type": "CVSS_V3"
+        }
+       ],
+       "summary": "Unintended leak of Proxy-Authorization header in requests"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "last_known_affected_version_range": "<= 2.19.1",
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2018/10/GHSA-x84v-xcm2-53pg/GHSA-x84v-xcm2-53pg.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "requests",
+          "purl": "pkg:pypi/requests"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "2.20.0"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2018-18074",
+        "PYSEC-2018-28"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-522"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2020-06-16T22:02:40Z",
+        "nvd_published_at": "2018-10-09T17:29:00Z",
+        "severity": "HIGH"
+       },
+       "details": "The Requests package through 2.19.1 before 2018-09-14 for Python sends an HTTP Authorization header to an http URI upon receiving a same-hostname https-to-http redirect, which makes it easier for remote attackers to discover credentials by sniffing the network.",
+       "id": "GHSA-x84v-xcm2-53pg",
+       "modified": "2024-10-21T21:42:55.896669Z",
+       "published": "2018-10-29T19:06:46Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2018-18074"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/requests/requests/issues/4716"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/requests/requests/pull/4718"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+         "type": "CVSS_V3"
+        }
+       ],
+       "summary": "Insufficiently Protected Credentials in Requests"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "source": {
+    "path": "requirements.txt",
+    "type": "unknown"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "idna",
+      "version": "2.7.0",
+      "ecosystem": "PyPI",
+      "purl": "pkg:pypi/idna@2.7.0"
+     },
+     "groups": [
+      {
+       "ids": [
+        "PYSEC-2024-60",
+        "GHSA-jjg7-2v4v-x38h"
+       ],
+       "aliases": [
+        "CVE-2024-3651",
+        "GHSA-jjg7-2v4v-x38h",
+        "PYSEC-2024-60"
+       ],
+       "max_severity": "7.5"
+      },
+      {
+       "ids": [
+        "PYSEC-2026-215",
+        "GHSA-65pc-fj4g-8rjx"
+       ],
+       "aliases": [
+        "CVE-2026-45409",
+        "GHSA-65pc-fj4g-8rjx",
+        "PYSEC-2026-215"
+       ],
+       "max_severity": "6.9"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/idna/PYSEC-2024-60.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "idna",
+          "purl": "pkg:pypi/idna"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1d365e17e10d72d0b7876316fc7b9ca0eebdd38d"
+            }
+           ],
+           "repo": "https://github.com/kjd/idna",
+           "type": "GIT"
+          },
+          {
+           "events": [
+            {
+             "introduced": "0.1"
+            },
+            {
+             "fixed": "3.7"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2024-3651",
+        "GHSA-jjg7-2v4v-x38h"
+       ],
+       "details": "A vulnerability was identified in the kjd/idna library, specifically within the `idna.encode()` function, affecting version 3.6. The issue arises from the function's handling of crafted input strings, which can lead to quadratic complexity and consequently, a denial of service condition. This vulnerability is triggered by a crafted input that causes the `idna.encode()` function to process the input with considerable computational load, significantly increasing the processing time in a quadratic manner relative to the input size.",
+       "id": "PYSEC-2024-60",
+       "modified": "2026-06-10T17:01:21.102419358Z",
+       "published": "2024-07-07T18:15:00Z",
+       "references": [
+        {
+         "type": "EVIDENCE",
+         "url": "https://huntr.com/bounties/93d78d07-d791-4b39-a845-cbfabc44aadb"
+        },
+        {
+         "type": "FIX",
+         "url": "https://huntr.com/bounties/93d78d07-d791-4b39-a845-cbfabc44aadb"
+        },
+        {
+         "type": "FIX",
+         "url": "https://github.com/kjd/idna/commit/1d365e17e10d72d0b7876316fc7b9ca0eebdd38d"
+        }
+       ],
+       "schema_version": "1.7.5",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+         "type": "CVSS_V3"
+        }
+       ]
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/idna/PYSEC-2026-215.yaml"
+         },
+         "ecosystem_specific": {},
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "idna",
+          "purl": "pkg:pypi/idna"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "3.15"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2026-45409",
+        "GHSA-65pc-fj4g-8rjx"
+       ],
+       "details": "Internationalized Domain Names in Applications (IDNA) for Python provides support for Internationalized Domain Names in Applications (IDNA) and Unicode IDNA Compatibility Processing. In versions prior to 3.15, payloads such as `\"\\u0660\" * N` or `\"\\u30fb\" * N + \"\\u6f22\"` utilize the `valid_contexto` function prior to length rejection, and for high values of `N` will take a long time to process. This is the same issue as CVE-2024-3651, however the original remediation in 2024 was not a complete fix. A specially crafted argument to the `idna.encode()` function could consume significant resources. This may lead to a denial-of-service. Starting in version 3.14, the function rejects long inputs as soon as practicable prior to any further processing to minimize resource consumption. In version 3.15, this approach was extended to lesser used alternate functions (i.e. per-label conversions and codec support). A workaround is available. Domain names cannot exceed 253 characters in length. If this length limit is enforced prior to passing the domain to the `idna.encode()` function, it should no longer consume significant resources. This is triggered by arbitrarily large inputs that would not occur in normal usage, but may be passed to the library assuming there is no preliminary input validation by the higher-level application.",
+       "id": "PYSEC-2026-215",
+       "modified": "2026-06-16T16:15:04.639265054Z",
+       "published": "2026-06-05T23:16:43.343Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://github.com/kjd/idna/security/advisories/GHSA-65pc-fj4g-8rjx"
+        }
+       ],
+       "schema_version": "1.7.5",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+         "type": "CVSS_V3"
+        }
+       ]
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/05/GHSA-65pc-fj4g-8rjx/GHSA-65pc-fj4g-8rjx.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "idna",
+          "purl": "pkg:pypi/idna"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "3.15"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2026-45409",
+        "PYSEC-2026-215"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-1333"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2026-05-19T14:34:32Z",
+        "nvd_published_at": "2026-06-05T23:16:43Z",
+        "severity": "MODERATE"
+       },
+       "details": "This is the same issue as CVE-2024-3651, however the original remediation in 2024 was not a complete fix. Payloads such as `\"\\u0660\" * N` or `\"\\u30fb\" * N + \"\\u6f22\"` utilize the `valid_contexto` function prior to length rejection, and for high values of `N` will take a long time to process.\n\n### Impact\nA specially crafted argument to the `idna.encode()` function could consume significant resources. This may lead to a denial-of-service.\n\n### Patches\nStarting in version 3.14, the function rejects long inputs as soon as practicable prior to any further processing to minimize resource consumption. In version 3.15, this approach was extended to lesser used alternate functions (i.e. per-label conversions and codec support).\n\n### Workarounds\nDomain names cannot exceed 253 characters in length, if this length limit is enforced prior to passing the domain to the `idna.encode()` function it should no longer consume significant resources. This is triggered by arbitrarily large inputs that would not occur in normal usage, but may be passed to the library assuming there is no preliminary input validation by the higher-level application.",
+       "id": "GHSA-65pc-fj4g-8rjx",
+       "modified": "2026-09-10T03:50:45.700124422Z",
+       "published": "2026-05-19T14:34:32Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/kjd/idna/security/advisories/GHSA-65pc-fj4g-8rjx"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-45409"
+        },
+        {
+         "type": "PACKAGE",
+         "url": "https://github.com/kjd/idna"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Internationalized Domain Names in Applications (IDNA): Specially crafted inputs to idna.encode() can bypass CVE-2024-3651 fix"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/04/GHSA-jjg7-2v4v-x38h/GHSA-jjg7-2v4v-x38h.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "idna",
+          "purl": "pkg:pypi/idna"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "3.7"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2024-3651",
+        "PYSEC-2024-60"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-1333",
+         "CWE-400"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2024-04-11T21:32:40Z",
+        "nvd_published_at": "2024-07-07T18:15:09Z",
+        "severity": "MODERATE"
+       },
+       "details": "### Impact\nA specially crafted argument to the `idna.encode()` function could consume significant resources. This may lead to a denial-of-service.\n\n### Patches\nThe function has been refined to reject such strings without the associated resource consumption in version 3.7.\n\n### Workarounds\nDomain names cannot exceed 253 characters in length, if this length limit is enforced prior to passing the domain to the `idna.encode()` function it should no longer consume significant resources. This is triggered by arbitrarily large inputs that would not occur in normal usage, but may be passed to the library assuming there is no preliminary input validation by the higher-level application.\n\n### References\n* https://huntr.com/bounties/93d78d07-d791-4b39-a845-cbfabc44aadb",
+       "id": "GHSA-jjg7-2v4v-x38h",
+       "modified": "2026-09-10T03:50:12.774088619Z",
+       "published": "2024-04-11T21:32:40Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/kjd/idna/security/advisories/GHSA-jjg7-2v4v-x38h"
+        },
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-3651"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/kjd/idna/commit/1d365e17e10d72d0b7876316fc7b9ca0eebdd38d"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Internationalized Domain Names in Applications (IDNA) vulnerable to denial of service from specially crafted inputs to idna.encode"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "urllib3",
+      "version": "1.23.0",
+      "ecosystem": "PyPI",
+      "purl": "pkg:pypi/urllib3@1.23.0"
+     },
+     "groups": [
+      {
+       "ids": [
+        "PYSEC-2019-132",
+        "GHSA-r64q-w8jr-g9qp"
+       ],
+       "aliases": [
+        "CVE-2019-11236",
+        "GHSA-r64q-w8jr-g9qp",
+        "PYSEC-2019-132"
+       ],
+       "max_severity": "6.1"
+      },
+      {
+       "ids": [
+        "PYSEC-2019-133",
+        "GHSA-mh33-7rrq-662w"
+       ],
+       "aliases": [
+        "CVE-2019-11324",
+        "GHSA-mh33-7rrq-662w",
+        "PYSEC-2019-133"
+       ],
+       "max_severity": "8.7"
+      },
+      {
+       "ids": [
+        "PYSEC-2020-148",
+        "GHSA-wqvq-5m8c-6g24"
+       ],
+       "aliases": [
+        "CVE-2020-26137",
+        "GHSA-wqvq-5m8c-6g24",
+        "PYSEC-2020-148"
+       ],
+       "max_severity": "6.9"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/urllib3/PYSEC-2019-132.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "urllib3",
+          "purl": "pkg:pypi/urllib3"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1.24.3"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2019-11236",
+        "GHSA-r64q-w8jr-g9qp"
+       ],
+       "details": "In the urllib3 library through 1.24.1 for Python, CRLF injection is possible if the attacker controls the request parameter.",
+       "id": "PYSEC-2019-132",
+       "modified": "2023-11-08T04:01:00.047784Z",
+       "published": "2019-04-15T15:29:00Z",
+       "references": [
+        {
+         "type": "REPORT",
+         "url": "https://github.com/urllib3/urllib3/issues/1553"
+        },
+        {
+         "type": "WEB",
+         "url": "https://usn.ubuntu.com/3990-1/"
+        },
+        {
+         "type": "WEB",
+         "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/TBI45HO533KYHNB5YRO43TBYKA3E3VRL/"
+        }
+       ],
+       "schema_version": "1.7.3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/urllib3/PYSEC-2019-133.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "urllib3",
+          "purl": "pkg:pypi/urllib3"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1.24.2"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2019-11324",
+        "GHSA-mh33-7rrq-662w"
+       ],
+       "details": "The urllib3 library before 1.24.2 for Python mishandles certain cases where the desired set of CA certificates is different from the OS store of CA certificates, which results in SSL connections succeeding in situations where a verification failure is the correct outcome. This is related to use of the ssl_context, ca_certs, or ca_certs_dir argument.",
+       "id": "PYSEC-2019-133",
+       "modified": "2023-11-08T04:01:00.967964Z",
+       "published": "2019-04-18T21:29:00Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://github.com/urllib3/urllib3/compare/a6ec68a...1efadf4"
+        },
+        {
+         "type": "WEB",
+         "url": "http://www.openwall.com/lists/oss-security/2019/04/19/1"
+        },
+        {
+         "type": "WEB",
+         "url": "https://usn.ubuntu.com/3990-1/"
+        }
+       ],
+       "schema_version": "1.7.3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/pypa/advisory-database/blob/main/vulns/urllib3/PYSEC-2020-148.yaml"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "urllib3",
+          "purl": "pkg:pypi/urllib3"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1dd69c5c5982fae7c87a620d487c2ebf7a6b436b"
+            }
+           ],
+           "repo": "https://github.com/urllib3/urllib3",
+           "type": "GIT"
+          },
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1.25.9"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2020-26137",
+        "GHSA-wqvq-5m8c-6g24"
+       ],
+       "details": "urllib3 before 1.25.9 allows CRLF injection if the attacker controls the HTTP request method, as demonstrated by inserting CR and LF control characters in the first argument of putrequest(). NOTE: this is similar to CVE-2020-26116.",
+       "id": "PYSEC-2020-148",
+       "modified": "2023-11-08T04:03:14.251187Z",
+       "published": "2020-09-30T18:15:00Z",
+       "references": [
+        {
+         "type": "WEB",
+         "url": "https://bugs.python.org/issue39603"
+        },
+        {
+         "type": "FIX",
+         "url": "https://github.com/urllib3/urllib3/commit/1dd69c5c5982fae7c87a620d487c2ebf7a6b436b"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/urllib3/urllib3/pull/1800"
+        }
+       ],
+       "schema_version": "1.7.3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2019/04/GHSA-mh33-7rrq-662w/GHSA-mh33-7rrq-662w.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "urllib3",
+          "purl": "pkg:pypi/urllib3"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1.24.2"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2019-11324",
+        "PYSEC-2019-133"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-295"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2019-04-19T16:54:21Z",
+        "nvd_published_at": "2019-04-18T21:29:00Z",
+        "severity": "HIGH"
+       },
+       "details": "The urllib3 library before 1.24.2 for Python mishandles certain cases where the desired set of CA certificates is different from the OS store of CA certificates, which results in SSL connections succeeding in situations where a verification failure is the correct outcome. This is related to use of the `ssl_context`, `ca_certs`, or `ca_certs_dir` argument.",
+       "id": "GHSA-mh33-7rrq-662w",
+       "modified": "2024-11-18T22:25:21.266722Z",
+       "published": "2019-04-19T16:55:10Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2019-11324"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/urllib3/urllib3/commit/1efadf43dc63317cd9eaa3e0fdb9e05ab07254b1"
+        },
+        {
+         "type": "WEB",
+         "url": "https://access.redhat.com/errata/RHSA-2019:3335"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Improper Certificate Validation in urllib3"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "last_known_affected_version_range": "<= 1.24.2",
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/05/GHSA-r64q-w8jr-g9qp/GHSA-r64q-w8jr-g9qp.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "urllib3",
+          "purl": "pkg:pypi/urllib3"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1.24.3"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2019-11236",
+        "PYSEC-2019-132"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-93"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2022-06-28T15:02:18Z",
+        "nvd_published_at": "2019-04-15T15:29:00Z",
+        "severity": "MODERATE"
+       },
+       "details": "In the urllib3 library through 1.24.2 for Python, CRLF injection is possible if the attacker controls the request parameter.",
+       "id": "GHSA-r64q-w8jr-g9qp",
+       "modified": "2024-11-18T23:01:35.378516Z",
+       "published": "2022-05-13T01:09:23Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2019-11236"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/urllib3/urllib3/issues/1553"
+        },
+        {
+         "type": "WEB",
+         "url": "https://usn.ubuntu.com/3990-2"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.0/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "Improper Neutralization of CRLF Sequences in urllib3 library for Python"
+      },
+      {
+       "affected": [
+        {
+         "database_specific": {
+          "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/06/GHSA-wqvq-5m8c-6g24/GHSA-wqvq-5m8c-6g24.json"
+         },
+         "package": {
+          "ecosystem": "PyPI",
+          "name": "urllib3",
+          "purl": "pkg:pypi/urllib3"
+         },
+         "ranges": [
+          {
+           "events": [
+            {
+             "introduced": "0"
+            },
+            {
+             "fixed": "1.25.9"
+            }
+           ],
+           "type": "ECOSYSTEM"
+          }
+         ]
+        }
+       ],
+       "aliases": [
+        "CVE-2020-26137",
+        "PYSEC-2020-148"
+       ],
+       "database_specific": {
+        "cwe_ids": [
+         "CWE-74"
+        ],
+        "github_reviewed": true,
+        "github_reviewed_at": "2021-06-17T22:13:47Z",
+        "nvd_published_at": "2020-09-30T18:15:00Z",
+        "severity": "MODERATE"
+       },
+       "details": "urllib3 before 1.25.9 allows CRLF injection if the attacker controls the HTTP request method, as demonstrated by inserting CR and LF control characters in the first argument of `putrequest()`. NOTE: this is similar to CVE-2020-26116.",
+       "id": "GHSA-wqvq-5m8c-6g24",
+       "modified": "2024-11-18T22:47:07.792720Z",
+       "published": "2021-06-18T18:46:43Z",
+       "references": [
+        {
+         "type": "ADVISORY",
+         "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-26137"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/urllib3/urllib3/pull/1800"
+        },
+        {
+         "type": "WEB",
+         "url": "https://github.com/urllib3/urllib3/commit/1dd69c5c5982fae7c87a620d487c2ebf7a6b436b"
+        }
+       ],
+       "schema_version": "1.9.0",
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "summary": "CRLF injection in urllib3"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

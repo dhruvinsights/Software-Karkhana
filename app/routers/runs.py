@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, ledger, publisher
+from app import access, ledger, publisher, security_rules
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
@@ -58,7 +58,13 @@ from app.schemas import (
     RunSpec,
     SuiteReport,
 )
-from app.services import plan, repos, run_context, test_suites
+from app.services import (
+    osv_scan,
+    plan,
+    repos,
+    run_context,
+    test_suites,
+)
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -710,8 +716,31 @@ async def _publish_run(
             actor=REVIEWER,
             payload={"pr": pr.number},
         )
+    scan_id = await _queue_security_scan(session, project, pr)
     await _announce(session, project.id)
+    if scan_id is not None:
+        background.add_task(osv_scan.execute, scan_id)
     return {"status": run.status, "validation": run.validation_status}
+
+
+async def _queue_security_scan(
+    session: AsyncSession, project: Project, pr: PullRequest
+) -> uuid.UUID | None:
+    """Queues a dependency scan of the new pull request branch, if the policy asks.
+
+    A scan problem never fails the run: the code is already published, and the
+    gate (not this hook) decides whether the work may proceed.
+    """
+    try:
+        policy = security_rules.read_policy(project.settings)
+        if not policy.auto_scan or not pr.branch or not await osv_scan.has_source(session, project):
+            return None
+        async with session.begin_nested():
+            scan, created = await osv_scan.enqueue(session, project, trigger="pr", pr=pr)
+        return scan.id if created else None
+    except Exception:
+        logger.exception("Could not queue a security scan for PR %s", pr.id)
+        return None
 
 
 async def _finish_failed(

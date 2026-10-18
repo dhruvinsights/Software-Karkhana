@@ -753,9 +753,73 @@ class SecurityFinding(Base):
     remediation_advice: Mapped[str] = mapped_column(Text, default="")
     sla_deadline: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    # Scanner-created findings have no human author (migration 037).
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
+    # OSV-Scanner fields (migration 037).
+    source: Mapped[str] = mapped_column(String, default="manual")
+    fingerprint: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Branch the finding was found on; None means the base branch.
+    ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    scan_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("security_scans.id", ondelete="SET NULL"), nullable=True
+    )
+    resolved_by_scan_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("security_scans.id", ondelete="SET NULL"), nullable=True
+    )
+    osv_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    aliases: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    package_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    package_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    ecosystem: Mapped[str | None] = mapped_column(String, nullable=True)
+    fixed_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    manifest_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    references_urls: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    ai_fix: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="SET NULL"), nullable=True
+    )
+    first_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SecurityScan(Base):
+    """One OSV-Scanner run over a project's repository (migration 037)."""
+
+    __tablename__ = "security_scans"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    trigger: Mapped[str] = mapped_column(String, default="manual")
+    status: Mapped[str] = mapped_column(String, default="queued")
+    ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    commit_sha: Mapped[str | None] = mapped_column(String, nullable=True)
+    pr_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("pull_requests.id", ondelete="SET NULL"), nullable=True
+    )
+    started_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = _now()
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    counts: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
+    # Findings this scan saw (ids), so a pull request is gated on its own scan.
+    finding_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    packages_affected: Mapped[int] = mapped_column(Integer, default=0)
+    new_findings: Mapped[int] = mapped_column(Integer, default=0)
+    resolved_findings: Mapped[int] = mapped_column(Integer, default=0)
+    gate: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scanner_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
 
 class RagDocument(Base):
     """A document in a workspace's RAG knowledge base (migration 015)."""

@@ -64,11 +64,12 @@ from app.routers import (
     run_control,
     run_publish,
     runs,
+    security,
     stations,
     workspace,
     workspaces,
 )
-from app.services import chat_retention, realtime
+from app.services import chat_retention, osv_scan, realtime
 
 
 def _setup_logging() -> None:
@@ -93,8 +94,10 @@ async def lifespan(_: FastAPI):
     setup_telemetry()
     await realtime.manager.start_broker()
     purge = asyncio.create_task(chat_retention.run_forever())
+    scans = asyncio.create_task(osv_scan.run_forever())
     yield
     purge.cancel()
+    scans.cancel()
     await realtime.manager.stop_broker()
     await db.dispose()
 
@@ -145,6 +148,7 @@ def create_app() -> FastAPI:
         workspace.router,
         workspaces.router,
         context.router,
+        security.router,
         stations.router,
     ):
         app.include_router(r)

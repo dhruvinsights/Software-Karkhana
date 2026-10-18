@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot, CheckCircle2, ClipboardList, FileCode2, Loader2, Plus, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useChatFrames } from '../../lib/chatSocket';
 import { devQaApi, QaBoard, QaStage, QaStory, QaSuggestion, Scenario } from '../../lib/devQaApi';
+import { stationsApi } from '../../lib/stationsApi';
 import { StationChannels } from './StationChannels';
 import { BugStatePill, card, CheckSummary, ErrorText, field, Modal, Pill, PriorityPill, SubTabs } from './StationKit';
 
@@ -234,6 +235,15 @@ const StoryPanel: React.FC<{
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
   const agent = story.qaAgent;
+  const [secBlockers, setSecBlockers] = useState<string[]>([]);
+
+  // The server refuses sign-off while the security gate is closed; say why up front.
+  useEffect(() => {
+    stationsApi
+      .securitySummary(projectId)
+      .then((s) => setSecBlockers(s.gate.open ? [] : s.gate.blockers))
+      .catch(() => setSecBlockers([]));
+  }, [projectId]);
 
   const act = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(label);
@@ -350,6 +360,11 @@ const StoryPanel: React.FC<{
         </section>
       )}
 
+      {secBlockers.length > 0 && story.stage !== 'signed_off' && (
+        <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+          Security gate closed, so sign-off will be refused: {secBlockers.join('; ')}. Fix and rescan in the Security station.
+        </p>
+      )}
       {error && <ErrorText>{error}</ErrorText>}
       {story.stage !== 'signed_off' && (
         <div className="flex justify-end pt-2 border-t border-white/[0.06]">
