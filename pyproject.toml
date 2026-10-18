@@ -160,6 +160,7 @@ modules = [
     "app.routers.rag",
     "app.routers.reviews",
     "app.routers.runs",
+    "app.routers.stitch",
 ]
 
 [[tool.importlinter.contracts]]

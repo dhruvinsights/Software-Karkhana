@@ -920,3 +920,83 @@ class Release(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class StitchProject(Base):
+    """The Google Stitch project behind a Karkhana project's designs (032)."""
+
+    __tablename__ = "stitch_projects"
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    stitch_project_id: Mapped[str] = mapped_column(String)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = _now()
+
+
+class StitchJob(Base):
+    """One slow Stitch call (generate, edit, variants) or a sync (032)."""
+
+    __tablename__ = "stitch_jobs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String)  # generate | edit | variants | sync
+    status: Mapped[str] = mapped_column(
+        String, default="running"
+    )  # running | succeeded | failed
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = _now()
+    finished_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class StitchScreen(Base):
+    """A screen generated in Stitch, copied into the project record (032)."""
+
+    __tablename__ = "stitch_screens"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    stitch_screen_id: Mapped[str] = mapped_column(String)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("stitch_jobs.id", ondelete="SET NULL"), nullable=True
+    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("stitch_screens.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String, default="Untitled screen")
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    device_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    html: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    screenshot: Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True, deferred=True
+    )
+    screenshot_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

@@ -43,7 +43,7 @@ from app.models import (
     User,
 )
 from app.notifications import email_people
-from app.services import design, project_docs
+from app.services import design, project_docs, stitch_design
 from app.services.realtime import notify_workspace
 
 router = APIRouter(tags=["project_docs"])
@@ -170,6 +170,15 @@ async def approve_design(project_id: uuid.UUID, session: Session, user: CurrentU
     doc.status, doc.approved_by, doc.approved_at = "approved", user.id, dt.datetime.now(dt.UTC)
     spec = doc.content
     contracts = "; ".join(f"{c['method']} {c['path']} ({', '.join(c['story_keys'])})" for c in spec["api_contracts"])
+    # Screens the designer pinned in Google Stitch travel with the handoff.
+    stitch_screens = await stitch_design.pinned_for_handoff(session, project.id)
+    stitch_line = (
+        "\nGoogle Stitch screens (designer dashboard): "
+        + "; ".join(f"{s.title} [{s.device_type or 'any device'}]" for s in stitch_screens)
+        + "."
+        if stitch_screens
+        else ""
+    )
     session.add(
         ContextEntry(
             project_id=project.id,
@@ -179,6 +188,7 @@ async def approve_design(project_id: uuid.UUID, session: Session, user: CurrentU
                 f"{spec['overview']}\nContracts: {contracts or 'none'}.\n"
                 f"Screens: {', '.join(s['name'] for s in spec['screens']) or 'none'}.\n"
                 "Handoff notes: " + " ".join(spec["handoff_notes"])
+                + stitch_line
             )[:4000],
             author_label=user.display_name,
             author_kind="human",
@@ -191,7 +201,12 @@ async def approve_design(project_id: uuid.UUID, session: Session, user: CurrentU
         subject_type="project",
         subject_id=project.id,
         project_id=project.id,
-        payload={"version": doc.version, "contracts": len(spec["api_contracts"]), "screens": len(spec["screens"])},
+        payload={
+            "version": doc.version,
+            "contracts": len(spec["api_contracts"]),
+            "screens": len(spec["screens"]),
+            "stitch_screens": [str(s.id) for s in stitch_screens],
+        },
     )
     developers = (
         await session.scalars(
