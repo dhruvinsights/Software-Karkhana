@@ -28,7 +28,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import issue_rules, ledger
-from app.models import Issue, Project, TestScenario, User
+from app.models import Issue, Project, PullRequest, TestScenario, User
+from app.services import osv_scan
 
 
 def _bug_label(scenario: TestScenario) -> str:
@@ -101,4 +102,19 @@ async def signoff_problem(session: AsyncSession, story: Issue) -> str | None:
     )
     if open_bugs:
         return f"{open_bugs} QA bug(s) on this story are still open."
-    return None
+    return await security_problem(session, story)
+
+
+async def security_problem(session: AsyncSession, story: Issue) -> str | None:
+    """Why the security gate is closed for this story, or ``None`` when it is open.
+
+    A story with a pull request is judged on that pull request's own scan; one
+    without is judged on the project's open findings. The project's policy
+    decides which severities block and whether a scan is required at all.
+    """
+    project = await session.get(Project, story.project_id)
+    if project is None:
+        return None
+    pr = await session.get(PullRequest, story.pr_id) if story.pr_id else None
+    reasons = await osv_scan.gate_blockers(session, project, pr=pr)
+    return ("Security gate closed: " + "; ".join(reasons) + ".") if reasons else None

@@ -174,7 +174,7 @@ def _apply(
 
 
 async def _names(session: AsyncSession, rows: list[Any]) -> dict[uuid.UUID, str]:
-    ids = {r.created_by for r in rows}
+    ids = {r.created_by for r in rows if r.created_by}
     if not ids:
         return {}
     users = (await session.scalars(select(User).where(User.id.in_(ids)))).all()
@@ -518,10 +518,26 @@ def _finding_out(f: SecurityFinding, names: dict[uuid.UUID, str]) -> dict[str, A
         "remediationAdvice": f.remediation_advice,
         "slaDeadline": _iso(f.sla_deadline),
         "slaDaysRemaining": days,
-        "createdBy": str(f.created_by),
-        "author": names.get(f.created_by, ""),
+        "createdBy": str(f.created_by) if f.created_by else None,
+        "author": names.get(f.created_by, "") if f.created_by else "OSV-Scanner",
         "createdAt": _iso(f.created_at),
         "updatedAt": _iso(f.updated_at),
+        # Dependency-scan details (migration 037); empty for hand-raised findings.
+        "source": f.source,
+        "osvId": f.osv_id,
+        "aliases": f.aliases or [],
+        "packageName": f.package_name,
+        "packageVersion": f.package_version,
+        "ecosystem": f.ecosystem,
+        "fixedVersion": f.fixed_version,
+        "manifestPath": f.manifest_path,
+        "references": f.references_urls or [],
+        "ref": f.ref,
+        "aiFix": f.ai_fix,
+        "assigneeId": str(f.assignee_id) if f.assignee_id else None,
+        "issueId": str(f.issue_id) if f.issue_id else None,
+        "firstSeenAt": _iso(f.first_seen_at),
+        "lastSeenAt": _iso(f.last_seen_at),
     }
 
 

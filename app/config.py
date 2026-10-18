@@ -188,6 +188,14 @@ class Settings(BaseSettings):
     # How much packed code goes into one prompt (about 4 characters per token).
     repo_context_budget_chars: int = 160_000
 
+    # --- Dependency security scans (OSV-Scanner) -------------------------
+    # Path of the pinned osv-scanner binary (the Dockerfile installs it).
+    osv_scanner_bin: str = "osv-scanner"
+    # Hard cap on one scan; a hung scanner must not hold a worker forever.
+    osv_scan_timeout_s: int = 300
+    # Hours between automatic rescans of projects with a repository (0 = off).
+    osv_rescan_interval_hours: int = 24
+
     # --- Shared context --------------------------------------------------
     # Directory of Markdown context files kept in Git (TeamContext-style).
     context_dir: str = ".karkhana/context"

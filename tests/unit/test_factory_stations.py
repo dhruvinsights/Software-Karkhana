@@ -37,9 +37,7 @@ from app.routers.operations import (
     list_adrs,
     list_pipelines,
     list_qa_scenarios,
-    list_security_findings,
     trigger_deployment,
-    trigger_security_scan,
 )
 from app.routers.products import (
     IdeaCreatePayload,
@@ -169,14 +167,6 @@ async def test_operations_station_endpoints(mock_user):
     qa_run = await execute_qa_test_suite(mock_session, mock_user)
     assert qa_run["status"] == "passed"
     assert qa_run["passedCount"] >= 3
-
-    # Security scan
-    sec_list = await list_security_findings(mock_user)
-    assert len(sec_list) >= 2
-
-    sec_scan = await trigger_security_scan(mock_session, mock_user)
-    assert sec_scan["status"] == "completed"
-    assert sec_scan["critical"] == 0
 
     # DevOps pipelines & deployment
     pipes = await list_pipelines(mock_user)
