@@ -98,7 +98,8 @@ async def gather_notes(session: AsyncSession, project: Project, task: Task) -> l
 
     # UC-1 + UC-5: inject graph-scoped context (callers, tests, revisit memory).
     # Completely silent if FalkorDB is not running — NullBackend returns empty results.
-    _brief = task.brief or {}
+    # The brief lives on the run, not the task; without focus paths the graph adds nothing.
+    _brief = getattr(task, "brief", None) or {}
     _focus: list[str] = _brief.get("focus", []) if isinstance(_brief, dict) else []
     graph_note = _graph_context_note(str(project.id), str(task.id), _focus)
     if graph_note:
