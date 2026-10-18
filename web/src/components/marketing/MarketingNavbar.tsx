@@ -53,29 +53,38 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
           {/* Clean Unboxed Text Navigation */}
           <nav className="hidden md:flex items-center gap-8 text-sm">
             <button
-              onClick={() => scrollTo('preview-stage')}
+              onClick={() => scrollTo('teams-section')}
               className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors"
             >
-              Factory Platform
+              Connected teams
             </button>
             <button
-              onClick={() => scrollTo('services-section')}
+              onClick={() => scrollTo('accountability-section')}
               className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors"
             >
-              Disciplines
+              Accountability
+            </button>
+            <button
+              onClick={() => scrollTo('qa-section')}
+              className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors"
+            >
+              QA intelligence
+            </button>
+            <button
+              onClick={() => scrollTo('ideaq-section')}
+              className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors"
+            >
+              IdeaQ
             </button>
             <button
               onClick={() => scrollTo('testimonial-section')}
               className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors"
             >
-              Architecture Proof
+              Ledger proof
             </button>
-            <button
-              onClick={() => scrollTo('pricing-section')}
-              className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors"
-            >
-              Editions
-            </button>
+            <a href="/blog/" className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors">
+              Blog
+            </a>
           </nav>
 
           {/* Right Action CTAs */}
@@ -99,7 +108,7 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
               proximity={200}
               onClick={onGetStarted}
             >
-              Create Workspace
+              Try live workspace
             </SpecularButton>
           </div>
 
@@ -116,23 +125,38 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
         {mobileMenuOpen && (
           <div className="md:hidden mt-3 p-4 bg-[#111216] rounded-2xl border border-white/10 space-y-3 text-sm shadow-2xl">
             <button
-              onClick={() => scrollTo('preview-stage')}
+              onClick={() => scrollTo('teams-section')}
               className="block w-full text-left text-[#f7f8fc] py-1"
             >
-              Factory Platform
+              Connected teams
             </button>
             <button
-              onClick={() => scrollTo('services-section')}
+              onClick={() => scrollTo('accountability-section')}
               className="block w-full text-left text-[#f7f8fc] py-1"
             >
-              Disciplines
+              Accountability
             </button>
             <button
-              onClick={() => scrollTo('pricing-section')}
+              onClick={() => scrollTo('qa-section')}
               className="block w-full text-left text-[#f7f8fc] py-1"
             >
-              Editions
+              QA intelligence
             </button>
+            <button
+              onClick={() => scrollTo('ideaq-section')}
+              className="block w-full text-left text-[#f7f8fc] py-1"
+            >
+              IdeaQ
+            </button>
+            <button
+              onClick={() => scrollTo('testimonial-section')}
+              className="block w-full text-left text-[#f7f8fc] py-1"
+            >
+              Ledger proof
+            </button>
+            <a href="/blog/" className="block w-full text-left text-[#f7f8fc] py-1">
+              Blog
+            </a>
             <div className="pt-2 border-t border-white/10 flex flex-col gap-2">
               <button
                 onClick={onSignIn}
@@ -144,7 +168,7 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
                 onClick={onGetStarted}
                 className="w-full py-2 bg-[#075bff] text-white font-medium text-xs rounded-full text-center"
               >
-                Create Workspace
+                Try live workspace
               </button>
             </div>
           </div>
