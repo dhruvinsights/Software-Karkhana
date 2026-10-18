@@ -2,6 +2,7 @@
 // runs and their live logs. The server owns the state; the hooks re-read it on
 // workspace_sync "runs" and append `run_log` lines as they stream in.
 import { factoryStore } from '../store/factoryStore';
+import { friendlyStatus } from './friendlyErrors';
 
 export interface Machine {
   id: string;
@@ -48,7 +49,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   return body as T;
 }
 

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useGet, useApi, type LedgerEntry, type Stage } from '../api';
+import { friendlyMessage } from '../lib/friendlyErrors';
 
 // Trust badges: every claim says who or what stands behind it.
 export type Trust = 'code' | 'ai' | 'assumption' | 'human';
@@ -16,7 +17,7 @@ export function Badge({ kind }: { kind: Trust }) {
 
 export function ErrorBox({ error }: { error: unknown }) {
   if (!error) return null;
-  return <div className="err" role="alert">{error instanceof Error ? error.message : String(error)}</div>;
+  return <div className="err" role="alert">{friendlyMessage(error, (error as { status?: number }).status)}</div>;
 }
 
 export function PageHead({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
@@ -67,7 +68,7 @@ export function LedgerTable({ projectId }: { projectId?: string }) {
     try {
       const r = await call<{ ok: boolean; entries: number; first_bad_seq: number | null; reason: string | null }>('/api/ledger/verify');
       setChain({ ok: r.ok, text: r.ok ? `Chain verified: ${r.entries} entries from genesis` : `Broken at #${r.first_bad_seq}: ${r.reason}` });
-    } catch (e) { setChain({ ok: false, text: String(e) }); }
+    } catch (e) { setChain({ ok: false, text: friendlyMessage(e, (e as { status?: number }).status) }); }
   };
   return (
     <section className="stack" aria-label="Evidence ledger">

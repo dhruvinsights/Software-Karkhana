@@ -588,7 +588,7 @@ export const ChatPage: React.FC = () => {
       }
       setCreating(null); setNewName(''); setNewMembers([]);
     } catch (e) {
-      setFormError((e as Error).message.startsWith('409') ? 'A channel with that name exists' : 'Could not create it');
+      setFormError((e as { status?: number }).status === 409 ? 'A channel with that name exists' : 'Could not create it');
     }
   };
 

@@ -1,5 +1,6 @@
 // DevOps and Release stations: the GitHub Actions pipeline and release records.
 import { factoryStore } from '../store/factoryStore';
+import { friendlyStatus } from './friendlyErrors';
 
 export interface PipelineSetup {
   number: number;
@@ -46,7 +47,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${factoryStore.getState().token}` },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   return body as T;
 }
 

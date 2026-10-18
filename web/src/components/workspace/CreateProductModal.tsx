@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { factoryStore } from '../../store/factoryStore';
 import type { Product } from '../../types/factory';
+import { friendlyStatus } from '../../lib/friendlyErrors';
 
 interface CreateProductModalProps {
   isOpen: boolean;
@@ -220,7 +221,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({ isOpen, 
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}`);
+        throw new Error(friendlyStatus(res.status));
       }
 
       const data = await res.json();

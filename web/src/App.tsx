@@ -110,6 +110,12 @@ export default function App() {
     };
   }, []);
 
+  // Every screen opens at its top: the landing page on its hero, not wherever the last screen was scrolled.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.querySelector('main[data-tour="main"]')?.scrollTo(0, 0);
+  }, [state.currentScreen]);
+
   // ---------------------------------------------------------------------------
   // TRANSITION: DREAM / DIM-TO-APPEAR EFFECT
   // ---------------------------------------------------------------------------

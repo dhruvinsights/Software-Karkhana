@@ -37,6 +37,7 @@ import {
   ProjectComment,
 } from '../types/factory';
 import { chatSocket } from '../lib/chatSocket';
+import { friendlyStatus } from '../lib/friendlyErrors';
 
 export const ROLE_CONFIGS: Record<FactoryRole, { label: string; badge: string; desc: string }> = {
   executive: { label: 'Executive / Director', badge: 'Leadership', desc: 'Portfolio oversight, capital allocation, and multi-signature approval gates.' },
@@ -955,7 +956,7 @@ export const factoryStore = {
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-          return { ok: false, error: typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}` };
+          return { ok: false, error: typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status) };
         }
         await factoryStore.syncSessionFromServer();
         factoryStore.logAudit('Promoted Idea to Project', `Project "${body.projectName}" created from idea ${ideaId}.`);
@@ -1041,7 +1042,7 @@ export const factoryStore = {
           }),
         });
         const body = await res.json().catch(() => ({}));
-        if (!res.ok) return { ok: false, error: typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}` };
+        if (!res.ok) return { ok: false, error: typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status) };
         await factoryStore.loadIssues(projectId);
         return { ok: true };
       } catch (e) {
@@ -1088,7 +1089,7 @@ export const factoryStore = {
           body: JSON.stringify(body),
         });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) return { ok: false, error: typeof json.detail === 'string' ? json.detail : `HTTP ${res.status}` };
+        if (!res.ok) return { ok: false, error: typeof json.detail === 'string' ? json.detail : friendlyStatus(res.status) };
         const updated = mapIssue(json);
         state = { ...state, issues: state.issues.map((i) => (i.id === issueId ? updated : i)) };
         notify();

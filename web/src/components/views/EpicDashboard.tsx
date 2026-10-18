@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
 import { Issue } from '../../types/factory';
+import { friendlyStatus } from '../../lib/friendlyErrors';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -292,7 +293,7 @@ const StoryRow: React.FC<{
         body: JSON.stringify(body),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) return typeof json.detail === 'string' ? json.detail : `HTTP ${res.status}`;
+      if (!res.ok) return typeof json.detail === 'string' ? json.detail : friendlyStatus(res.status);
       onRefresh();
       return null;
     } catch (e) {
@@ -462,7 +463,7 @@ export const EpicDashboard: React.FC<{ state: FactoryState }> = ({ state }) => {
         fetch(`/api/projects/${project.id}/plan`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`/api/projects/${project.id}/members`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      if (!planRes.ok) throw new Error(`Plan load failed: HTTP ${planRes.status}`);
+      if (!planRes.ok) throw new Error(friendlyStatus(planRes.status));
       const plan = await planRes.json();
       setEpics(
         (plan.epics ?? []).map((e: { id: string; title: string; description: string; position: number; stories?: IssueDetail[] }) => ({

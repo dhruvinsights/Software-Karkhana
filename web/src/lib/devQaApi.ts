@@ -2,6 +2,7 @@
 // people take on them. The server owns every rule; these are thin calls.
 import { factoryStore } from '../store/factoryStore';
 import { chatSocket } from './chatSocket';
+import { friendlyStatus } from './friendlyErrors';
 
 export interface TestSuite {
   suite: string;
@@ -249,7 +250,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   return body as T;
 }
 

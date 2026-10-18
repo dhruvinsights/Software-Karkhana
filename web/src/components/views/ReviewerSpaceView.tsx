@@ -21,6 +21,7 @@ import { useChatFrames } from '../../lib/chatSocket';
 import { IdeaReportModal } from '../workspace/DocumentModal';
 import { BorderGlow } from '../reactbits/BorderGlow';
 import { SpotlightCard } from '../reactbits/SpotlightCard';
+import { friendlyStatus } from '../../lib/friendlyErrors';
 
 interface ReviewerSpaceViewProps {
   state: FactoryState;
@@ -106,7 +107,7 @@ export const ReviewerSpaceView: React.FC<ReviewerSpaceViewProps> = ({ state }) =
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setDecisionError(typeof body.detail === 'string' ? body.detail : `Could not record the decision (HTTP ${res.status}).`);
+        setDecisionError(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
       } else {
         setReviews((prev) =>
           prev.map((r) =>

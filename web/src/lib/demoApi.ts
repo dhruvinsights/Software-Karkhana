@@ -7,6 +7,7 @@
  */
 import type { CurrentUser } from '../store/factoryStore';
 import { clearTour, tourForClaim } from './demoTour';
+import { friendlyStatus } from './friendlyErrors';
 
 export const DEMO_TOKEN_KEY = 'karkhana_demo_token';
 export const DEMO_ANCHORS_KEY = 'karkhana_demo_anchors';
@@ -22,9 +23,9 @@ export interface DemoStarted {
 async function detail(res: Response): Promise<string> {
   try {
     const j = await res.json();
-    return typeof j.detail === 'string' ? j.detail : `Request failed (${res.status})`;
+    return typeof j.detail === 'string' ? j.detail : friendlyStatus(res.status);
   } catch {
-    return `Request failed (${res.status})`;
+    return friendlyStatus(res.status);
   }
 }
 

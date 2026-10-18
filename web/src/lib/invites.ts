@@ -5,6 +5,7 @@
  * Invitation client: create/preview/accept, plus remembering an invite across
  * the sign-in redirect so a link opened while logged out still works afterwards.
  */
+import { friendlyStatus } from './friendlyErrors';
 
 const PENDING_KEY = 'karkhana_pending_invite';
 
@@ -42,7 +43,7 @@ async function detail(res: Response): Promise<string> {
   } catch {
     /* fall through */
   }
-  return `Request failed (${res.status}).`;
+  return friendlyStatus(res.status);
 }
 
 export function stashPendingInvite(token: string): void {

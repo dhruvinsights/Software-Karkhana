@@ -14,6 +14,7 @@ import {
   GitBranch,
 } from 'lucide-react';
 import { factoryStore, FactoryState } from '../../store/factoryStore';
+import { friendlyStatus } from '../../lib/friendlyErrors';
 
 interface WorkspaceMember {
   id: string;
@@ -169,7 +170,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}`);
+        throw new Error(friendlyStatus(res.status));
       }
 
       const data = await res.json();

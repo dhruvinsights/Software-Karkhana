@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BookOpen, ShieldCheck, Bug } from 'lucide-react';
 import { GlassCard } from '../reactbits/GlassCard';
 import { FactoryState, factoryStore } from '../../store/factoryStore';
+import { friendlyStatus } from '../../lib/friendlyErrors';
 
 async function getJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
@@ -12,7 +13,7 @@ async function getJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${factoryStore.getState().token}` },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   return body as T;
 }
 

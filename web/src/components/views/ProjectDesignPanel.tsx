@@ -4,6 +4,7 @@ import { GlassCard } from '../reactbits/GlassCard';
 import { planApi, ProjectDoc, ProjectDocs } from '../../lib/planApi';
 import { useChatFrames } from '../../lib/chatSocket';
 import { factoryStore } from '../../store/factoryStore';
+import { friendlyStatus } from '../../lib/friendlyErrors';
 
 interface Contract {
   method: string;
@@ -27,7 +28,7 @@ async function post(path: string): Promise<void> {
   const res = await fetch(path, { method: 'POST', headers: { Authorization: `Bearer ${factoryStore.getState().token}` } });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`);
+    throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   }
 }
 

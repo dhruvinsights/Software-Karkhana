@@ -37,6 +37,7 @@ import {
   Info,
 } from 'lucide-react';
 import { PRDiffViewer } from './PRDiffViewer';
+import { httpError } from '../../lib/friendlyErrors';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ function DeviceFlowModal({
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await httpError(res);
       const data: DeviceFlow = await res.json();
       setFlow(data);
       setPolling(true);
@@ -450,7 +451,7 @@ export const PRReviewPanel: React.FC<PRReviewPanelProps> = ({ projectId, token }
       const res = await fetch(`/api/prs?project_id=${projectId}`, {
         headers: authHeaders(),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await httpError(res);
       const data: PrRow[] = await res.json();
       setPrs(data);
       if (!selectedPrId && data.length > 0) setSelectedPrId(data[0].id);

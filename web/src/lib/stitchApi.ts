@@ -2,6 +2,7 @@
 // (designers on the project only) and holds the Stitch key; the browser never
 // talks to Stitch directly.
 import { factoryStore } from '../store/factoryStore';
+import { friendlyStatus } from './friendlyErrors';
 
 export type StitchDevice = 'MOBILE' | 'DESKTOP' | 'TABLET' | 'AGNOSTIC';
 export type StitchModel = 'GEMINI_3_FLASH' | 'GEMINI_3_1_PRO';
@@ -57,7 +58,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, { ...init, headers: { ...headers(init.body !== undefined), ...(init.headers ?? {}) } });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed (HTTP ${res.status})`);
+    throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
@@ -89,14 +90,14 @@ export const stitchApi = {
   /** The screenshot as an object URL (the endpoint needs the bearer header, so <img src> cannot fetch it). */
   async screenshotUrl(projectId: string, screenId: string): Promise<string> {
     const res = await fetch(`${base(projectId)}/screens/${screenId}/screenshot`, { headers: headers(false) });
-    if (!res.ok) throw new Error(`Screenshot unavailable (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(friendlyStatus(res.status));
     return URL.createObjectURL(await res.blob());
   },
 
   /** Saves the screen's HTML to the user's computer. */
   async downloadHtml(projectId: string, screen: StitchScreen): Promise<void> {
     const res = await fetch(`${base(projectId)}/screens/${screen.id}/html`, { headers: headers(false) });
-    if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(friendlyStatus(res.status));
     const blob = new Blob([await res.text()], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

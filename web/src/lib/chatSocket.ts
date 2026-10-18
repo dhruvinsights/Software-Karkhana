@@ -174,6 +174,7 @@ export const chatSocket = new ChatSocketManager();
 // ── React hook ────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
+import { HttpError, friendlyStatus, httpError } from './friendlyErrors';
 
 export interface ChatMessage {
   id: string;
@@ -206,7 +207,7 @@ export async function uploadAttachment(channelId: string, file: Blob, filename: 
   const form = new FormData();
   form.append('file', file, filename);
   const res = await fetch(`/api/chat/channels/${channelId}/attachments`, { method: 'POST', headers: authHeaders(token), body: form });
-  if (!res.ok) throw new Error(res.status === 413 ? 'Files are limited to 10 MB' : `${res.status} ${res.statusText}`);
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
@@ -216,7 +217,7 @@ export function fetchAttachmentBlob(id: string, token: string): Promise<Blob> {
   let p = blobCache.get(id);
   if (!p) {
     p = fetch(`/api/chat/attachments/${id}`, { headers: authHeaders(token) }).then((r) => {
-      if (!r.ok) throw new Error(`${r.status}`);
+      if (!r.ok) throw new HttpError(r.status, friendlyStatus(r.status));
       return r.blob();
     });
     p.catch(() => blobCache.delete(id));
@@ -257,7 +258,7 @@ async function apiFetch<T>(path: string, token: string, opts?: RequestInit): Pro
       ...(opts?.headers ?? {}),
     },
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 

@@ -16,6 +16,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, FileCode2, Loader2, Search } from 'lucide-react';
+import { httpError } from '../../lib/friendlyErrors';
 
 interface DiffLineRow {
   kind: 'add' | 'del' | 'ctx';
@@ -182,7 +183,7 @@ export const PRDiffViewer: React.FC<Props> = ({ prId, src, token, reloadKey = ''
     setLoading(true);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+        if (!res.ok) throw await httpError(res);
         return res.json() as Promise<DiffPayload>;
       })
       .then((d) => {

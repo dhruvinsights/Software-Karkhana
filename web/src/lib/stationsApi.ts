@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { factoryStore } from '../store/factoryStore';
 import type { ADR, SecurityFinding, TestScenario } from '../types/factory';
+import { friendlyStatus } from './friendlyErrors';
 
 export interface ApiAdr extends ADR {
   key: string;
@@ -142,7 +143,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const detail = typeof body.detail === 'string' ? body.detail : Array.isArray(body.detail) ? body.detail.map((d: { msg?: string }) => d.msg).join('; ') : `HTTP ${res.status}`;
+    const detail = typeof body.detail === 'string' ? body.detail : Array.isArray(body.detail) ? body.detail.map((d: { msg?: string }) => d.msg).join('; ') : friendlyStatus(res.status);
     throw new StationError(res.status, detail);
   }
   return body as T;

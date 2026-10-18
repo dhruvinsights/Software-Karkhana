@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, Clock, Send, Rocket, Loader2 } from 'lucide-react';
 import { factoryStore } from '../../store/factoryStore';
 import { Idea } from '../../types/factory';
+import { friendlyStatus } from '../../lib/friendlyErrors';
 
 interface Member {
   id: string;
@@ -69,7 +70,7 @@ export const IdeaApprovalPanel: React.FC<Props> = ({ idea, token, workspaceId, c
     async (path: string, init?: RequestInit) => {
       const res = await fetch(path, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
       if (!res.ok) {
-        let msg = `HTTP ${res.status}`;
+        let msg = friendlyStatus(res.status);
         try {
           const j = await res.json();
           msg = typeof j.detail === 'string' ? j.detail : msg;

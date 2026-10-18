@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { factoryStore } from '../store/factoryStore';
 import { useChatFrames } from './chatSocket';
 import { isServerProject } from './stationsApi';
+import { friendlyStatus } from './friendlyErrors';
 
 export interface PlanIssue {
   id: string;
@@ -63,7 +64,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`);
+    throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   }
   return body as T;
 }

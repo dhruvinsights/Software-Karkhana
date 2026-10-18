@@ -479,7 +479,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ variant = 'panel', onClose
       setTab('channels');
     } catch (e) {
       // No local fallback: a channel only others can't see is worse than an error.
-      setChannelError((e as Error).message.includes('409') ? 'A channel with that name already exists.' : 'Could not create the channel.');
+      setChannelError((e as { status?: number }).status === 409 ? 'A channel with that name already exists.' : 'Could not create the channel.');
       return;
     }
     setNewChannelName('');

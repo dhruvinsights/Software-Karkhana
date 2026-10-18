@@ -2,6 +2,7 @@
 // project, and adding an approved feature to a project that already exists.
 import { factoryStore } from '../store/factoryStore';
 import { Idea, ProductProfile } from '../types/factory';
+import { friendlyStatus } from './friendlyErrors';
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = factoryStore.getState().token;
@@ -12,7 +13,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status));
   return body as T;
 }
 

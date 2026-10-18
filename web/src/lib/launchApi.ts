@@ -1,6 +1,7 @@
 // Project launch: the calls behind the multi-step screen that turns an
 // approved idea into a staffed project with its own repository and plan.
 import { factoryStore } from '../store/factoryStore';
+import { friendlyStatus } from './friendlyErrors';
 
 export interface RepoCheck {
   ok: boolean;
@@ -49,7 +50,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const detail = typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`;
+    const detail = typeof body.detail === 'string' ? body.detail : friendlyStatus(res.status);
     const err = new Error(detail) as Error & { status?: number };
     err.status = res.status;
     throw err;
