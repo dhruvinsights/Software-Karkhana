@@ -1,5 +1,5 @@
 # Software Karkhana: common tasks. Run `make help`.
-.PHONY: help install db-local broker-local migrate seed dev web test lint check-models playground deploy e2e
+.PHONY: help bench install db-local broker-local migrate seed dev web test lint check-models playground deploy e2e
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -49,3 +49,6 @@ deploy: ## Build and deploy (live models only)
 
 e2e: ## Browser test of the golden path against a running app (KARKHANA_URL)
 	cd tests/e2e && npm install && npm test
+
+bench: ## Run the benchmark suite (needs Postgres; FalkorDB optional) and write reports/bench/results.json
+	uv run pytest -m bench -q tests/bench

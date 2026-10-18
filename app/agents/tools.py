@@ -25,6 +25,7 @@ cloning, committing and pushing happen in worker code, outside the agent.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -60,6 +61,22 @@ _PASSTHROUGH_ENV = (
     "NUMBER_OF_PROCESSORS",
     "PROCESSOR_ARCHITECTURE",
 )
+
+
+# pytest ends with a summary such as "12 passed, 1 skipped in 0.40s". Exit 0
+# without a single passed test proves nothing: every test was skipped, the run
+# was collect-only, or a conftest exited early. That is not counted as green.
+_PASSED = re.compile(r"\b[1-9]\d* passed\b")
+NOTHING_PASSED_EXIT = 5  # pytest's own "no tests ran" code.
+
+
+def verdict(code: int, output: str) -> tuple[int, str]:
+    """The exit code the platform trusts: 0 only when at least one test passed."""
+    if code == 0 and not _PASSED.search(output):
+        return NOTHING_PASSED_EXIT, (
+            output + "\n[karkhana] pytest exited 0 but no test passed; not counted as verified."
+        )
+    return code, output
 
 
 def safe_test_env() -> dict[str, str]:
@@ -103,7 +120,7 @@ class Workspace:
                 check=False,
             )
             out = (proc.stdout + proc.stderr)[-6000:]
-            return proc.returncode, out
+            return verdict(proc.returncode, out)
         except subprocess.TimeoutExpired:
             return 124, f"tests timed out after {TEST_TIMEOUT_S}s"
 

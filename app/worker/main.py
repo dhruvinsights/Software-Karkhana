@@ -180,6 +180,15 @@ async def _build(spec: RunSpec, cp: ControlPlane) -> RunResult:
         await cp.progress("validating")
         exit_code, output = ws.run_tests()  # The number we report comes from here.
         git(repo, "add", "-A")
+        # Deleting a test that already existed is how a failing check goes quiet.
+        removed = [
+            p
+            for p in git(repo, "diff", "--cached", "--name-only", "--diff-filter=D").splitlines()
+            if Path(p).name.startswith("test_") or Path(p).name.endswith("_test.py")
+        ]
+        if removed and exit_code == 0:
+            exit_code = 1
+            output += f"\n[karkhana] existing test files were deleted: {', '.join(removed)}"
         diff = git(repo, "diff", "--cached", "--binary")
         if not diff.strip():
             return RunResult(

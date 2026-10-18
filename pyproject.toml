@@ -120,6 +120,7 @@ testpaths = ["tests"]
 # importing google-genai (antivirus scans every new .pyc).
 timeout = 120
 faulthandler_timeout = 60
+markers = ["bench: benchmark suite (pytest -m bench); writes reports/bench/results.json"]
 
 [build-system]
 requires = ["hatchling"]
