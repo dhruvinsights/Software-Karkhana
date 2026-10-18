@@ -1,14 +1,22 @@
-"""
-parallel_planner.py — Independence analysis before launching parallel agent runs.
+"""parallel_planner.py — Independence analysis before launching parallel agent runs.
 
 The claim Karkhana makes: parallel agents are only launched when the tasks are
 genuinely independent. This module answers the question before any build starts.
+
+UC-2 (FalkorDB): when the graph is available, ``enrich_from_graph`` augments
+each StoryMeta with historically-touched file paths before ``analyse`` runs.
+This catches conflicts that are invisible from focus_paths alone (e.g. a story
+that touched ``app/auth/service.py`` last time, even though that path isn't
+explicitly set in its brief this time).
 """
 from __future__ import annotations
 
+import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -23,6 +31,8 @@ class StoryMeta:
 
 @dataclass
 class ConflictEdge:
+    """Two stories that may collide, with why and how likely."""
+
     a: str
     b: str
     reason: str
@@ -31,6 +41,8 @@ class ConflictEdge:
 
 @dataclass
 class ParallelPlan:
+    """Stories split into groups that can run side by side."""
+
     groups: list[list[str]]   # each group is safe to run in parallel
     conflicts: list[ConflictEdge]
     max_risk: float
@@ -48,8 +60,8 @@ def _paths_for(story: StoryMeta) -> set[str]:
 
 
 def _path_overlap(a: set[str], b: set[str]) -> float:
-    """
-    Returns a 0-1 overlap score.
+    """Returns a 0-1 overlap score.
+
     Exact match = 1.0; prefix containment (one path is ancestor of another) = 0.7;
     same top-level directory = 0.3; no overlap = 0.0.
     """
@@ -86,8 +98,7 @@ def _dependency_risk(a: StoryMeta, b: StoryMeta) -> float:
 
 
 def analyse(stories: Sequence[StoryMeta]) -> ParallelPlan:
-    """
-    Analyse a set of stories and return a ParallelPlan.
+    """Analyse a set of stories and return a ParallelPlan.
 
     Usage::
 
@@ -138,3 +149,59 @@ def analyse(stories: Sequence[StoryMeta]) -> ParallelPlan:
     ok = max_risk < HARD_BLOCK
 
     return ParallelPlan(groups=groups, conflicts=conflicts, max_risk=max_risk, ok_to_parallelize=ok)
+
+
+def enrich_from_graph(project_id: str, stories: list[StoryMeta]) -> list[StoryMeta]:
+    """UC-2: Augment StoryMeta focus_paths with historically-touched files from the graph.
+
+    If FalkorDB is unavailable (NullBackend) this is a no-op and stories are
+    returned unchanged — the existing Python path-overlap logic still runs.
+
+    Call this before ``analyse()`` to get graph-aware conflict detection:
+
+        enriched = enrich_from_graph(project_id, stories)
+        plan = analyse(enriched)
+    """
+    try:
+        from app.graph import get_graph
+        g = get_graph()
+        if not g.is_available():
+            return stories
+
+        enriched: list[StoryMeta] = []
+        for story in stories:
+            # Query graph for files this task has previously touched
+            # Collect all paths known from graph TOUCHES edges for this story
+            historical: list[str] = []
+            try:
+                from app.graph.falkordb_backend import FalkorDBBackend
+                if isinstance(g, FalkorDBBackend):
+                    res = g._q(
+                        "MATCH (t:Task {id: $tid})-[:TOUCHES]->(f:File) "
+                        "WHERE t.project_id = $pid "
+                        "RETURN f.path",
+                        {"tid": story.id, "pid": project_id},
+                    )
+                    if res:
+                        historical = [row[0] for row in res.result_set if row[0]]
+            except Exception:  # noqa: S110 - the graph is optional; fall back to focus paths
+                pass
+
+            if historical:
+                merged = list(dict.fromkeys(story.focus_paths + historical))
+                enriched.append(StoryMeta(
+                    id=story.id,
+                    focus_paths=merged,
+                    recent_diff_paths=story.recent_diff_paths,
+                    blocks=story.blocks,
+                    blocked_by=story.blocked_by,
+                ))
+            else:
+                enriched.append(story)
+
+        logger.debug("[graph] enrich_from_graph: enriched %d stories for project %s", len(enriched), project_id)
+        return enriched
+
+    except Exception as exc:
+        logger.debug("[graph] enrich_from_graph skipped: %s", exc)
+        return stories

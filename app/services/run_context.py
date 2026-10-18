@@ -23,6 +23,7 @@ developer sees and the spec the agent gets come from the same code.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Literal
 
@@ -33,6 +34,8 @@ from app import agent_memory
 from app.models import Project, Task
 from app.schemas import ContextNote
 from app.services import context_notes, design_handoff
+
+logger = logging.getLogger(__name__)
 
 # The places a build can pause for the developer.
 PAUSES = ("after_code", "before_tests", "fix")
@@ -92,7 +95,53 @@ async def gather_notes(session: AsyncSession, project: Project, task: Task) -> l
     if design is not None and task.key:
         if body := design_handoff.as_note(design.content, task.key, design.version):
             notes.append(ContextNote(id="design", kind="design", title=f"Design for {task.key}", body=body, author="design station"))
+
+    # UC-1 + UC-5: inject graph-scoped context (callers, tests, revisit memory).
+    # Completely silent if FalkorDB is not running — NullBackend returns empty results.
+    # The brief lives on the run, not the task; without focus paths the graph adds nothing.
+    _brief = getattr(task, "brief", None) or {}
+    _focus: list[str] = _brief.get("focus", []) if isinstance(_brief, dict) else []
+    graph_note = _graph_context_note(str(project.id), str(task.id), _focus)
+    if graph_note:
+        notes.append(graph_note)
+
     return notes
+
+
+def _graph_context_note(project_id: str, task_id: str, focus_paths: list[str]) -> ContextNote | None:
+    """UC-1/UC-5: Query graph for scoped context and revisit memory.
+
+    Returns a ContextNote the agent receives alongside its other context,
+    or None when the graph is unavailable or has nothing relevant.
+    """
+    try:
+        from app.graph import get_graph
+        g = get_graph()
+        if not g.is_available() or not focus_paths:
+            return None
+
+        ctx = g.get_scoped_context(project_id=project_id, task_id=task_id, touched_files=focus_paths)
+        body = ctx.to_prompt_prefix()
+
+        # UC-5: append any prior agent attempts on these files
+        memories = g.get_revisit_memory(project_id=project_id, file_paths=focus_paths)
+        revisit = "\n".join(m.to_prompt_note() for m in memories if m.past_attempts)
+        if revisit:
+            body += "\n\n## Prior agent attempts on these files\n" + revisit
+
+        if body.strip() == "## Graph Context (from Engineering Intelligence Graph)\n\n---":
+            return None  # nothing useful — graph is empty for this project yet
+
+        return ContextNote(
+            id="graph:context",
+            kind="memory",
+            title="Engineering Intelligence Graph context",
+            body=body,
+            author="falkordb",
+        )
+    except Exception as exc:
+        logger.debug("[graph] gather_notes graph context skipped: %s", exc)
+        return None
 
 
 def select(items: list[Any], keep: list[Any] | None, key) -> list[Any]:
