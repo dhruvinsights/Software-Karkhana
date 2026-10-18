@@ -99,18 +99,24 @@ async def _run(*argv: str, cwd: Path | None = None, timeout: float = 300) -> str
 
 
 @asynccontextmanager
-async def checkout(url: str, token: str | None) -> AsyncIterator[Path]:
+async def checkout(url: str, token: str | None, branch: str | None = None) -> AsyncIterator[Path]:
     """A shallow clone in a temporary directory, deleted afterwards.
 
     The token travels in an HTTP header, never in the URL, so it cannot land
-    in ``.git/config`` or in an error message.
+    in ``.git/config`` or in an error message. ``branch`` picks a branch other
+    than the remote's default (for example a pull request's branch).
     """
+    if branch is not None and (not branch or branch.startswith("-")):
+        raise RepoContextError(f"invalid branch name: {branch!r}")
     with tempfile.TemporaryDirectory(prefix="karkhana-repo-") as tmp:
         dest = Path(tmp) / "repo"
         argv = ["git"]
         if token and url.startswith("https://github.com/"):
             argv += ["-c", f"http.https://github.com/.extraheader={git_auth_header(token)}"]
-        argv += ["clone", "--quiet", "--depth", "1", url, str(dest)]
+        argv += ["clone", "--quiet", "--depth", "1"]
+        if branch:
+            argv += ["--branch", branch]
+        argv += [url, str(dest)]
         try:
             await _run(*argv, timeout=180)
         except RepoContextError as exc:

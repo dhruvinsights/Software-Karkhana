@@ -33,6 +33,84 @@ export interface ApiSecurityFinding extends Omit<SecurityFinding, 'cveId' | 'sla
   author: string;
   createdAt: string;
   updatedAt: string;
+  /** "osv" for dependency-scan findings; empty for ones raised by hand. */
+  source?: string | null;
+  osvId?: string | null;
+  aliases?: string[];
+  packageName?: string | null;
+  packageVersion?: string | null;
+  ecosystem?: string | null;
+  fixedVersion?: string | null;
+  manifestPath?: string | null;
+  references?: string[];
+  /** Branch the finding was seen on; null means the base branch. */
+  ref?: string | null;
+  aiFix?: AiFix | null;
+  assigneeId?: string | null;
+  issueId?: string | null;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
+}
+
+export interface AiFix {
+  /** "ai" when a model wrote it, "scanner" for the plain upgrade advice. */
+  source: 'ai' | 'scanner';
+  summary: string;
+  markdown: string;
+  model: string | null;
+  at: string;
+  label: string;
+  note?: string;
+}
+
+export type Severity = SecurityFinding['severity'];
+export type SeverityCounts = Record<Severity, number>;
+
+export interface SecurityScan {
+  id: string;
+  projectId: string;
+  trigger: 'manual' | 'pr' | 'merge' | 'schedule' | 'rescan';
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  ref: string | null;
+  commitSha: string | null;
+  prId: string | null;
+  startedBy: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  counts: SeverityCounts;
+  packagesAffected: number;
+  newFindings: number;
+  resolvedFindings: number;
+  gate: 'passed' | 'blocked' | null;
+  error: string | null;
+  scannerVersion: string | null;
+  alreadyRunning?: boolean;
+}
+
+export interface SecurityPolicy {
+  blockSeverities: Severity[];
+  requireScan: boolean;
+  autoScan: boolean;
+}
+
+export interface SecuritySummary {
+  open: SeverityCounts;
+  total: number;
+  fixed: number;
+  waived: number;
+  overdue: number;
+  gate: { open: boolean; blockers: string[] };
+  policy: SecurityPolicy;
+  lastScan: SecurityScan | null;
+  /** False when the project has no repository to scan yet. */
+  scannerReady: boolean;
+}
+
+export interface SecurityReport extends SecuritySummary {
+  project: { id: string; name: string };
+  generatedAt: string;
+  markdown: string;
 }
 
 /** A story developers finished that QA still has to cover. */
@@ -101,7 +179,31 @@ export const stationsApi = {
   ) => post<ApiSecurityFinding>(`/api/projects/${projectId}/security-findings`, body),
   updateFinding: (id: string, body: Partial<{ status: SecurityFinding['status']; reason: string; severity: SecurityFinding['severity'] }>) =>
     patch<ApiSecurityFinding>(`/api/security-findings/${id}`, body),
+
+  // OSV-Scanner: scans run on the server in the background; poll getScan until it ends.
+  startScan: (projectId: string, prId?: string) =>
+    post<SecurityScan>(`/api/projects/${projectId}/security-scans`, prId ? { pr_id: prId } : {}),
+  rescan: (projectId: string) => post<SecurityScan>(`/api/projects/${projectId}/security-scans/rescan`, {}),
+  listScans: (projectId: string) => call<SecurityScan[]>(`/api/projects/${projectId}/security-scans`),
+  getScan: (scanId: string) => call<SecurityScan>(`/api/security-scans/${scanId}`),
+  securitySummary: (projectId: string) => call<SecuritySummary>(`/api/projects/${projectId}/security-summary`),
+  securityReport: (projectId: string) => call<SecurityReport>(`/api/projects/${projectId}/security-report`),
+  setSecurityPolicy: (projectId: string, body: { block_severities: Severity[]; require_scan: boolean; auto_scan: boolean }) =>
+    call<SecurityPolicy>(`/api/projects/${projectId}/security-policy`, { method: 'PUT', body: JSON.stringify(body) }),
+  assignFinding: (id: string, assigneeId: string | null) =>
+    post<ApiSecurityFinding>(`/api/security-findings/${id}/assign`, { assignee_id: assigneeId }),
+  fixSuggestion: (id: string) => post<AiFix>(`/api/security-findings/${id}/fix-suggestion`, {}),
+  /** Who can fix a finding, and whether the caller leads the project (policy and waivers are for leads). */
+  projectMembers: (projectId: string) => call<ProjectPerson[]>(`/api/projects/${projectId}/members`),
+  projectAccess: (projectId: string) => call<{ canManage: boolean; isLead: boolean }>(`/api/projects/${projectId}/access`),
 };
+
+export interface ProjectPerson {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+}
 
 export interface StationList<T> {
   items: T[];

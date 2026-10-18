@@ -62,11 +62,12 @@ from app.routers import (
     rag,
     reviews,
     runs,
+    security,
     stations,
     workspace,
     workspaces,
 )
-from app.services import chat_retention, realtime
+from app.services import chat_retention, osv_scan, realtime
 
 
 def _setup_logging() -> None:
@@ -94,8 +95,10 @@ async def lifespan(_: FastAPI):
     kg = None
     if kg_client.enabled():
         kg = asyncio.create_task(kg_projector.run_forever())
+    scans = asyncio.create_task(osv_scan.run_forever())
     yield
     purge.cancel()
+    scans.cancel()
     if kg:
         kg.cancel()
         await kg_client.close()
@@ -145,6 +148,7 @@ def create_app() -> FastAPI:
         workspace.router,
         workspaces.router,
         context.router,
+        security.router,
         stations.router,
     ):
         app.include_router(r)

@@ -21,11 +21,11 @@ import logging
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, agent_memory, ledger, memory
+from app import access, agent_memory, ledger, memory, security_rules
 from app.auth import CurrentUser
 from app.db import get_session
 from app.integrations import github
@@ -41,7 +41,7 @@ from app.schemas import (
     PullRequestOut,
     TriageIn,
 )
-from app.services import pipelines, plan, repos
+from app.services import osv_scan, pipelines, plan, repos
 from app.services.realtime import notify_workspace
 
 router = APIRouter(prefix="/api", tags=["reviews"])
@@ -237,7 +237,9 @@ async def approve_pr(
 
 
 @router.post("/prs/{pr_id}/merge", response_model=LearningOut)
-async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
+async def merge(
+    pr_id: uuid.UUID, session: Session, user: Dev, background: BackgroundTasks
+):
     """Merges on GitHub only when every blocker is cleared, then captures a learning."""
     pr = await get_or_404(session, PullRequest, pr_id)
     await _guard_task(session, user, pr.task_id, *DEV_ROLES)
@@ -259,6 +261,10 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
     task = await get_or_404(session, Task, pr.task_id)
     project = await lock_project(session, task.project_id)
     actor = ledger.Actor.human(user)
+    if security := await osv_scan.gate_blockers(session, project, pr=pr):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Cannot merge: security gate closed: " + "; ".join(security)
+        )
 
     merge_sha = ""
     if not pr.url.startswith("local://"):
@@ -323,10 +329,28 @@ async def merge(pr_id: uuid.UUID, session: Session, user: Dev):
         await agent_memory.remember(
             project.id, role, f"{task.title}: {learning.text}"
         )
+    scan_id = await _queue_base_rescan(session, project, user)
     await session.commit()
+    if scan_id is not None:
+        background.add_task(osv_scan.execute, scan_id)
     if project.workspace_id:
         await notify_workspace(project.workspace_id, "runs")
     return learning
+
+
+async def _queue_base_rescan(session: AsyncSession, project: Project, user: User) -> uuid.UUID | None:
+    """After a merge, scan the base branch so merged code is judged and fixed findings close."""
+    try:
+        if not security_rules.read_policy(project.settings).auto_scan or not await osv_scan.has_source(session, project):
+            return None
+        async with session.begin_nested():
+            scan, created = await osv_scan.enqueue(
+                session, project, trigger="merge", user_id=user.id, actor=ledger.Actor.human(user)
+            )
+        return scan.id if created else None
+    except Exception:
+        logger.warning("Could not queue the post-merge security scan", exc_info=True)
+        return None
 
 
 @router.post("/prs/{pr_id}/review", response_model=PullRequestOut)

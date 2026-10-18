@@ -83,27 +83,6 @@ _QA_SCENARIOS: list[dict[str, Any]] = [
     },
 ]
 
-_SECURITY_FINDINGS: list[dict[str, Any]] = [
-    {
-        "id": "SEC-001",
-        "title": "CORS Origins Restriction Policy",
-        "severity": "LOW",
-        "status": "RESOLVED",
-        "cve": "CWE-942",
-        "remediation": "Scoped allowed origins to enterprise domain and trusted Cloud Run services.",
-        "detectedAt": dt.datetime.now(dt.UTC).isoformat(),
-    },
-    {
-        "id": "SEC-002",
-        "title": "JWT Signature HMAC-SHA256 Token Expiry Verification",
-        "severity": "INFO",
-        "status": "VERIFIED",
-        "cve": "CWE-347",
-        "remediation": "Enforced strict expiration checks and sub claim validation.",
-        "detectedAt": dt.datetime.now(dt.UTC).isoformat(),
-    },
-]
-
 _PIPELINES: list[dict[str, Any]] = [
     {
         "id": "pipe-build-01",
@@ -247,42 +226,7 @@ async def execute_qa_test_suite(
     }
 
 
-# -----------------------------------------------------------------------------
-# Station 5: Security & AppSec
-# -----------------------------------------------------------------------------
-
-@router.get("/security/findings")
-async def list_security_findings(user: CurrentUser) -> list[dict[str, Any]]:
-    """Lists security and CVE remediation findings."""
-    return _SECURITY_FINDINGS
-
-
-@router.post("/security/scan")
-async def trigger_security_scan(
-    session: Session,
-    user: CurrentUser,
-) -> dict[str, Any]:
-    """Runs automated SAST / DAST vulnerability scan."""
-    now = dt.datetime.now(dt.UTC).isoformat()
-    await ledger.append(
-        session,
-        actor=ledger.Actor.human(user),
-        action="security.scan_completed",
-        subject_type="security_audit",
-        subject_id=f"sec-scan-{int(dt.datetime.now().timestamp())}",
-        payload={"findings_count": len(_SECURITY_FINDINGS), "status": "SECURE"},
-    )
-    return {
-        "status": "completed",
-        "critical": 0,
-        "high": 0,
-        "medium": 0,
-        "low": 1,
-        "info": 1,
-        "findings": _SECURITY_FINDINGS,
-        "scannedAt": now,
-    }
-
+# Station 5 (Security) is real: see app/routers/security.py (OSV-Scanner).
 
 # -----------------------------------------------------------------------------
 # Station 6: DevOps & Pipelines
