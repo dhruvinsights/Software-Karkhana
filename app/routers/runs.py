@@ -51,8 +51,22 @@ from app.routers.common import (
     lock_project,
 )
 from app.runner.base import get_backend, verify_run_token
-from app.schemas import ContextNote, RunOut, RunProgress, RunResult, RunSpec, SuiteReport
-from app.services import context_notes, osv_scan, plan, repos, run_context, test_suites
+from app.schemas import (
+    ContextNote,
+    RunOut,
+    RunProgress,
+    RunResult,
+    RunSpec,
+    SuiteReport,
+)
+from app.services import (
+    demo_sandbox,
+    osv_scan,
+    plan,
+    repos,
+    run_context,
+    test_suites,
+)
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -145,7 +159,11 @@ async def start_run(
             status.HTTP_429_TOO_MANY_REQUESTS, "Too many active runs for this project"
         )
 
-    backend = get_backend(body.backend if body else None)
+    # Demo workspaces always build with the sandbox runner; no client can pick it.
+    if await demo_sandbox.is_sandbox_project(session, project):
+        backend = get_backend("sandbox")
+    else:
+        backend = get_backend(body.backend if body else None)
     actor = ledger.Actor.human(user)
     await advance_or_http(
         session,
@@ -241,7 +259,9 @@ async def get_run(
         and run.heartbeat_at
         and dt.datetime.now(dt.UTC) - run.heartbeat_at > timeout
     ):
-        backend_view = await get_backend().status(run.external_id or "")
+        backend_view = await get_backend("sandbox" if run.backend == "sandbox" else None).status(
+            run.external_id or ""
+        )
         if backend_view.state != "running":
             await _finish_failed(
                 session,

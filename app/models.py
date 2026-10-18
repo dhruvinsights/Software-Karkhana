@@ -60,6 +60,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     onboarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # A throwaway identity for an anonymous demo (migration 043).
+    is_guest: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = _now()
 
 
@@ -74,6 +76,8 @@ class Workspace(Base):
     plan: Mapped[str] = mapped_column(String, default="enterprise")
     security_posture: Mapped[str] = mapped_column(String, default="STANDARD")
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # A pre-built demo workspace owned by a guest (migration 043).
+    is_sandbox: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = _now()
 
 
@@ -1044,6 +1048,43 @@ class StitchScreen(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    created_at: Mapped[dt.datetime] = _now()
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DemoSession(Base):
+    """A guest's demo: its sandbox workspace and who claimed it (043)."""
+
+    __tablename__ = "demo_sessions"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    guest_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    scenario: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="active")  # active | claimed | expired
+    client_hash: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[dt.datetime] = _now()
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    claimed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    claimed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserOnboarding(Base):
+    """What a person did while exploring, kept with their real account (043)."""
+
+    __tablename__ = "user_onboarding"
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    demo_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("demo_sessions.id", ondelete="SET NULL"), nullable=True
+    )
+    tour: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    profile: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    drafts: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

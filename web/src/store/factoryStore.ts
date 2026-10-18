@@ -1,3 +1,4 @@
+import { startDemoSession, claimDemo, DEMO_TOKEN_KEY, DEMO_ANCHORS_KEY } from '../lib/demoApi';
 import { acceptInvite, clearPendingInvite, readPendingInvite } from '../lib/invites';
 import {
   Workspace,
@@ -110,6 +111,7 @@ export interface CurrentUser {
   role: string;
   avatar_url?: string | null;
   onboarded_at?: string | null;
+  is_guest?: boolean;
 }
 
 export interface FactoryState {
@@ -366,8 +368,19 @@ export const factoryStore = {
       currentScreen: user.onboarded_at ? 'workspace_home' : 'onboarding',
     };
     notify();
-    // Fetch live workspace data in background
-    void factoryStore.syncSessionFromServer().then(() => factoryStore.acceptPendingInvite());
+    // Fetch live workspace data in background. A real account that came from a demo saves it first.
+    const claim = user.is_guest ? Promise.resolve() : claimDemo(token).catch(() => undefined);
+    void claim
+      .then(() => factoryStore.syncSessionFromServer())
+      .then(() => factoryStore.acceptPendingInvite());
+  },
+
+  /** Launch Demo: opens a sandbox workspace with no account. Throws a readable message on failure. */
+  startDemo: async () => {
+    const demo = await startDemoSession();
+    localStorage.setItem(DEMO_TOKEN_KEY, demo.token);
+    localStorage.setItem(DEMO_ANCHORS_KEY, JSON.stringify(demo.anchors));
+    factoryStore.setAuthSession(demo.token, demo.user);
   },
 
   syncSessionFromServer: async () => {
@@ -404,7 +417,7 @@ export const factoryStore = {
             plan: 'enterprise',
             createdAt: new Date().toISOString(),
             securityPosture: 'STANDARD',
-            isDemo: false,
+            isDemo: !!state.currentUser?.is_guest,
           }));
           const active = state.workspaces.find((w) => w.id === state.activeWorkspaceId) ?? state.workspaces[0];
           state.activeWorkspaceId = active.id;

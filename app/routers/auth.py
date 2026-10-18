@@ -238,10 +238,17 @@ def _clean_email(raw: str) -> str:
     return email
 
 
+def _refuse_guest_email(email: str) -> None:
+    """Demo guests have no password and a reserved domain: never sign in by email."""
+    if email.endswith(".invalid"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This address cannot sign in.")
+
+
 @router.post("/api/auth/send-otp")
 async def send_otp(payload: SendOTPRequest) -> dict:
     """Sends a one-time sign-in code (rate-limited per email)."""
     email_clean = _clean_email(payload.email)
+    _refuse_guest_email(email_clean)
     try:
         code = _OTP.issue(email_clean)
     except otp.OtpError as e:
@@ -271,6 +278,7 @@ async def verify_otp(
 ) -> TokenOut:
     """Verifies the one-time code and signs the user in (creating them if new)."""
     email_clean = _clean_email(payload.email)
+    _refuse_guest_email(email_clean)
     code_input = payload.code.strip()
 
     dev_code = os.environ.get("DEV_OTP_CODE", "")
@@ -586,7 +594,7 @@ async def login(
     """Authenticates with email and password."""
     email_clean = payload.email.strip().lower()
     user = await session.scalar(select(User).where(User.email == email_clean))
-    if user is None:
+    if user is None or user.is_guest or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",

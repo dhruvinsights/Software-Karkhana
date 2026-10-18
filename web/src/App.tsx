@@ -11,6 +11,7 @@ const AuthScreen = lazy(() => import('./components/auth/AuthScreen').then((m) =>
 const WorkspaceChooser = lazy(() => import('./components/auth/WorkspaceChooser').then((m) => ({ default: m.WorkspaceChooser })));
 const CreateWorkspaceModal = lazy(() => import('./components/auth/CreateWorkspaceModal').then((m) => ({ default: m.CreateWorkspaceModal })));
 const DreamTransitionScreen = lazy(() => import('./components/auth/DreamTransitionScreen').then((m) => ({ default: m.DreamTransitionScreen })));
+const DemoTour = lazy(() => import('./components/workspace/DemoTour').then((m) => ({ default: m.DemoTour })));
 const GuidedTutorialOverlay = lazy(() => import('./components/workspace/GuidedTutorialOverlay').then((m) => ({ default: m.GuidedTutorialOverlay })));
 const WorkspaceHomeView = lazy(() => import('./components/views/WorkspaceHomeView').then((m) => ({ default: m.WorkspaceHomeView })));
 const IdeaValidationView = lazy(() => import('./components/views/IdeaValidationView').then((m) => ({ default: m.IdeaValidationView })));
@@ -63,6 +64,27 @@ export default function App() {
   const [showDreamTransition, setShowDreamTransition] = useState(false);
   const [pendingWorkspaceName, setPendingWorkspaceName] = useState('Nexus Engineering');
   const [showTutorial, setShowTutorial] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
+
+  const launchDemo = async () => {
+    setDemoLoading(true);
+    setDemoError(null);
+    try {
+      await factoryStore.startDemo();
+      factoryStore.setScreen('workspace_home');
+    } catch (e) {
+      setDemoError(e instanceof Error ? e.message : 'Could not start the demo. Please try again.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  // Demo visitor chooses to keep their work: leave the sandbox (its token is kept for the claim) and sign up.
+  const signUpFromDemo = () => {
+    factoryStore.signOut();
+    factoryStore.setScreen('signin');
+  };
 
   useEffect(() => {
     const unsubscribe = factoryStore.subscribe((newState) => {
@@ -120,8 +142,10 @@ export default function App() {
     return (
       <Suspense fallback={<ScreenFallback />}>
         <MarketingLandingPage
-          onGetStarted={() => factoryStore.setScreen('signin')}
+          onGetStarted={() => void launchDemo()}
           onSignIn={() => factoryStore.setScreen('signin')}
+          getStartedBusy={demoLoading}
+          getStartedError={demoError}
         />
       </Suspense>
     );
@@ -335,9 +359,20 @@ export default function App() {
 
   return (
     <Suspense fallback={<ScreenFallback />}>
-      <AppShell state={state}>
-        <Suspense fallback={<ViewFallback />}>{renderCurrentView()}</Suspense>
-      </AppShell>
+      {state.currentUser?.is_guest && (
+        <div className="fixed top-0 inset-x-0 z-[60] h-7 flex items-center justify-center gap-x-4 px-3 bg-emerald-950 border-b border-emerald-400/30 text-xs text-emerald-200 whitespace-nowrap overflow-hidden">
+          <span className="truncate">Demo workspace with sample data. Nothing here is saved to an account.</span>
+          <button onClick={signUpFromDemo} className="font-semibold text-white underline underline-offset-2 cursor-pointer shrink-0">
+            Sign up free
+          </button>
+        </div>
+      )}
+      {state.currentUser?.is_guest && <DemoTour screen={state.currentScreen} onSignUp={signUpFromDemo} />}
+      <div style={state.currentUser?.is_guest ? ({ '--demo-banner': '28px', paddingTop: 28 } as React.CSSProperties) : undefined}>
+        <AppShell state={state}>
+          <Suspense fallback={<ViewFallback />}>{renderCurrentView()}</Suspense>
+        </AppShell>
+      </div>
       {showTutorial && (
         <GuidedTutorialOverlay
           isOpen={showTutorial}

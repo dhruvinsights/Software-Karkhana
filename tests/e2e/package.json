@@ -2,6 +2,7 @@
   "name": "karkhana-e2e",
   "private": true,
   "description": "Drives the demo golden path through the real UI as each role.",
-  "scripts": { "test": "node golden.js" },
+  "scripts": { "test": "node golden.js",
+    "test:demo": "node demo.mjs" },
   "dependencies": { "playwright": "^1.48.0" }
 }
