@@ -1,5 +1,6 @@
 # --- Python ---
 .venv/
+.venv-win/
 .venv-pr-agent/
 __pycache__/
 *.pyc
@@ -34,6 +35,8 @@ import-times.txt
 
 # --- Git bundles used to move the repo between machines ---
 *.bundle
+.sk-snapshot.tgz
+*.patch
 
 # --- Editors and OS ---
 .idea/

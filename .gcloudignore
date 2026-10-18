@@ -1,9 +1,34 @@
-# What `make deploy` uploads to Cloud Build. Everything .gitignore excludes
-# (secrets, .venv, node_modules, web/dist) is excluded here too.
-.gcloudignore
-.git
-.github
-#!include:.gitignore
-tests/
-docs/
-demo-repo/
+# What `gcloud builds submit` uploads to Cloud Build.
+#
+# Allowlist: upload only what the Dockerfile COPYs. Everything else on a
+# developer machine (.venv-win, node_modules, caches, snapshots, patches)
+# stays local, so the upload is a few MB instead of hundreds.
+/*
+!/Dockerfile
+!/.dockerignore
+!/pyproject.toml
+!/uv.lock
+!/README.md
+!/app/
+!/db/
+!/web/
+!/tools/
+!/third_party/
+
+# Inside the allowed folders, still skip build output and caches.
+node_modules/
+web/dist/
+__pycache__/
+*.pyc
+*.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+tools/e2e/
+
+# Never upload secrets.
+.env
+.env.*
+*.pem
+*.key
+service-account*.json
