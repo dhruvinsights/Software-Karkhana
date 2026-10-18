@@ -311,6 +311,9 @@ class ProjectMember(Base):
         default=lambda: ["product", "architecture", "developer", "qa", "devops", "security", "release"],
     )
     is_lead: Mapped[bool] = mapped_column(Boolean, default=False)
+    # False: every station of the project. True: only ``stations`` (set by a PM
+    # or the project lead to narrow someone's access). Migration 038.
+    limited: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[dt.datetime] = _now()
 
 
@@ -421,6 +424,13 @@ class Run(Base):
     test_exit_code: Mapped[int | None] = mapped_column(Integer)
     test_output: Mapped[str | None] = mapped_column(Text)
     validation_status: Mapped[str] = mapped_column(String, default="not_run")
+    # Unit, integration, ... each with its state and counts (migration 033).
+    test_suites: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    # Where the developer pauses the build, what they briefed the agent with, and the
+    # decision waiting for them right now (migration 040).
+    control: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    brief: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    gate: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(Text)
     artifacts_uri: Mapped[str | None] = mapped_column(String)
     # Headroom token accounting reported by the worker (migration 015).
@@ -440,6 +450,8 @@ class PullRequest(Base):
     head_sha: Mapped[str] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default="open")
     tests_passed: Mapped[bool] = mapped_column(Boolean)
+    # [{"userId", "name", "by", "at"}]: people asked to review (migration 034).
+    requested_reviewers: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     merged_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     merged_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     # Set once a review engine has produced a verdict, even with zero comments.
@@ -533,6 +545,8 @@ class ChatChannel(Base):
     # 'public': every workspace member; 'private': chat_channel_members only.
     visibility: Mapped[str] = mapped_column(String, default="public")
     project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    # The project station (team space) the channel belongs to (migration 036).
+    station: Mapped[str | None] = mapped_column(String, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[dt.datetime] = _now()
@@ -639,6 +653,15 @@ class Issue(Base):
     acceptance_criteria: Mapped[list[str]] = mapped_column(JSONB, default=list)
     source_quote: Mapped[str] = mapped_column(Text, default="")
     estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The developer's manual check (story) or fix confirmation (bug); migration 034.
+    dev_check: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    reopen_count: Mapped[int] = mapped_column(Integer, default=0)
+    # The QA agent's last run on this story (migration 035).
+    qa_agent: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Who last edited this issue and why (migration 041).
+    last_edited_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    last_edited_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    edit_comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -860,6 +883,8 @@ class AgentDevice(Base):
     pairing_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")  # pending | active | revoked
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # {project id: folder} the developer chose for each project's repository (migration 039).
+    work_paths: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[dt.datetime] = _now()
 
 
@@ -921,6 +946,29 @@ class Release(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+
+class QaSuggestion(Base):
+    """A bug the QA agent suggests; a QA engineer accepts or dismisses it."""
+
+    __tablename__ = "qa_suggestions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    issue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str] = mapped_column(String, default="functional")
+    severity: Mapped[str] = mapped_column(String, default="P2")
+    steps: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    expected: Mapped[str] = mapped_column(Text, default="")
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(String, default="open")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bug_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("issues.id", ondelete="SET NULL"), nullable=True)
+    model: Mapped[str] = mapped_column(String, default="")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[dt.datetime] = _now()
 
 class StitchProject(Base):
     """The Google Stitch project behind a Karkhana project's designs (032)."""

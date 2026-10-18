@@ -5,16 +5,27 @@ import { access, constants } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 
 /**
- * Runs a command to completion.
- * @returns {Promise<{code: number, stdout: string, stderr: string}>}
+ * Runs a command to completion. ``signal`` (an AbortSignal) stops it early.
+ * @returns {Promise<{code: number, stdout: string, stderr: string, timedOut: boolean, aborted: boolean}>}
  */
-export function run(cmd, args, { cwd, env, input, timeoutMs = 600_000, onStdoutLine } = {}) {
+export function run(cmd, args, { cwd, env, input, timeoutMs = 600_000, onStdoutLine, signal } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd, env: env ?? process.env, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let pending = '';
-    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs);
+    let timedOut = false;
+    let aborted = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeoutMs);
+    const onAbort = () => {
+      aborted = true;
+      child.kill('SIGTERM');
+    };
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
       stdout += text;
@@ -29,12 +40,14 @@ export function run(cmd, args, { cwd, env, input, timeoutMs = 600_000, onStdoutL
     });
     child.on('error', (err) => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       reject(err.code === 'ENOENT' ? new Error(`${cmd} is not installed or not on PATH`) : err);
     });
-    child.on('close', (code, signal) => {
+    child.on('close', (code, sig) => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       if (onStdoutLine && pending) onStdoutLine(pending);
-      resolve({ code: code ?? (signal ? 124 : 1), stdout, stderr });
+      resolve({ code: code ?? (sig ? 124 : 1), stdout, stderr, timedOut, aborted });
     });
     child.stdin.end(input ?? '');
   });

@@ -257,6 +257,13 @@ class GitHub:
 
     # ── Reviews ────────────────────────────────────────────────────────────
 
+    async def close_pull_request(self, *, number: int, comment: str) -> None:
+        """Explains why, then closes the PR without merging."""
+        r = await self._http.post(f"/issues/{number}/comments", json={"body": comment})
+        r.raise_for_status()
+        r = await self._http.patch(f"/pulls/{number}", json={"state": "closed"})
+        r.raise_for_status()
+
     async def post_review(self, *, number: int, body: str) -> None:
         """Posts the AI review as a single PR issue comment (plain markdown)."""
         r = await self._http.post(f"/issues/{number}/comments", json={"body": body})

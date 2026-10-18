@@ -60,3 +60,55 @@ test('the sandbox mounts only the worktree, read-only root, non-root, with limit
   assert.ok(args.includes('/w/iss-4:/work'));
   assert.deepEqual(args.slice(-5), ['img:1', 'uv', 'run', 'pytest', '-q']);
 });
+
+test('pytest repos with unit and integration folders run them as separate suites', async () => {
+  const { testSuites } = await import('../src/testrun.js');
+  const d = await mkdtemp(join(tmpdir(), 'ka-'));
+  await writeFile(join(d, 'uv.lock'), '');
+  await mkdir(join(d, 'tests', 'unit'), { recursive: true });
+  await mkdir(join(d, 'tests', 'integration'), { recursive: true });
+  assert.deepEqual(await testSuites(d), [
+    { name: 'unit', argv: ['uv', 'run', 'pytest', '-q', 'tests/unit'] },
+    { name: 'integration', argv: ['uv', 'run', 'pytest', '-q', 'tests/integration'] },
+  ]);
+});
+
+test('declared suites win, and a single command is one suite', async () => {
+  const { testSuites } = await import('../src/testrun.js');
+  const d = await mkdtemp(join(tmpdir(), 'ka-'));
+  await mkdir(join(d, '.karkhana'));
+  await writeFile(join(d, '.karkhana', 'agent.json'), JSON.stringify({ tests: { unit: ['make', 'unit'], 'Bad Name': ['x'] } }));
+  assert.deepEqual(await testSuites(d), [{ name: 'unit', argv: ['make', 'unit'] }]);
+  const e = await mkdtemp(join(tmpdir(), 'ka-'));
+  assert.deepEqual(await testSuites(e), [{ name: 'tests', argv: ['python3', '-m', 'pytest', '-q'] }]);
+});
+
+test('counts come from pytest and Jest summaries', async () => {
+  const { parseCounts } = await import('../src/testrun.js');
+  assert.deepEqual(parseCounts('== 1 failed, 4 passed, 2 skipped in 1s =='), { passed: 4, failed: 1, skipped: 2, total: 7 });
+  assert.deepEqual(parseCounts('Tests:       2 failed, 10 passed, 12 total'), { passed: 10, failed: 2, skipped: 0, total: 12 });
+  assert.deepEqual(parseCounts('100% tests passed, 0 tests failed out of 9'), { passed: 9, failed: 0, skipped: 0, total: 9 });
+  assert.deepEqual(parseCounts('boom'), {});
+});
+
+test('suites run in order and each is reported when it starts and ends', async () => {
+  const { runSuites } = await import('../src/testrun.js');
+  const d = await mkdtemp(join(tmpdir(), 'ka-'));
+  const seen = [];
+  const out = await runSuites(
+    d,
+    [
+      { name: 'unit', argv: ['node', '-e', 'console.log("3 passed in 0.1s")'] },
+      { name: 'integration', argv: ['node', '-e', 'console.log("1 failed, 1 passed"); process.exit(1)'] },
+    ],
+    'none',
+    async (s) => {
+      seen.push(`${s.suite}:${s.status}`);
+      if (s.suite === 'integration' && s.status === 'running') throw new Error('network down');
+    },
+  );
+  assert.deepEqual(seen, ['unit:running', 'unit:passed', 'integration:running', 'integration:failed']);
+  assert.equal(out.code, 1);
+  assert.equal(out.suites[0].passed, 3);
+  assert.equal(out.suites[1].failed, 1);
+});

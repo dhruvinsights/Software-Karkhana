@@ -57,6 +57,7 @@ def _device_out(d: AgentDevice) -> dict[str, Any]:
         "online": devices.online(d),
         "lastSeenAt": d.last_seen_at.isoformat() if d.last_seen_at else None,
         "createdAt": d.created_at.isoformat(),
+        "workPaths": d.work_paths or {},
     }
 
 
@@ -88,6 +89,45 @@ async def list_devices(session: Session, user: CurrentUser) -> list[dict[str, An
         )
     ).all()
     return [_device_out(d) for d in rows]
+
+
+class WorkPathIn(BaseModel):
+    """The folder this machine uses for one project's repository; empty clears it."""
+
+    project_id: uuid.UUID
+    path: str | None = Field(default=None, max_length=500)
+
+
+@router.put("/api/devices/{device_id}/paths")
+async def set_work_path(
+    device_id: uuid.UUID, body: WorkPathIn, session: Session, user: CurrentUser
+) -> dict[str, Any]:
+    """The developer decides where a project lives on their machine.
+
+    The path must be absolute or start with ``~``. The agent validates it on the
+    machine: it reuses a checkout of the project's repository, clones into an
+    empty or new folder, and refuses anything else with the reason.
+    """
+    device = await session.get(AgentDevice, device_id)
+    if device is None or device.user_id != user.id or device.status != "active":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Machine not found.")
+    project = await access.get_visible_project(session, user, body.project_id)
+    path = (body.path or "").strip()
+    paths = dict(device.work_paths or {})
+    if path:
+        if not (path.startswith("/") or path.startswith("~") or (len(path) > 2 and path[1:3] in (":\\", ":/"))):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Use a full path such as /Users/you/code/app, or start with ~ (for example ~/code/app).",
+            )
+        if ".." in path.replace("\\", "/").split("/"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Leave out '..' from the path.")
+        paths[str(project.id)] = path
+    else:
+        paths.pop(str(project.id), None)
+    device.work_paths = paths
+    await session.commit()
+    return _device_out(device)
 
 
 @router.delete("/api/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -153,7 +193,7 @@ async def pair(body: PairIn, session: Session) -> dict[str, Any]:
     return {"deviceId": str(device.id), "token": token, "name": device.name}
 
 
-async def _job_out(session: AsyncSession, job: AgentJob) -> dict[str, Any]:
+async def _job_out(session: AsyncSession, job: AgentJob, device: AgentDevice | None = None) -> dict[str, Any]:
     run = await session.get(Run, job.run_id) if job.run_id else None
     task = await session.get(Task, run.task_id) if run else None
     project = await session.get(Project, job.project_id)
@@ -166,6 +206,8 @@ async def _job_out(session: AsyncSession, job: AgentJob) -> dict[str, Any]:
         "projectName": project.name if project else "",
         "taskKey": task.key if task else "",
         "taskTitle": task.title if task else "",
+        # Where the developer wants this project on this machine, if they said.
+        "workDir": ((device.work_paths or {}).get(str(job.project_id)) if device else None),
     }
 
 
@@ -177,7 +219,7 @@ async def claim_job(session: Session, device: Device, response: Response) -> dic
         job = await devices.claim(session, device)
         await session.commit()
         if job is not None:
-            return {"job": await _job_out(session, job)}
+            return {"job": await _job_out(session, job, device)}
         if waited >= CLAIM_WAIT_S:
             response.status_code = status.HTTP_204_NO_CONTENT
             return None

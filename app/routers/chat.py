@@ -36,7 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -53,8 +53,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access import my_access
 from app.auth import CurrentUser, decode_token
 from app.db import get_session, sessionmaker
+from app.idea_flow import ALL_STATIONS
 from app.models import (
     ActivityEvent,
     ChatAttachment,
@@ -62,6 +64,7 @@ from app.models import (
     ChatChannelMember,
     ChatMessage,
     ChatReadCursor,
+    Project,
     ProjectComment,
     ProjectMember,
     User,
@@ -91,6 +94,10 @@ class ChannelCreate(BaseModel):
     visibility: str = Field(default="private", pattern="^(public|private)$")
     member_ids: list[uuid.UUID] = Field(default_factory=list)
     project_id: uuid.UUID | None = None
+    # A channel of one team space of the project, and who it is for: that
+    # station's team, the whole project, or linked to the entire workspace.
+    station: str | None = Field(default=None, max_length=40)
+    audience: Literal["team", "project", "workspace"] | None = None
 
 
 class ChannelMembersAdd(BaseModel):
@@ -486,6 +493,7 @@ async def list_channels(ws: CurrentWorkspace, session: Session) -> list[dict[str
             "type": ch.type,
             "visibility": ch.visibility,
             "projectId": str(ch.project_id) if ch.project_id else None,
+            "station": ch.station,
             "description": ch.description,
             "unreadCount": await _unread_count(session, ws.user.id, ch.id),
             "lastMessageAt": last_msg_at.isoformat() if last_msg_at else None,
@@ -508,10 +516,31 @@ async def create_channel(body: ChannelCreate, ws: CurrentWorkspace, session: Ses
     )
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Channel already exists")
+    if body.station and body.station not in ALL_STATIONS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown station: {body.station}")
+    if (body.station or body.audience) and not body.project_id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A station channel belongs to a project.")
+    if body.audience == "team" and not body.station:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Pick the station whose team the channel is for.")
     if body.project_id:
         await project_access(session, ws.user, body.project_id)
 
     member_ids = {ws.user.id, *body.member_ids}
+    visibility = body.visibility
+    if body.audience == "workspace":
+        visibility = "public"
+    elif body.audience:
+        visibility = "private"
+        rows = (
+            await session.execute(
+                select(ProjectMember.user_id, ProjectMember.stations).where(
+                    ProjectMember.project_id == body.project_id
+                )
+            )
+        ).all()
+        member_ids |= {
+            uid for uid, stations in rows if body.audience == "project" or body.station in (stations or [])
+        }
     valid = set((await session.scalars(
         select(WorkspaceMember.user_id).where(
             WorkspaceMember.workspace_id == ws.workspace_id, WorkspaceMember.user_id.in_(member_ids)
@@ -524,13 +553,14 @@ async def create_channel(body: ChannelCreate, ws: CurrentWorkspace, session: Ses
         workspace_id=ws.workspace_id,
         name=name,
         description=body.description,
-        visibility=body.visibility,
+        visibility=visibility,
         project_id=body.project_id,
+        station=body.station,
         created_by=ws.user.id,
     )
     session.add(ch)
     await session.flush()
-    if body.visibility == "private":
+    if visibility == "private":
         for uid in member_ids:
             session.add(ChatChannelMember(channel_id=ch.id, user_id=uid))
     invited = [uid for uid in member_ids if uid != ws.user.id]
@@ -546,11 +576,40 @@ async def create_channel(body: ChannelCreate, ws: CurrentWorkspace, session: Ses
     out = {
         "id": str(ch.id), "name": ch.name, "type": ch.type, "visibility": ch.visibility,
         "projectId": str(ch.project_id) if ch.project_id else None,
+        "station": ch.station,
         "description": ch.description, "unreadCount": 0,
     }
     audience = None if ch.visibility == "public" else {str(u) for u in member_ids}
     await manager.deliver(str(ws.workspace_id), audience, {"type": "channel_created", "channel": out})
     await notify_activity(ws.workspace_id, invited)
+    return out
+
+
+@router.post("/channels/{channel_id}/link")
+async def link_channel_to_workspace(channel_id: uuid.UUID, ws: CurrentWorkspace, session: Session) -> dict[str, Any]:
+    """Links a project channel to the whole workspace: everyone in it can find and join it.
+
+    Allowed for the channel's creator and the project's lead or managers.
+    """
+    ch = await session.get(ChatChannel, channel_id)
+    if ch is None or ch.workspace_id != ws.workspace_id or ch.type != "channel":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not found")
+    if ch.project_id is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only project channels are linked; this one is already a workspace channel.")
+    if ch.created_by != ws.user.id:
+        project = await session.get(Project, ch.project_id)
+        mine = await my_access(session, ws.user, project) if project else {}
+        if not (mine.get("canManage") or mine.get("isLead")):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the channel's creator or the project lead can link it.")
+    if ch.visibility != "public":
+        ch.visibility = "public"
+        await session.commit()
+    out = {
+        "id": str(ch.id), "name": ch.name, "type": ch.type, "visibility": ch.visibility,
+        "projectId": str(ch.project_id), "station": ch.station,
+        "description": ch.description, "unreadCount": 0,
+    }
+    await manager.deliver(str(ws.workspace_id), None, {"type": "channel_created", "channel": out})
     return out
 
 

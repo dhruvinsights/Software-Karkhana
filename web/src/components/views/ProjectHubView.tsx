@@ -50,10 +50,10 @@ import { ShinyText } from '../reactbits/ShinyText';
 import { CreateProjectModal } from '../workspace/CreateProjectModal';
 import { ProjectPlanPanel } from './ProjectPlanPanel';
 import { ProjectBriefStrip } from './ProjectBriefStrip';
+import { DevWorkspace } from '../stations/DevWorkspace';
+import { QAWorkspace } from '../stations/QAWorkspace';
 import { ProjectDesignPanel } from './ProjectDesignPanel';
-import { ProjectBuildPanel } from './ProjectBuildPanel';
 import { ProjectPipelinePanel, ProjectReleasePanel } from './ProjectDeliveryPanels';
-import { QAVerificationView } from './QAVerificationView';
 import { stationsApi, useStationList, ApiTestScenario } from '../../lib/stationsApi';
 
 /** Server-side QA scenario count for the project card. */
@@ -237,6 +237,23 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
   // Anyone joining, leaving or changing station triggers a workspace_sync: refresh the teams live.
   useChatFrames('workspace_sync', () => { loadProjectMembers(); }, [loadProjectMembers]);
   useChatFrames('reconnected', () => { loadProjectMembers(); }, [loadProjectMembers]);
+
+  // A PM or the project lead narrows someone to their listed stations, or lifts it.
+  const setMemberLimited = async (member: ProjectMemberRow, limited: boolean) => {
+    if (!selectedProject) return;
+    setProjectInviteError(null);
+    const res = await fetch(`/api/projects/${selectedProject.id}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ user_id: member.userId, role: member.role, stations: member.stations, limited }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setProjectInviteError(typeof j.detail === 'string' ? j.detail : 'Could not change their access.');
+      return;
+    }
+    loadProjectMembers();
+  };
 
   const toggleProjectAccess = async () => {
     if (!selectedProject || !accessInfo) return;
@@ -534,36 +551,13 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
       {/* Tab 4: Developer Swarm */}
       {activeStationTab === 'developer' && (
         <div className="space-y-6">
-          <ProjectBuildPanel projectId={selectedProject.id} />
-
-          {/* Quick-stats bar */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="p-4 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
-              <p className="text-xs font-mono text-[#827D8E] uppercase tracking-wider mb-1">Open PRs</p>
-              <p className="text-2xl font-mono font-bold text-white">
-                {state.pullRequests.filter((pr) => pr.projectId === selectedProject.id && pr.status === 'open').length}
-              </p>
-            </div>
-            <div className="p-4 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
-              <p className="text-xs font-mono text-[#827D8E] uppercase tracking-wider mb-1">Merged</p>
-              <p className="text-2xl font-mono font-bold" style={{ color: 'var(--purple)' }}>
-                {state.pullRequests.filter((pr) => pr.projectId === selectedProject.id && pr.status === 'merged').length}
-              </p>
-            </div>
-            <div className="p-4 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
-              <p className="text-xs font-mono text-[#827D8E] uppercase tracking-wider mb-1">Tasks in flight</p>
-              <p className="text-2xl font-mono font-bold" style={{ color: 'var(--accent)' }}>
-                {projectTasks.filter((i) => i.status === 'in_progress').length}
-              </p>
-            </div>
-          </div>
+          <DevWorkspace projectId={selectedProject.id} projectCode={selectedProject.code} />
 
           {/* Full PR review engine */}
           <div className="p-6 bg-[#0c0e15]/90 border border-white/[0.08] rounded-2xl">
             <div className="flex items-center gap-2 mb-5">
               <GitPullRequest className="w-4 h-4 text-[#5B8FFF]" />
-              <h3 className="text-sm font-semibold text-white">Pull Request Review Engine</h3>
-              <span className="text-xs font-mono text-[#075BFF] ml-auto">Karkhana AI · Better than CodeRabbit</span>
+              <h3 className="text-sm font-semibold text-white">Pull requests: triage AI comments, approve, merge</h3>
             </div>
             <PRReviewPanel
               projectId={selectedProject.id}
@@ -574,7 +568,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
       )}
 
       {/* QA: the queue of finished stories, scenarios and sign-off */}
-      {activeStationTab === 'qa' && <QAVerificationView state={state} />}
+      {activeStationTab === 'qa' && <QAWorkspace projectId={selectedProject.id} projectCode={selectedProject.code} />}
 
       {/* CI/CD: GitHub Actions pipeline */}
       {activeStationTab === 'devops' && <ProjectPipelinePanel projectId={selectedProject.id} />}
@@ -665,7 +659,7 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
               })}
             </div>
             <p className="text-[11px] text-[#827D8E]">
-              {inviteStations.length ? 'They will only see the selected stations.' : 'No station selected: they get the default stations for their role.'}
+              Stations pick the team they join. Everyone on the project can use all of it; limit someone below if needed.
             </p>
             {accessInfo && (
               <div className="flex items-center justify-between rounded-xl border border-white/[0.08] px-3.5 py-2.5">
@@ -716,6 +710,25 @@ export const ProjectHubView: React.FC<ProjectHubViewProps> = ({ state }) => {
                         {STATION_LABELS[st] ?? st}
                       </span>
                     ))}
+                    <span
+                      className={`text-[10px] font-mono uppercase px-2 py-1 rounded-lg border ${
+                        member.limited
+                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                          : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                      }`}
+                      title={member.limited ? 'Can use only the stations listed' : 'Can use every station of the project'}
+                    >
+                      {member.limited ? 'Limited' : 'Full access'}
+                    </span>
+                    {accessInfo && (accessInfo.canManage || accessInfo.isLead) && member.userId !== state.currentUser?.id && (
+                      <button
+                        type="button"
+                        onClick={() => void setMemberLimited(member, !member.limited)}
+                        className="text-[10px] px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-white cursor-pointer"
+                      >
+                        {member.limited ? 'Give full access' : 'Limit to these stations'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

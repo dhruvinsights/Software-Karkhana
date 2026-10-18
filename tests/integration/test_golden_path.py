@@ -168,10 +168,8 @@ async def test_golden_path(client, fakes):
     ]
     assert not board["draft"] and len(board["ready"]) == len(detail["tasks"])
 
-    # A8: developer assigns to agent; a PM may not.
-    assert (
-        await client.post(f"/api/tasks/{tid}/runs", headers=as_(PM))
-    ).status_code == 403
+    # A8: anyone with the project's Developer station builds (everyone on the
+    # project has it unless a PM or the lead limited them; see test_stations).
     r = await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))
     assert r.status_code == 202, r.text
     run_id = r.json()["id"]
@@ -189,6 +187,29 @@ async def test_golden_path(client, fakes):
     await client.post(
         f"/internal/runs/{run_id}/progress", json={"phase": "coding"}, headers=auth
     )
+    # Each suite reports as it starts and ends; the Developer station shows it live.
+    r = await client.post(
+        f"/internal/runs/{run_id}/tests",
+        json={"suite": "integration", "status": "running", "command": "pytest tests/integration"},
+        headers=auth,
+    )
+    assert r.status_code == 200
+    await client.post(
+        f"/internal/runs/{run_id}/tests",
+        json={"suite": "unit", "status": "passed", "output": "....\n12 passed, 1 skipped in 0.4s"},
+        headers=auth,
+    )
+    run = (await client.get(f"/api/runs/{run_id}", headers=as_(DEV))).json()
+    assert [s["suite"] for s in run["test_suites"]] == ["unit", "integration"]
+    assert run["test_suites"][0] | {"passed": 12, "skipped": 1, "total": 13} == run["test_suites"][0]
+    assert run["test_suites"][1]["status"] == "running"
+    assert (
+        await client.post(
+            f"/internal/runs/{run_id}/tests",
+            json={"suite": "unit", "status": "passed"},
+            headers={"Authorization": "Run nope"},
+        )
+    ).status_code == 401
 
     review = [
         {
@@ -215,6 +236,9 @@ async def test_golden_path(client, fakes):
         "test_output": "19 passed",
         "review": review,
         "reviewed": True,
+        "test_suites": [
+            {"suite": "integration", "status": "passed", "passed": 7, "failed": 0, "total": 7}
+        ],
     }
     assert (
         await client.post(
@@ -230,6 +254,10 @@ async def test_golden_path(client, fakes):
     assert r.json()["note"] == "already final"
     run = (await client.get(f"/api/runs/{run_id}", headers=as_(DEV))).json()
     assert run["status"] == "succeeded" and run["test_exit_code"] == 0
+    assert [(t["suite"], t["status"]) for t in run["test_suites"]] == [
+        ("unit", "passed"),
+        ("integration", "passed"),
+    ]
 
     # A10: merge is blocked until every AI comment is triaged.
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
@@ -263,6 +291,25 @@ async def test_golden_path(client, fakes):
         "1 AI comment(s) not triaged",
         "Needs approval from a reviewer other than the author",
     ]
+    # Asking for a review: project members only, never the author.
+    lead = (await client.get("/api/me", headers=as_(LEAD))).json()["id"]
+    dev = (await client.get("/api/me", headers=as_(DEV))).json()["id"]
+    r = await client.post(f"/api/prs/{pr['id']}/reviewers", json={"user_ids": [lead]}, headers=as_(DEV))
+    assert r.status_code == 422 and "Not members" in r.text
+    r = await client.post(
+        f"/api/projects/{pid}/members",
+        json={"user_id": lead, "role": "lead", "stations": ["developer"]},
+        headers=as_(PM),
+    )
+    assert r.status_code in (200, 201), r.text
+    r = await client.post(f"/api/prs/{pr['id']}/reviewers", json={"user_ids": [dev]}, headers=as_(DEV))
+    assert r.status_code == 422
+    r = await client.post(f"/api/prs/{pr['id']}/reviewers", json={"user_ids": [lead]}, headers=as_(DEV))
+    assert r.status_code == 200, r.text
+    assert [x["userId"] for x in r.json()["requestedReviewers"]] == [lead]
+    board = (await client.get(f"/api/projects/{pid}/dev-board", headers=as_(DEV))).json()
+    built = next(s for s in board["stories"] if s["taskId"] == tid) if board["stories"] else None
+    assert built is None or built["pr"]["requestedReviewers"][0]["userId"] == lead
     await client.post(
         f"/api/comments/{c3['id']}/triage",
         json={"triage": "dismissed", "reason": "Covered by an existing test"},
@@ -604,3 +651,35 @@ async def test_concurrent_review_retries_post_one_review(client, fakes):
     assert sorted([r1.status_code, r2.status_code]) == [200, 409]
     pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
     assert len(pr["comments"]) == 4  # Not 8.
+
+
+async def test_rework_sends_a_failing_pr_back_for_another_build(client, fakes):
+    idea = IDEAS["discounts"]
+    pid = (
+        await client.post("/api/projects", json={"name": "Rework", "idea_text": idea["idea_text"]}, headers=as_(PM))
+    ).json()["id"]
+    detail = await wait_for_stage(client, pid, "evaluated")
+    await client.post(f"/api/projects/{pid}/approve", json={"decision": "approved"}, headers=as_(DIR))
+    tid = detail["tasks"][0]["id"]
+    run_id = (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).json()["id"]
+    auth = {"Authorization": f"Run {run_token(run_id)}"}
+    r = await client.post(
+        f"/internal/runs/{run_id}/complete",
+        json={"ok": True, "patch": "diff --git a b", "test_command": "pytest", "test_exit_code": 1,
+              "test_output": "1 failed", "review": [], "reviewed": True},
+        headers=auth,
+    )
+    assert r.json()["status"] == "succeeded"
+    pr = (await client.get(f"/api/tasks/{tid}/pr", headers=as_(DEV))).json()
+    assert not pr["tests_passed"]
+    # Stuck in review: no new build until the PR goes back.
+    assert (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).status_code == 409
+    r = await client.post(f"/api/prs/{pr['id']}/rework", json={"reason": "no"}, headers=as_(DEV))
+    assert r.status_code == 422
+    r = await client.post(
+        f"/api/prs/{pr['id']}/rework", json={"reason": "Integration tests fail on the new endpoint."}, headers=as_(DEV)
+    )
+    assert r.status_code == 200 and r.json()["status"] == "ready", r.text
+    again = await client.post(f"/api/prs/{pr['id']}/rework", json={"reason": "Integration tests fail again."}, headers=as_(DEV))
+    assert again.status_code == 409
+    assert (await client.post(f"/api/tasks/{tid}/runs", headers=as_(DEV))).status_code == 202

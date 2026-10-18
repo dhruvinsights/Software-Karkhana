@@ -224,6 +224,7 @@ async def list_project_members(
             "role": pm.role,
             "stations": pm.stations or [],
             "isLead": bool(pm.is_lead),
+            "limited": bool(pm.limited),
             "avatarUrl": u.avatar_url,
             "joinedAt": pm.joined_at.isoformat(),
         }
@@ -274,6 +275,8 @@ async def add_project_member(
 
     The project lead and manager roles can enrol anyone. A station lead can add
     people to their own team only: same role, no station they lack themselves.
+    Members get every station by default; only a PM or the project lead can
+    limit someone to their listed ``stations`` (``limited: true``) or lift it.
     """
     from app import idea_flow as rules
     from app.models import ProjectMember
@@ -315,6 +318,10 @@ async def add_project_member(
     # Only the project lead or a manager can mint more station leads.
     may_set_lead = is_project_lead or my_role in rules.MANAGER_ROLES
     wants_lead = bool(payload.get("is_lead") or payload.get("isLead")) and may_set_lead
+    if "limited" in payload and not may_set_lead:
+        raise HTTPException(
+            status_code=403, detail="Only a product manager or the project lead can limit someone's access."
+        )
 
     existing = await session.scalar(
         select(ProjectMember).where(
@@ -327,6 +334,8 @@ async def add_project_member(
         existing.stations = stations
         if may_set_lead and ("is_lead" in payload or "isLead" in payload):
             existing.is_lead = wants_lead
+        if "limited" in payload:
+            existing.limited = bool(payload["limited"])
         session.add(existing)
         member = existing
     else:
@@ -337,6 +346,7 @@ async def add_project_member(
             role=role,
             stations=stations,
             is_lead=wants_lead,
+            limited=bool(payload.get("limited", False)),
         )
         session.add(member)
 
@@ -352,6 +362,7 @@ async def add_project_member(
         "role": member.role,
         "stations": member.stations,
         "isLead": bool(member.is_lead),
+        "limited": bool(member.limited),
     }
 
 

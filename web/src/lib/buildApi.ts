@@ -10,6 +10,8 @@ export interface Machine {
   harness: string;
   online: boolean;
   lastSeenAt: string | null;
+  /** The folder the developer chose for each project on this machine (project id -> path). */
+  workPaths?: Record<string, string>;
 }
 
 export interface Pairing {
@@ -54,9 +56,13 @@ export const buildApi = {
   machines: () => call<Machine[]>('/api/devices'),
   pair: () => call<Pairing>('/api/devices/pairing', { method: 'POST' }),
   revoke: (id: string) => call<void>(`/api/devices/${id}`, { method: 'DELETE' }),
+  setWorkPath: (deviceId: string, projectId: string, path: string) =>
+    call<Machine>(`/api/devices/${deviceId}/paths`, { method: 'PUT', body: JSON.stringify({ project_id: projectId, path }) }),
+  stop: (runId: string) => call<{ status: string }>(`/api/runs/${runId}/cancel`, { method: 'POST' }),
   takeStory: (issueId: string, userId: string) =>
     call(`/api/issues/${issueId}`, { method: 'PATCH', body: JSON.stringify({ assignee_id: userId, status: 'ready' }) }),
-  build: (taskId: string) => call<RunInfo>(`/api/tasks/${taskId}/runs`, { method: 'POST', body: JSON.stringify({ backend: 'device' }) }),
+  build: (taskId: string, extra: object = {}) =>
+    call<RunInfo>(`/api/tasks/${taskId}/runs`, { method: 'POST', body: JSON.stringify({ backend: 'device', ...extra }) }),
   runs: (taskId: string) => call<RunInfo[]>(`/api/tasks/${taskId}/runs`),
   logs: (runId: string) => call<LogLine[]>(`/api/runs/${runId}/logs`),
 };

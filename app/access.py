@@ -208,10 +208,15 @@ async def my_access(
     )
     restricted = is_restricted(project)
     full = privileged or not restricted
-    if full:
+    limited = bool(member and member.limited and not privileged)
+    if limited:
+        # A PM or the project lead narrowed this person to chosen stations.
+        stations = list(member.stations or [])
+    elif full or member is not None:
+        # Everyone invited to the project has all of it by default.
         stations = list(ALL_STATIONS)
     else:
-        stations = list(member.stations or []) if member else []
+        stations = []
     return {
         "projectId": str(project.id),
         "access": RESTRICTED if restricted else OPEN,
@@ -220,6 +225,7 @@ async def my_access(
         "canManage": privileged,
         "role": member.role if member else None,
         "stations": stations,
+        "limited": limited,
         "canView": full or member is not None,
     }
 
@@ -227,13 +233,30 @@ async def my_access(
 async def ensure_station(
     session: AsyncSession, user: Any, project: Project, *wanted: str
 ) -> None:
-    """Raises 403 unless ``user`` may use one of the ``wanted`` stations here."""
+    """Raises 403 unless ``user`` may use one of the ``wanted`` stations here.
+
+    Members of the project have every station unless a PM or the project lead
+    limited them; then only their listed stations count.
+    """
     privileged = await _is_privileged(session, user, project)
     member = await session.scalar(
         select(ProjectMember).where(
             ProjectMember.project_id == project.id, ProjectMember.user_id == user.id
         )
     )
+    if privileged:
+        return
+    if member is not None:
+        needed = [w for w in wanted if w]
+        # No station asked for means "just be on the team".
+        if not member.limited or not needed or set(needed) & set(member.stations or []):
+            return
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Your access to this project was limited to: "
+            + (", ".join(member.stations or []) or "nothing")
+            + ". Ask the product manager or the project lead to widen it.",
+        )
     if not is_restricted(project):
         # Open still means "inside the workspace", never "anyone on the platform".
         if project.workspace_id is None or privileged or member is not None:

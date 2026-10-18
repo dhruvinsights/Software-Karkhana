@@ -75,9 +75,26 @@ async def test_restricted_project_is_team_only_and_station_scoped(client):
     r = await client.patch(f"/api/projects/{pid}/access", headers=as_(PM), json={"access": "restricted"})
     assert r.status_code == 200 and r.json()["access"] == "restricted"
 
-    # A teammate sees only the stations they were given.
+    # Everyone invited has the whole project by default ...
     mine = (await client.get(f"/api/projects/{pid}/access", headers=as_(DEV))).json()
-    assert mine["isMember"] and mine["stations"] == ["design"] and not mine["canManage"]
+    assert mine["isMember"] and "developer" in mine["stations"] and not mine["limited"]
+    # ... until a PM or the project lead limits them; a teammate cannot.
+    dev = (await client.get("/api/me", headers=as_(DEV))).json()["id"]
+    lead = (await client.get("/api/me", headers=as_(LEAD))).json()["id"]
+    r = await client.post(
+        f"/api/projects/{pid}/members",
+        headers=as_(DEV),
+        json={"user_id": lead, "role": "developer", "stations": ["developer"], "limited": True},
+    )
+    assert r.status_code == 403
+    r = await client.post(
+        f"/api/projects/{pid}/members",
+        headers=as_(PM),
+        json={"user_id": dev, "role": "developer", "stations": ["design"], "limited": True},
+    )
+    assert r.status_code == 200 and r.json()["limited"] is True
+    mine = (await client.get(f"/api/projects/{pid}/access", headers=as_(DEV))).json()
+    assert mine["isMember"] and mine["stations"] == ["design"] and not mine["canManage"] and mine["limited"]
     assert (await client.get(f"/api/projects/{pid}", headers=as_(DEV))).status_code == 200
 
     # A workspace member who is not on the team is kept out (DIR is a manager role,

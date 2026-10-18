@@ -433,6 +433,10 @@ class RunOut(ORM):
     test_exit_code: int | None
     test_output: str | None
     validation_status: str
+    test_suites: list[dict[str, Any]] = Field(default_factory=list)
+    control: dict[str, Any] | None = None
+    brief: dict[str, Any] | None = None
+    gate: dict[str, Any] | None = None
     error: str | None
     created_at: dt.datetime
     finished_at: dt.datetime | None
@@ -603,10 +607,18 @@ class ContextNote(BaseModel):
     title: str
     body: str
     author: str
+    # Stable id so a developer can include or leave out this note (the run brief).
+    id: str = ""
 
 
 class RunSpec(BaseModel):
     """What the worker needs to do one task."""
+
+    # Changes a reviewer asked for on the previous pull request; the next build must act on them.
+    rework: str | None = None
+    # How the developer steers this build: pauses, and what they chose to brief it with.
+    control: dict[str, Any] | None = None
+    brief: dict[str, Any] | None = None
 
     run_id: uuid.UUID
     task_key: str
@@ -624,6 +636,20 @@ class RunProgress(BaseModel):
     """Heartbeat from the worker."""
 
     phase: str
+
+
+class SuiteReport(BaseModel):
+    """One test suite's state, sent when it starts and when it ends."""
+
+    suite: str = Field(min_length=1, max_length=40, pattern=r"^[a-z0-9_-]+$")
+    status: Literal["running", "passed", "failed", "error", "skipped"]
+    passed: int | None = Field(default=None, ge=0)
+    failed: int | None = Field(default=None, ge=0)
+    skipped: int | None = Field(default=None, ge=0)
+    total: int | None = Field(default=None, ge=0)
+    command: str | None = Field(default=None, max_length=500)
+    duration_ms: int | None = Field(default=None, ge=0)
+    output: str | None = Field(default=None, max_length=20_000)
 
 
 class RunResult(BaseModel):
@@ -646,6 +672,11 @@ class RunResult(BaseModel):
     review_model: str | None = None
     review_summary: str | None = None
     summary: str | None = None  # What the Coder says it did; becomes a handoff.
+    # False: a developer's machine finished a green build and keeps it local; the
+    # developer reviews it and raises the pull request (POST /api/runs/{id}/publish).
+    publish: bool = True
     artifacts_uri: str | None = None
+    # Each suite's final state (unit, integration, ...).
+    test_suites: list[SuiteReport] = Field(default_factory=list)
     # Headroom token accounting for every model call in the run.
     context_compression: dict[str, Any] | None = None

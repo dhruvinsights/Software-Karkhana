@@ -105,8 +105,13 @@ async def publish(
     review_summary: str = "",
     target: RepoTarget | None = None,
     token: str | None = None,
+    branch: str | None = None,
+    title: str | None = None,
 ) -> Published:
     """Pushes the patch to ``target`` and opens the PR with ``token``.
+
+    ``branch`` names the head branch and ``title`` the PR when the developer chose
+    them; ``target.base_branch`` is the branch the PR is raised against.
 
     Raises :class:`PublishError`.
     """
@@ -124,8 +129,8 @@ async def publish(
     gh = github.GitHub(token, target.slug, s.github_api_url) if token and target else None
     source = s.demo_repo_url or (target.clone_url if target else None)
     base = target.base_branch if target else s.github_base_branch
-    branch = f"karkhana/{task_key.lower()}-{run_id.hex[:8]}"
-    title = f"{task_key}: {task_title}"
+    branch = branch or f"karkhana/{task_key.lower()}-{run_id.hex[:8]}"
+    title = title or f"{task_key}: {task_title}"
     if source is None:
         # Nothing to push to (unit/integration tests): record the facts only.
         return Published(

@@ -47,6 +47,7 @@ from app.models import (
     User,
 )
 from app.services import osv_scan, repo_context
+from tests.integration.test_dev_qa import _all_ticked, _set_status, _story
 from tests.integration.test_golden_path import DEV, LEAD, PM, as_, client, fakes  # noqa: F401
 from tests.integration.test_idea_approvals import _uid
 
@@ -110,38 +111,6 @@ def scanner(monkeypatch):
     monkeypatch.setattr(osv_scan, "_head_sha", fake_sha)
     yield s
     get_settings.cache_clear()
-
-
-async def _story(client):
-    """A project with one story the PM owns; returns ``(project_id, story)``."""
-    name = f"Security {uuid.uuid4().hex[:6]}"
-    ws = (await client.post("/api/workspaces/create", headers=as_(PM), json={"name": name})).json()["id"]
-    r = await client.post(
-        "/api/projects",
-        headers=as_(PM),
-        json={"name": name, "idea_text": "Scan dependencies", "workspace_id": ws},
-    )
-    assert r.status_code == 202, r.text
-    pid = r.json()["id"]
-    for who, role in ((DEV, "developer"), (LEAD, "developer")):
-        inv = (
-            await client.post(
-                f"/api/workspaces/{ws}/invites", headers=as_(PM), json={"role": role, "project_id": pid}
-            )
-        ).json()
-        r = await client.post("/api/invites/accept", headers=as_(who), json={"token": inv["token"]})
-        assert r.status_code == 200, r.text
-    r = await client.post(
-        f"/api/projects/{pid}/issues", headers=as_(PM), json={"title": "Apply discount", "type": "story"}
-    )
-    assert r.status_code == 201, r.text
-    return pid, r.json()
-
-
-async def _set_status(issue_id, status):
-    async with db.sessionmaker()() as s:
-        await s.execute(update(Issue).where(Issue.id == uuid.UUID(issue_id)).values(status=status))
-        await s.commit()
 
 
 async def _wait(client, scan_id, who=PM, tries=100):
@@ -209,6 +178,8 @@ async def test_critical_finding_closes_the_gate_and_blocks_qa_signoff(client, fa
         json={"title": "Discount applies", "issue_id": sid, "expected_result": "90.00"},
     )
     await client.patch(f"/api/test-scenarios/{r.json()['id']}", headers=as_(PM), json={"status": "passed"})
+    check = {"criteria": _all_ticked(story), "notes": "Ran the discount flow by hand on staging."}
+    assert (await client.post(f"/api/issues/{sid}/dev-check", headers=as_(DEV), json=check)).status_code == 200
 
     scanner.report = _with_critical(SAMPLE)
     scan = await _scan(client, pid)

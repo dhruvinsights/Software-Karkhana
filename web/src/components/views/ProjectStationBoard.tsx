@@ -18,6 +18,8 @@ export interface ProjectMemberRow {
   role: string;
   stations: string[];
   isLead: boolean;
+  /** Narrowed by a PM or the project lead to ``stations``; otherwise the whole project. */
+  limited?: boolean;
   avatarUrl?: string | null;
 }
 
