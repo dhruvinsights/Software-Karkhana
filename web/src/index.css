@@ -119,7 +119,8 @@
 .app-zoom {
   zoom: var(--app-zoom);
   width: calc(100vw / var(--app-zoom));
-  height: calc(100dvh / var(--app-zoom));
+  /* --demo-banner: height of the demo notice above the app, 0 outside the demo. */
+  height: calc((100dvh - var(--demo-banner, 0px)) / var(--app-zoom));
 }
 
 /* Buttons: one system, matching the landing page SpecularButtons (blue base,

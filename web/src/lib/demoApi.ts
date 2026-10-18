@@ -6,6 +6,7 @@
  * saves the visitor's tour progress to their real account (claim).
  */
 import type { CurrentUser } from '../store/factoryStore';
+import { clearTour, tourForClaim } from './demoTour';
 
 export const DEMO_TOKEN_KEY = 'karkhana_demo_token';
 export const DEMO_ANCHORS_KEY = 'karkhana_demo_anchors';
@@ -41,6 +42,7 @@ export function readDemoToken(): string | null {
 export function clearDemo(): void {
   localStorage.removeItem(DEMO_TOKEN_KEY);
   localStorage.removeItem(DEMO_ANCHORS_KEY);
+  clearTour();
 }
 
 /** After sign-in: attach the demo's tour progress and drafts to the account. Quietly a no-op without a demo. */
@@ -50,7 +52,7 @@ export async function claimDemo(jwt: string): Promise<void> {
   const res = await fetch('/api/demo/claim', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-    body: JSON.stringify({ demo_token: demoToken }),
+    body: JSON.stringify({ demo_token: demoToken, tour: tourForClaim() }),
   });
   // 400/409/410: this demo can no longer be claimed; drop it so we stop retrying.
   if (res.ok || [400, 409, 410].includes(res.status)) clearDemo();

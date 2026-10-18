@@ -11,6 +11,7 @@ const AuthScreen = lazy(() => import('./components/auth/AuthScreen').then((m) =>
 const WorkspaceChooser = lazy(() => import('./components/auth/WorkspaceChooser').then((m) => ({ default: m.WorkspaceChooser })));
 const CreateWorkspaceModal = lazy(() => import('./components/auth/CreateWorkspaceModal').then((m) => ({ default: m.CreateWorkspaceModal })));
 const DreamTransitionScreen = lazy(() => import('./components/auth/DreamTransitionScreen').then((m) => ({ default: m.DreamTransitionScreen })));
+const DemoTour = lazy(() => import('./components/workspace/DemoTour').then((m) => ({ default: m.DemoTour })));
 const GuidedTutorialOverlay = lazy(() => import('./components/workspace/GuidedTutorialOverlay').then((m) => ({ default: m.GuidedTutorialOverlay })));
 const WorkspaceHomeView = lazy(() => import('./components/views/WorkspaceHomeView').then((m) => ({ default: m.WorkspaceHomeView })));
 const IdeaValidationView = lazy(() => import('./components/views/IdeaValidationView').then((m) => ({ default: m.IdeaValidationView })));
@@ -359,16 +360,19 @@ export default function App() {
   return (
     <Suspense fallback={<ScreenFallback />}>
       {state.currentUser?.is_guest && (
-        <div className="fixed top-0 inset-x-0 z-[60] flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-3 py-1.5 bg-emerald-500/15 border-b border-emerald-400/30 text-xs text-emerald-200 backdrop-blur">
-          <span>You are in a demo workspace with sample data. Nothing here is saved to an account.</span>
-          <button onClick={signUpFromDemo} className="font-semibold text-white underline underline-offset-2 cursor-pointer">
-            Sign up free to create your workspace
+        <div className="fixed top-0 inset-x-0 z-[60] h-7 flex items-center justify-center gap-x-4 px-3 bg-emerald-950 border-b border-emerald-400/30 text-xs text-emerald-200 whitespace-nowrap overflow-hidden">
+          <span className="truncate">Demo workspace with sample data. Nothing here is saved to an account.</span>
+          <button onClick={signUpFromDemo} className="font-semibold text-white underline underline-offset-2 cursor-pointer shrink-0">
+            Sign up free
           </button>
         </div>
       )}
-      <AppShell state={state}>
-        <Suspense fallback={<ViewFallback />}>{renderCurrentView()}</Suspense>
-      </AppShell>
+      {state.currentUser?.is_guest && <DemoTour screen={state.currentScreen} onSignUp={signUpFromDemo} />}
+      <div style={state.currentUser?.is_guest ? ({ '--demo-banner': '28px', paddingTop: 28 } as React.CSSProperties) : undefined}>
+        <AppShell state={state}>
+          <Suspense fallback={<ViewFallback />}>{renderCurrentView()}</Suspense>
+        </AppShell>
+      </div>
       {showTutorial && (
         <GuidedTutorialOverlay
           isOpen={showTutorial}

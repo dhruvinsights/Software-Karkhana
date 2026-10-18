@@ -256,6 +256,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
                 return (
                   <button
                     key={item.id}
+                    data-tour={`nav-${item.id}`}
                     onClick={() => factoryStore.setScreen(item.id)}
                     title={sidebarCollapsed ? item.label : undefined}
                     className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2.5 rounded-lg text-[15px] font-medium transition-all group ${
@@ -680,7 +681,7 @@ export const AppShell: React.FC<AppShellProps> = ({ state, children }) => {
 
         {/* Viewport Workspace Content and Companion */}
         <div className="flex-1 flex overflow-hidden relative z-1">
-          <main className={`flex-1 overflow-y-auto min-w-0 bg-[#07070B]/80 backdrop-blur-sm text-[#F6F5FA] relative z-1 select-text ${['ideas', 'idea_detail', 'idea_generate', 'idea_compare', 'research_evidence', 'idea_report', 'product_detail'].includes(state.currentScreen) ? '' : state.currentScreen === 'team_chat' ? 'overflow-hidden!' : 'p-8 lg:p-10'}`}>
+          <main data-tour="main" className={`flex-1 overflow-y-auto min-w-0 bg-[#07070B]/80 backdrop-blur-sm text-[#F6F5FA] relative z-1 select-text ${['ideas', 'idea_detail', 'idea_generate', 'idea_compare', 'research_evidence', 'idea_report', 'product_detail'].includes(state.currentScreen) ? '' : state.currentScreen === 'team_chat' ? 'overflow-hidden!' : 'p-8 lg:p-10'}`}>
             {children}
           </main>
           <AICompanion state={state} />
