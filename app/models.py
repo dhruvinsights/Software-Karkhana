@@ -658,6 +658,10 @@ class Issue(Base):
     reopen_count: Mapped[int] = mapped_column(Integer, default=0)
     # The QA agent's last run on this story (migration 035).
     qa_agent: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Who last edited this issue and why (migration 041).
+    last_edited_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    last_edited_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    edit_comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = _now()
     updated_at: Mapped[dt.datetime] = _now()
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

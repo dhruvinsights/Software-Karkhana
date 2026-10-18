@@ -96,3 +96,52 @@ Tick an item only after its check passes. Commit code and this file together.
 - [ ] The diff viewer scales: file list with search and filters, files with
       comments opened first, everything else collapsed and rendered on demand,
       generated and lock files folded away.
+
+## 9 — Multi-agent / Parallel runs (independence-first)
+
+**Claim (to make true, not just talk about)**
+> Parallel agents do not automatically mean faster delivery. They can increase cost, create
+> conflicting changes and introduce more review work. The best gains come from automating
+> repeatable workflows and running genuinely independent tasks in parallel.
+
+**What the system does today (honest)**
+- One karkhana-agent per story, one worktree per task.
+- No cross-story conflict detection before launch.
+- No cost budget shown before parallel launch.
+- No parallelism scheduler — the developer manually triggers each build.
+
+**What we are building**
+
+### 9.1  Independence analysis (server, `app/services/parallel_planner.py`)
+Before any parallel launch, the server computes a `ParallelPlan`:
+- File-path overlap from each story's recent diff (or focus paths from the brief).
+- Story dependency edges from the board (blocks / is-blocked-by).
+- Conflict risk score: 0 (safe to run in parallel) → 1 (must serialize).
+- Recommended groupings: groups of stories safe to run together.
+
+### 9.2  Parallel-launch modal (UI)
+The developer selects multiple stories → "Run in parallel".
+Modal shows:
+- The recommended groupings with conflict risk badges.
+- Per-run cost estimate × N agents.
+- A parallelism budget (max concurrent agents, default 2).
+- Override: "Run anyway" when risk is medium.
+- Block: Cannot override HIGH conflict risk — must serialize.
+
+### 9.3  Per-agent worktrees (already done in git.js)
+Each agent gets its own git worktree. ✅
+
+### 9.4  Conflict detection before PR
+Before `run_publish.py` publishes, it runs a merge-dry-run against the target branch.
+If conflicts exist → gate opened, developer must resolve before publish.
+
+### 9.5  Aggregate cost cap
+`POST /api/tasks/batch-run` accepts a `max_total_cost_usd`.
+The scheduler refuses to start the next agent if the running total would exceed it.
+
+### 9.6  Repeatable workflow reuse (already partially done)
+The code→test→fix loop is the automated unit.
+Each agent runs the same loop independently.
+"Parallel" means independent loops, not shared state. ✅ conceptually
+
+**Status:** 9.1 skeleton added (app/services/parallel_planner.py). 9.2–9.5 not yet built.

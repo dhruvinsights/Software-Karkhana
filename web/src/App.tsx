@@ -17,6 +17,7 @@ const IdeaValidationView = lazy(() => import('./components/views/IdeaValidationV
 const ExecutivePortfolioView = lazy(() => import('./components/views/ExecutivePortfolioView').then((m) => ({ default: m.ExecutivePortfolioView })));
 const ProjectHubView = lazy(() => import('./components/views/ProjectHubView').then((m) => ({ default: m.ProjectHubView })));
 const PlanningRoadmapView = lazy(() => import('./components/views/PlanningRoadmapView').then((m) => ({ default: m.PlanningRoadmapView })));
+const EpicDashboard = lazy(() => import('./components/views/EpicDashboard').then((m) => ({ default: m.EpicDashboard })));
 const ArchitectureStudioView = lazy(() => import('./components/views/ArchitectureStudioView').then((m) => ({ default: m.ArchitectureStudioView })));
 const SecurityAppSecView = lazy(() => import('./components/views/SecurityAppSecView').then((m) => ({ default: m.SecurityAppSecView })));
 const WorkflowAdminView = lazy(() => import('./components/views/WorkflowAdminView').then((m) => ({ default: m.WorkflowAdminView })));
@@ -218,9 +219,11 @@ export default function App() {
       case 'project_settings':
         return <ProjectHubView state={state} />;
 
-      case 'roadmap':
       case 'epics':
       case 'epic_detail':
+        return <EpicDashboard state={state} />;
+
+      case 'roadmap':
       case 'issues':
       case 'issue_detail':
       case 'board':

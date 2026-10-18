@@ -61,7 +61,8 @@ export const buildApi = {
   stop: (runId: string) => call<{ status: string }>(`/api/runs/${runId}/cancel`, { method: 'POST' }),
   takeStory: (issueId: string, userId: string) =>
     call(`/api/issues/${issueId}`, { method: 'PATCH', body: JSON.stringify({ assignee_id: userId, status: 'ready' }) }),
-  build: (taskId: string) => call<RunInfo>(`/api/tasks/${taskId}/runs`, { method: 'POST', body: JSON.stringify({ backend: 'device' }) }),
+  build: (taskId: string, extra: object = {}) =>
+    call<RunInfo>(`/api/tasks/${taskId}/runs`, { method: 'POST', body: JSON.stringify({ backend: 'device', ...extra }) }),
   runs: (taskId: string) => call<RunInfo[]>(`/api/tasks/${taskId}/runs`),
   logs: (runId: string) => call<LogLine[]>(`/api/runs/${runId}/logs`),
 };

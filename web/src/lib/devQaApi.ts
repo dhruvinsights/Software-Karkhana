@@ -49,10 +49,42 @@ export interface Bug {
   updatedAt?: string;
 }
 
+export interface GateOption {
+  id: string;
+  label: string;
+  needs_note?: boolean;
+}
+
+/** A question the build is waiting on: the developer answers it on the story. */
+export interface Gate {
+  id: string;
+  name: string;
+  summary: string;
+  options: GateOption[];
+  openedAt: string;
+  decision: { action: string; note: string; by: string; at: string } | null;
+}
+
+export interface BriefPreview {
+  story: { key: string; title: string; description: string };
+  criteria: { index: number; text: string; chars: number }[];
+  notes: { id: string; kind: string; title: string; author: string; body: string; chars: number }[];
+  rework: string | null;
+  pauses: { id: 'after_code' | 'before_tests' | 'fix'; label: string }[];
+  estimateTokens: number;
+}
+
+export interface RunSteering {
+  control?: { mode: 'auto' | 'step' | 'custom'; pauses?: ('after_code' | 'before_tests' | 'fix')[] };
+  brief?: { criteria?: number[] | null; notes?: string[] | null; focus?: string[]; instruction?: string };
+}
+
 export interface DevRun {
   id: string;
   status: string;
   phase: string | null;
+  control?: { mode: string; pauses: string[] } | null;
+  gate?: Gate | null;
   branch?: string | null;
   error?: string | null;
   testSuites: TestSuite[];
@@ -233,6 +265,9 @@ export const devQaApi = {
   markFixed: (bugId: string, criteria: { text: string; ok: boolean }[], notes: string) =>
     post(`/api/issues/${bugId}/mark-fixed`, { criteria, notes }),
   verify: (bugId: string, result: 'pass' | 'fail', notes: string) => post(`/api/issues/${bugId}/verify`, { result, notes }),
+  briefPreview: (taskId: string) => call<BriefPreview>(`/api/tasks/${taskId}/brief-preview`),
+  decide: (runId: string, gateId: string, action: string, note: string) =>
+    post<{ status: string }>(`/api/runs/${runId}/gate`, { gate_id: gateId, action, note }),
   branches: (projectId: string) =>
     call<{ repo: string | null; default: string; branches: string[]; reachable: boolean }>(`/api/projects/${projectId}/branches`),
   publish: (runId: string, body: { base_branch?: string; branch?: string; title?: string }) =>

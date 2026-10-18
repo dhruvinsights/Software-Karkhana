@@ -34,8 +34,9 @@ import {
 } from 'lucide-react';
 import { factoryStore } from '../../store/factoryStore';
 import { buildApi, Machine } from '../../lib/buildApi';
+import { BuildSetupModal } from './BuildSetup';
 import { useChatFrames } from '../../lib/chatSocket';
-import { Bug, DevBoard, devQaApi, DevStory, FrontendWorkspace } from '../../lib/devQaApi';
+import { Bug, DevBoard, devQaApi, DevRun, DevStory, FrontendWorkspace } from '../../lib/devQaApi';
 import { Machines, PHASE_LABEL, RunLog } from '../views/ProjectBuildPanel';
 import { PRDiffViewer } from '../views/PRDiffViewer';
 import { RaisePrModal } from './RaisePr';
@@ -157,6 +158,75 @@ const ReviewerPicker: React.FC<{ prId: string; members: { userId: string; name: 
   );
 };
 
+const GatePanel: React.FC<{ run: DevRun; onChange: () => void }> = ({ run, onChange }) => {
+  const gate = run.gate;
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!gate || gate.decision) return null;
+  const needsNote = gate.options.some((o) => o.needs_note);
+
+  const decide = async (action: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await devQaApi.decide(run.id, gate.id, action, note);
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{
+      margin: '12px 0',
+      padding: '14px 16px',
+      borderRadius: '8px',
+      background: 'rgba(240,165,0,0.08)',
+      border: '1px solid rgba(240,165,0,0.25)',
+    }}>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: '#f0a500', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px' }}>
+        Waiting for you · {gate.name}
+      </p>
+      <p style={{ fontSize: '13px', color: '#f0f2f5', marginBottom: '12px', whiteSpace: 'pre-wrap' }}>{gate.summary}</p>
+      {needsNote && (
+        <textarea
+          className="input"
+          placeholder="Add a note (required)"
+          rows={2}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          style={{ width: '100%', marginBottom: '10px', fontSize: '12px', resize: 'vertical' }}
+        />
+      )}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        {gate.options.map((opt) => (
+          <button
+            key={opt.id}
+            disabled={busy || (opt.needs_note && !note.trim())}
+            onClick={() => decide(opt.id)}
+            className="btn btn-primary"
+            style={{ fontSize: '12px', padding: '5px 14px' }}
+          >
+            {opt.label}
+          </button>
+        ))}
+        <button
+          disabled={busy}
+          onClick={() => decide('stop')}
+          className="btn btn-danger"
+          style={{ fontSize: '12px', padding: '5px 14px' }}
+        >
+          Stop
+        </button>
+      </div>
+      {error && <p style={{ color: '#ff4d4f', fontSize: '11px', marginTop: '8px' }}>{error}</p>}
+    </div>
+  );
+};
+
 const StoryCard: React.FC<{
   story: DevStory;
   myId: string;
@@ -171,6 +241,7 @@ const StoryCard: React.FC<{
   const [reworking, setReworking] = useState(false);
   const [raising, setRaising] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [building, setBuilding] = useState(false);
   const [reason, setReason] = useState('');
   const run = story.run;
   const pr = story.pr;
@@ -233,13 +304,7 @@ const StoryCard: React.FC<{
           {canBuild && (
             <button
               disabled={busy}
-              onClick={() =>
-                act(async () => {
-                  const r = await buildApi.build(story.taskId!);
-                  if (r.status === 'failed') throw new Error(r.error ?? 'The build could not start.');
-                  setLog(true);
-                })
-              }
+              onClick={() => setBuilding(true)}
               className="px-3 py-1.5 bg-[#075BFF] hover:bg-[#1a6bff] text-white rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
               <Play className="w-3 h-3" /> {buildLabel}
@@ -276,6 +341,8 @@ const StoryCard: React.FC<{
       </header>
 
       <Pipeline steps={steps(story)} />
+
+      {run && <GatePanel run={run} onChange={onChange} />}
 
       {built && run && (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] p-3 space-y-2">
@@ -425,6 +492,21 @@ const StoryCard: React.FC<{
           onClose={() => setChecking(false)}
           onSubmit={async (criteria, notes) => {
             await devQaApi.devCheck(story.id, criteria, notes);
+            onChange();
+          }}
+        />
+      )}
+      {building && story.taskId && (
+        <BuildSetupModal
+          taskId={story.taskId}
+          storyKey={story.key}
+          continuing={!!run}
+          onClose={() => setBuilding(false)}
+          onStart={async (steering) => {
+            const r = await buildApi.build(story.taskId!, steering);
+            if (r.status === 'failed') throw new Error(r.error ?? 'The build could not start.');
+            setBuilding(false);
+            setLog(true);
             onChange();
           }}
         />

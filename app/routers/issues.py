@@ -48,6 +48,10 @@ class IssueIn(BaseModel):
     pr_id: uuid.UUID | None = None
 
 
+# Content fields that require an edit_comment when changed.
+_CONTENT_FIELDS = {"title", "description", "acceptance_criteria"}
+
+
 class IssuePatch(BaseModel):
     """Request body for partially updating an issue."""
 
@@ -58,6 +62,8 @@ class IssuePatch(BaseModel):
     status: str | None = None
     labels: list[str] | None = Field(default=None, max_length=20)
     assignee_id: uuid.UUID | None = None  # sent as null (and present) to unassign
+    # Required when a content field (title/description) changes; records intent.
+    edit_comment: str | None = Field(default=None, max_length=500)
 
 
 def _out(i: Issue, names: dict[uuid.UUID, str]) -> dict[str, Any]:
@@ -86,11 +92,19 @@ def _out(i: Issue, names: dict[uuid.UUID, str]) -> dict[str, Any]:
         "createdAt": i.created_at.isoformat(),
         "updatedAt": i.updated_at.isoformat(),
         "closedAt": i.closed_at.isoformat() if i.closed_at else None,
+        "lastEditedById": str(i.last_edited_by_id) if i.last_edited_by_id else None,
+        "lastEditedByName": names.get(i.last_edited_by_id, "") if i.last_edited_by_id else None,
+        "lastEditedAt": i.last_edited_at.isoformat() if i.last_edited_at else None,
+        "editComment": i.edit_comment or "",
     }
 
 
 async def _names(session: AsyncSession, issues: list[Issue]) -> dict[uuid.UUID, str]:
-    ids = {i.reporter_id for i in issues} | {i.assignee_id for i in issues if i.assignee_id}
+    ids = (
+        {i.reporter_id for i in issues}
+        | {i.assignee_id for i in issues if i.assignee_id}
+        | {i.last_edited_by_id for i in issues if i.last_edited_by_id}
+    )
     if not ids:
         return {}
     rows = (await session.scalars(select(User).where(User.id.in_(ids)))).all()
@@ -272,7 +286,21 @@ async def update_issue(
         await plan.task_follows_issue(session, issue)
 
     if changes:
-        issue.updated_at = dt.datetime.now(dt.UTC)
+        # Content edits (title/description) require a reason comment.
+        content_changed = _CONTENT_FIELDS & set(changes)
+        if content_changed and not (body.edit_comment or "").strip():
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "An edit comment is required when changing the title or description.",
+            )
+
+        now = dt.datetime.now(dt.UTC)
+        issue.updated_at = now
+        if content_changed:
+            issue.last_edited_by_id = user.id
+            issue.last_edited_at = now
+            issue.edit_comment = (body.edit_comment or "").strip()
+
         action = (
             "issue.assigned"
             if set(changes) == {"assignee_id"}
@@ -287,7 +315,11 @@ async def update_issue(
             subject_type="issue",
             subject_id=issue.id,
             project_id=issue.project_id,
-            payload={"key": issue_rules.key(issue.number), **changes},
+            payload={
+                "key": issue_rules.key(issue.number),
+                **changes,
+                **({"edit_comment": issue.edit_comment} if content_changed else {}),
+            },
         )
     names = await _names(session, [issue])
     return _out(issue, names)
