@@ -1,5 +1,4 @@
-"""
-parallel_planner.py — Independence analysis before launching parallel agent runs.
+"""parallel_planner.py — Independence analysis before launching parallel agent runs.
 
 The claim Karkhana makes: parallel agents are only launched when the tasks are
 genuinely independent. This module answers the question before any build starts.
@@ -14,8 +13,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +31,8 @@ class StoryMeta:
 
 @dataclass
 class ConflictEdge:
+    """Two stories that may collide, with why and how likely."""
+
     a: str
     b: str
     reason: str
@@ -40,6 +41,8 @@ class ConflictEdge:
 
 @dataclass
 class ParallelPlan:
+    """Stories split into groups that can run side by side."""
+
     groups: list[list[str]]   # each group is safe to run in parallel
     conflicts: list[ConflictEdge]
     max_risk: float
@@ -57,8 +60,8 @@ def _paths_for(story: StoryMeta) -> set[str]:
 
 
 def _path_overlap(a: set[str], b: set[str]) -> float:
-    """
-    Returns a 0-1 overlap score.
+    """Returns a 0-1 overlap score.
+
     Exact match = 1.0; prefix containment (one path is ancestor of another) = 0.7;
     same top-level directory = 0.3; no overlap = 0.0.
     """
@@ -95,8 +98,7 @@ def _dependency_risk(a: StoryMeta, b: StoryMeta) -> float:
 
 
 def analyse(stories: Sequence[StoryMeta]) -> ParallelPlan:
-    """
-    Analyse a set of stories and return a ParallelPlan.
+    """Analyse a set of stories and return a ParallelPlan.
 
     Usage::
 
@@ -169,18 +171,12 @@ def enrich_from_graph(project_id: str, stories: list[StoryMeta]) -> list[StoryMe
         enriched: list[StoryMeta] = []
         for story in stories:
             # Query graph for files this task has previously touched
-            result = g.check_parallel_conflicts(
-                project_id=project_id,
-                task_id=story.id,
-                file_paths=[],           # empty → graph looks up stored TOUCHES
-                active_task_ids=[],      # we just want the file list, not conflict check
-            )
             # Collect all paths known from graph TOUCHES edges for this story
             historical: list[str] = []
             try:
                 from app.graph.falkordb_backend import FalkorDBBackend
                 if isinstance(g, FalkorDBBackend):
-                    res = g._q(  # noqa: SLF001
+                    res = g._q(
                         "MATCH (t:Task {id: $tid})-[:TOUCHES]->(f:File) "
                         "WHERE t.project_id = $pid "
                         "RETURN f.path",
@@ -188,7 +184,7 @@ def enrich_from_graph(project_id: str, stories: list[StoryMeta]) -> list[StoryMe
                     )
                     if res:
                         historical = [row[0] for row in res.result_set if row[0]]
-            except Exception:
+            except Exception:  # noqa: S110 - the graph is optional; fall back to focus paths
                 pass
 
             if historical:

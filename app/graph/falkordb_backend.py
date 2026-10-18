@@ -1,5 +1,4 @@
-"""
-FalkorDB backend for the Karkhana Engineering Intelligence Graph.
+"""FalkorDB backend for the Karkhana Engineering Intelligence Graph.
 
 Uses FalkorDB (SSPL v1) for hackathon / internal use.
 For production SaaS, swap this file with kuzu_backend.py or neo4j_backend.py.
@@ -24,7 +23,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
 
 from app.graph.base import (
     BlastRadius,
@@ -89,8 +87,8 @@ class FalkorDBBackend(GraphBackend):
         for label, prop in [("File", "id"), ("Task", "id"), ("Req", "id")]:
             try:
                 self._graph.query(f"CREATE INDEX FOR (n:{label}) ON (n.{prop})")
-            except Exception:
-                pass  # already exists — FalkorDB raises on duplicate index
+            except Exception:  # noqa: S110 - FalkorDB raises on a duplicate index; that is fine
+                pass
 
     def _q(self, cypher: str, params: dict | None = None):
         """Execute a Cypher query. Returns result or empty result on error."""

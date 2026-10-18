@@ -1,5 +1,4 @@
-"""
-GraphBackend — the abstract interface every backend must implement.
+"""GraphBackend — the abstract interface every backend must implement.
 
 Five concrete use-cases are supported through this interface:
 
@@ -21,13 +20,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-
 # ---------------------------------------------------------------------------
 # Shared result types
 # ---------------------------------------------------------------------------
 
 @dataclass
 class FileNode:
+    """A source file in the code graph."""
+
     path: str
     language: str = ""
     is_test: bool = False
@@ -75,9 +75,11 @@ class ConflictCheckResult:
 
     @property
     def has_conflicts(self) -> bool:
+        """True when any task touches a file another task also touches."""
         return bool(self.conflicts)
 
     def summary(self) -> str:
+        """Human-readable result for the PR or run log."""
         if not self.has_conflicts:
             return "No file conflicts detected — parallel execution is safe."
         lines = ["**File conflicts detected — serial execution required:**"]
@@ -96,6 +98,7 @@ class BlastRadius:
     affected_requirements: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
+        """Human-readable blast radius."""
         lines = [f"**Blast radius for {len(self.changed_files)} changed file(s):**"]
         if self.affected_callers:
             lines.append(f"  Callers affected: {len(self.affected_callers)}")
@@ -115,6 +118,7 @@ class RevisitMemory:
     past_attempts: list[dict] = field(default_factory=list)  # [{task_id, phase, outcome, summary}]
 
     def to_prompt_note(self) -> str:
+        """A short note to prepend to the agent prompt (empty when nothing is known)."""
         if not self.past_attempts:
             return ""
         lines = [f"**Prior agent attempts on `{self.file_path}`:**"]

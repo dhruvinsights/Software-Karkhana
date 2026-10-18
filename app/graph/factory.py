@@ -1,5 +1,4 @@
-"""
-Graph factory — returns a connected GraphBackend singleton.
+"""Graph factory — returns a connected GraphBackend singleton.
 
 This is the ONLY place that imports a concrete backend class.
 Swap `_BACKEND_CLASS` here when replacing FalkorDB.
@@ -27,7 +26,8 @@ logger = logging.getLogger(__name__)
 #   from app.graph.kuzu_backend   import KuzuBackend   as _BACKEND_CLASS
 #   from app.graph.neo4j_backend  import Neo4jBackend  as _BACKEND_CLASS
 #   from app.graph.null_backend   import NullBackend   as _BACKEND_CLASS
-from app.graph.falkordb_backend import FalkorDBBackend as _BACKEND_CLASS
+from app.graph.falkordb_backend import FalkorDBBackend as _BACKEND_CLASS  # noqa: E402
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 _instance: GraphBackend | None = None

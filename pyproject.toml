@@ -92,6 +92,8 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D", "S", "F811"]
 "app/scripts/**" = ["D103", "T201"]
+# Backends implement the documented GraphBackend interface; their methods inherit its docs.
+"app/graph/*_backend.py" = ["D102"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

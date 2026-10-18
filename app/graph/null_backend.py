@@ -1,5 +1,4 @@
-"""
-NullBackend — a safe no-op fallback when the graph DB is unavailable.
+"""NullBackend — a safe no-op fallback when the graph DB is unavailable.
 
 All write methods silently succeed.
 All query methods return empty results.
@@ -11,9 +10,7 @@ from __future__ import annotations
 from app.graph.base import (
     BlastRadius,
     ConflictCheckResult,
-    FileNode,
     GraphBackend,
-    RevisitMemory,
     ScopedContext,
 )
 

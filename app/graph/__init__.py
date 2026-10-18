@@ -1,5 +1,4 @@
-"""
-app.graph — Engineering Intelligence Graph layer.
+"""app.graph — Engineering Intelligence Graph layer.
 
 This package provides a thin abstraction over a graph database backend.
 The interface is defined in `base.py`; the FalkorDB implementation is in

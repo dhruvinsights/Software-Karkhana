@@ -29,7 +29,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 
 from app import db
 from app.config import get_settings

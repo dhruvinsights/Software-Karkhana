@@ -1,6 +1,5 @@
 """Tests for the independence analysis in parallel_planner."""
-import pytest
-from app.services.parallel_planner import StoryMeta, analyse, HARD_BLOCK
+from app.services.parallel_planner import HARD_BLOCK, StoryMeta, analyse
 
 
 def test_no_overlap_ok():
