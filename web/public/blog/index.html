@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Many hands, one factory · Software Karkhana</title>
-<meta name="description" content="How Team Bhoomi built Software Karkhana, a governed AI software factory, for the AI Builder Cup: the problem, every decision, the walls we hit, the late-night calls and what we learned.">
+<meta name="description" content="How Team Astartes built Software Karkhana, a governed AI software factory, for Graph Hacks (Context for AI Agents): the problem, every decision, the walls we hit, the late-night calls and what we learned.">
 <meta property="og:title" content="Many hands, one factory: building Software Karkhana">
 <meta property="og:description" content="The build diary of a governed AI software factory: 147 commits, 15 gated stages, a tamper-evident ledger and 27,700+ benchmark checks.">
 <meta property="og:image" content="https://software-karkhana.web.app/blog/img/landing.jpg">
@@ -68,6 +68,57 @@ a { color: inherit; }
 .line { display: block; overflow: hidden; padding-bottom: 0.08em; }
 .line > span { display: inline-block; }
 .hero-actions { display: flex; gap: 24px; align-items: center; margin-top: 32px; }
+.hero-actions .btn { white-space: nowrap; }
+@media (max-width: 420px) { .hero-actions { gap: 18px; margin-top: 24px; } .hero-actions .btn { padding: 0 18px; } .hero-actions .textlink { white-space: nowrap; } }
+.hero { position: relative; overflow: hidden; isolation: isolate; }
+.hero > *:not(.aurora):not(.nightwall) { position: relative; z-index: 1; }
+
+/* Night-shift wall: every call photo drifting behind the hero, kept dark (after React Bits "Grid Motion"). */
+.nightwall { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.nightwall-grid { position: absolute; inset: -18% -25%; display: grid; gap: 14px; align-content: center; transform: rotate(-7deg); opacity: 0.32; filter: saturate(0.75) contrast(1.05); }
+.nightwall-row { display: flex; gap: 14px; width: max-content; animation: wall-left 110s linear infinite; }
+.nightwall-row:nth-child(even) { animation-name: wall-right; animation-duration: 130s; }
+.nightwall-row { align-items: center; }
+.nightwall-row img { height: clamp(120px, 21vh, 220px); width: auto; max-width: none; border-radius: 12px; background: var(--surface); }
+@keyframes wall-left { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes wall-right { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+.nightwall::after { content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 60% 55% at 62% 72%, rgba(13, 14, 20, 0.82), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 12% 85%, rgba(13, 14, 20, 0.9), transparent 75%),
+    linear-gradient(180deg, rgba(13, 14, 20, 0.78) 0%, rgba(13, 14, 20, 0.45) 30%, rgba(13, 14, 20, 0.62) 62%, var(--bg) 100%); }
+
+/* Soft aurora: slow, blurred light behind the hero (after React Bits "Soft Aurora"). */
+.aurora { position: absolute; inset: -20% -10% auto -10%; height: 120%; z-index: 0; pointer-events: none; filter: blur(80px); opacity: 0.45; }
+.aurora span { position: absolute; border-radius: 50%; mix-blend-mode: screen; animation: aurora 22s ease-in-out infinite alternate; }
+.aurora span:nth-child(1) { width: 52vw; height: 40vw; left: 34%; top: 2%; background: radial-gradient(closest-side, #075bff, transparent); }
+.aurora span:nth-child(2) { width: 40vw; height: 34vw; left: 58%; top: 18%; background: radial-gradient(closest-side, #7b4dff, transparent); animation-duration: 28s; animation-delay: -6s; }
+.aurora span:nth-child(3) { width: 34vw; height: 28vw; left: 20%; top: 30%; background: radial-gradient(closest-side, #12b5a6, transparent); opacity: 0.6; animation-duration: 34s; animation-delay: -12s; }
+@keyframes aurora {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-6vw, 4vw) scale(1.12); }
+  100% { transform: translate(5vw, -3vw) scale(0.95); }
+}
+
+/* The crew: four polaroids fanned out (after React Bits "Bounce Cards" + "Tilted Card"). */
+.crew { --card: clamp(140px, 15vw, 300px); --gap: calc(var(--card) * 0.98); --center: 50%; position: relative; align-self: center; height: calc(var(--card) * 1.58); margin: 20px 0 28px; }
+.crew-card { --x: 0px; --y: 0px; --r: 0deg; --s: 1; --push: 0px; position: absolute; left: calc(var(--center) - var(--card) / 2); top: 50%; width: var(--card); margin: 0; transform: translate(calc(var(--x) + var(--push)), calc(-50% + var(--y))) rotate(var(--r)) scale(var(--s)); transition: transform 520ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.crew-card:nth-child(1) { --x: calc(var(--gap) * -1.5); --y: 22px; --r: -10deg; z-index: 1; }
+.crew-card:nth-child(2) { --x: calc(var(--gap) * -0.5); --y: 0px; --r: -3.5deg; z-index: 2; }
+.crew-card:nth-child(3) { --x: calc(var(--gap) * 0.5); --y: 4px; --r: 4deg; z-index: 3; }
+.crew-card:nth-child(4) { --x: calc(var(--gap) * 1.5); --y: 26px; --r: 11deg; z-index: 4; }
+.crew-card:hover { --r: 0deg; --s: 1.08; z-index: 6; }
+.crew-card:hover ~ .crew-card { --push: calc(var(--card) * 0.28); }
+.crew-card:has(~ .crew-card:hover) { --push: calc(var(--card) * -0.28); }
+.crew-pop { animation: crew-pop 1000ms cubic-bezier(0.34, 1.56, 0.64, 1) both; animation-delay: calc(var(--i) * 110ms + 300ms); }
+@keyframes crew-pop { from { transform: scale(0.2) translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.crew-tilt { perspective: 800px; }
+.crew-paper { background: #f4f1ea; padding: 8px 8px 0; border-radius: 6px; box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 2px 0 rgba(255, 255, 255, 0.4) inset; transform-style: preserve-3d; transition: transform 300ms var(--ease-out); will-change: transform; }
+.crew-paper img { width: 100%; aspect-ratio: 280 / 365; object-fit: cover; border-radius: 3px; }
+.crew-paper figcaption { color: #1b1c24; font-family: var(--font-display); font-size: clamp(1.15rem, 1.4vw, 1.6rem); line-height: 1; padding: 10px 2px 12px; }
+.crew-stamp { position: absolute; left: min(calc(var(--center) + var(--gap) * 1.5 + var(--card) * 0.25), calc(100% - 230px)); top: 0; z-index: 7; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); background: rgba(13, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(8px); padding: 6px 12px; border-radius: 999px; transform: rotate(6deg); white-space: nowrap; }
+.crew-stamp b { color: #7fe3a1; font-weight: 600; }
+.hero-side .crew-names { color: var(--ink); }
 
 /* ---------- intro: statement tiles ---------- */
 .tiles { display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: 38svh 38svh; gap: 8px; padding: 8px; }
@@ -261,6 +312,8 @@ footer a { color: #fff; }
 @media (prefers-reduced-motion: reduce) {
   .js .reveal, .js .line > span, .js .hero-fade { opacity: 1 !important; transform: none !important; transition: none !important; }
   .drift { animation: none; }
+  .aurora span, .crew-pop, .nightwall-row { animation: none; }
+  .crew-card, .crew-paper { transition: none; }
 }
 
 /* ---------- phone ---------- */
@@ -273,6 +326,18 @@ footer a { color: #fff; }
   .hero-foot { grid-template-columns: 1fr; }
   .hero-side { order: 2; margin-top: 20px; font-size: 1.0625rem; padding: 0; }
   .hero h1 { font-size: 12.5vw; }
+  .crew { --card: 27vw; --gap: calc(var(--card) * 0.7); --center: 50%; margin: 48px 0 36px; }
+  .nightwall-grid { inset: -10% -60%; opacity: 0.28; }
+  .nightwall-row img { height: 16vh; }
+  .crew-paper { padding: 5px 5px 0; }
+  .crew-paper figcaption { font-size: 1.05rem; padding: 7px 1px 9px; }
+  .crew-card:nth-child(1) { --y: 14px; }
+  .crew-card:nth-child(4) { --y: 16px; }
+  .crew-stamp { left: auto; right: 0; top: -44px; font-size: 0.625rem; }
+  .aurora { filter: blur(60px); }
+  .aurora span:nth-child(1) { width: 110vw; height: 90vw; left: -10%; }
+  .aurora span:nth-child(2) { width: 80vw; height: 70vw; left: 30%; }
+  .aurora span:nth-child(3) { width: 70vw; height: 60vw; left: -20%; top: 40%; }
   .tiles { grid-template-columns: 1fr 1fr; grid-template-rows: 46svh auto; gap: 6px; padding: 6px; }
   .tile-a { grid-column: 1 / 3; grid-row: 1; }
   .tile-a h2 { font-size: 15vw; }
@@ -352,10 +417,25 @@ footer a { color: #fff; }
     </nav>
     <a class="textlink" href="https://github.com/dhruvinsights/Software-Karkhana">GitHub</a>
   </div>
-  <div></div>
+  <div class="nightwall" aria-hidden="true">
+    <div class="nightwall-grid">
+    <div class="nightwall-row"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"></div>
+    <div class="nightwall-row"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"></div>
+    <div class="nightwall-row"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"></div>
+    <div class="nightwall-row"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-releases.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-thumbs.jpg" alt="" width="1800" height="600" loading="eager" decoding="async"><img src="/blog/img/call-teamchat.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/team-laughing.jpg" alt="" width="1800" height="630" loading="eager" decoding="async"><img src="/blog/img/call-code.jpg" alt="" width="1800" height="690" loading="eager" decoding="async"><img src="/blog/img/call-productflow.jpg" alt="" width="1800" height="890" loading="eager" decoding="async"><img src="/blog/img/call-demo-video.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"><img src="/blog/img/call-reviewer.jpg" alt="" width="1800" height="860" loading="eager" decoding="async"></div>
+    </div>
+  </div>
+  <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="crew" role="group" aria-label="Team Astartes">
+    <figure class="crew-card"><div class="crew-pop" style="--i:0"><div class="crew-tilt"><div class="crew-paper"><img src="/blog/img/team-dhruv.jpg" alt="Dhruv Chaturvedi giving two thumbs up on a video call" width="280" height="365"><figcaption>Dhruv</figcaption></div></div></div></figure>
+    <figure class="crew-card"><div class="crew-pop" style="--i:1"><div class="crew-tilt"><div class="crew-paper"><img src="/blog/img/team-eshita.jpg" alt="Eshita Khakharia giving two thumbs up on a video call" width="280" height="365"><figcaption>Eshita</figcaption></div></div></div></figure>
+    <figure class="crew-card"><div class="crew-pop" style="--i:2"><div class="crew-tilt"><div class="crew-paper"><img src="/blog/img/team-yagnik.jpg" alt="Yagnik Sharma giving a thumbs up on a video call" width="280" height="365"><figcaption>Yagnik</figcaption></div></div></div></figure>
+    <figure class="crew-card"><div class="crew-pop" style="--i:3"><div class="crew-tilt"><div class="crew-paper"><img src="/blog/img/team-sameeksha.jpg" alt="Sameeksha smiling on a video call" width="280" height="365"><figcaption>Sameeksha</figcaption></div></div></div></figure>
+    <span class="crew-stamp" aria-hidden="true"><b>●</b> 2:25 AM · still shipping</span>
+  </div>
   <div class="hero-foot">
     <div class="hero-side hero-fade">
-      <p>The build diary of Software Karkhana, a governed AI software factory, written by Team Bhoomi for the AI Builder Cup.</p>
+      <p>The build diary of Software Karkhana, a governed AI software factory, built by <span class="crew-names">Dhruv, Eshita, Yagnik and Sameeksha</span> of Team Astartes for <span class="crew-names">Graph Hacks: Context for AI Agents</span>.</p>
       <p>19 October 2026 · 14 minute read</p>
     </div>
     <div>
@@ -383,12 +463,12 @@ footer a { color: #fff; }
 
 <section class="about" aria-label="Who built it">
   <div class="facts reveal">
-    <div><strong>Team Bhoomi</strong>AI Builder Cup 2026</div>
+    <div><strong>Team Astartes</strong>Graph Hacks 2026 · powered by FalkorDB</div>
     <div><strong>147 commits</strong>15 gated stages, one ledger</div>
     <div><strong>Open source</strong><a href="https://github.com/dhruvinsights/Software-Karkhana">GitHub repository</a></div>
   </div>
   <div class="about-body reveal">
-    <p><span class="dropcap"><img src="/blog/img/logo.png" alt="Software Karkhana logo" width="512" height="512"></span><b>Karkhana</b> is the Hindi and Urdu word for a workshop where many hands make one thing. Ours is built by <b>Dhruv Chaturvedi</b>, <b>Eshita Khakharia</b> and <b>Nimesh Krishnani</b>.</p>
+    <p><span class="dropcap"><img src="/blog/img/logo.png" alt="Software Karkhana logo" width="512" height="512"></span><b>Karkhana</b> is the Hindi and Urdu word for a workshop where many hands make one thing. Ours is built by <b>Dhruv Chaturvedi</b>, <b>Eshita Khakharia</b>, <b>Yagnik Sharma</b> and <b>Sameeksha</b>.</p>
     <p>Claude Code and IBM Bob worked beside us as pair programmers, and every commit is in the open. One rule held all week: agents are autonomous at the level of one task, people are accountable at every gate, and nothing counts as done until a test exit code says so.</p>
   </div>
 </section>
@@ -466,7 +546,7 @@ footer a { color: #fff; }
   <div>
     <h2 class="reveal">The enterprise day</h2>
     <div class="body reveal" data-text>
-      <p>A factory for many teams needs walls between them. Nimesh brought idea approvals, invitations, access control, issues and PR review. We split hardening into parallel branches for auth, GitHub, stations and AI, then merged them back one at a time.</p>
+      <p>A factory for many teams needs walls between them. Then came idea approvals, invitations, access control, issues and PR review. We split hardening into parallel branches for auth, GitHub, stations and AI, then merged them back one at a time.</p>
       <ul>
         <li>GitHub OAuth tokens are encrypted at rest and never returned by the API.</li>
         <li>Session tokens and per-run worker tokens use separate secrets, so one can never stand in for the other.</li>
@@ -642,12 +722,12 @@ footer a { color: #fff; }
   </div>
   <div class="band">
     <p class="close reveal">The factory is open. Launch the demo workspace without an account and <a class="go" href="/">walk an idea all the way to release</a>, gate by gate.</p>
-    <p class="small reveal">Source code, docs and the benchmark suite: <a href="https://github.com/dhruvinsights/Software-Karkhana">github.com/dhruvinsights/Software-Karkhana</a><br>Built for the AI Builder Cup by Team Bhoomi.</p>
+    <p class="small reveal">Source code, docs and the benchmark suite: <a href="https://github.com/dhruvinsights/Software-Karkhana">github.com/dhruvinsights/Software-Karkhana</a><br>Built for Graph Hacks: Context for AI Agents by Team Astartes.</p>
     <div class="mark"><img src="/blog/img/logo.png" alt="" width="512" height="512" loading="lazy"></div>
   </div>
 </section>
 
-<section class="farewell" aria-label="Team Bhoomi">
+<section class="farewell" aria-label="Team Astartes">
   <figure>
     <img src="/blog/img/team-thumbs.jpg" alt="Dhruv Chaturvedi, Sameeksha, Eshita Khakharia and Yagnik Sharma giving thumbs up on a video call" width="1800" height="600" loading="lazy">
     <figcaption class="reveal"><span>2:25 AM, 19 October</span><strong>Thumbs up from the karkhana floor.</strong></figcaption>
@@ -665,7 +745,7 @@ footer a { color: #fff; }
   <a class="big" href="/">software-karkhana.web.app</a>
   <div class="meta">
     <div><a href="https://github.com/dhruvinsights/Software-Karkhana">GitHub</a> · <a href="/">Live demo</a></div>
-    <div>Written by Team Bhoomi · screenshots from the built-in demo workspace</div>
+    <div>Written by Team Astartes · screenshots from the built-in demo workspace</div>
     <div>India, October 2026</div>
   </div>
 </footer>
@@ -675,6 +755,19 @@ footer a { color: #fff; }
   var root = document.documentElement;
   root.classList.add('js');
   requestAnimationFrame(function () { document.querySelector('.hero').classList.add('loaded'); });
+
+  // Tilted cards: each polaroid leans toward the pointer.
+  if (window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) {
+    document.querySelectorAll('.crew-tilt').forEach(function (t) {
+      var paper = t.querySelector('.crew-paper');
+      t.addEventListener('pointermove', function (e) {
+        var r = t.getBoundingClientRect();
+        var x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+        paper.style.transform = 'rotateX(' + (-y * 16).toFixed(2) + 'deg) rotateY(' + (x * 16).toFixed(2) + 'deg)';
+      });
+      t.addEventListener('pointerleave', function () { paper.style.transform = ''; });
+    });
+  }
 
   // Entrances: each part rises once as its section enters, staggered within the section.
   var els = document.querySelectorAll('.reveal');
