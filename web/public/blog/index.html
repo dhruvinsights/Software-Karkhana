@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Four days, one factory · Software Karkhana</title>
-<meta name="description" content="How Team Bhoomi built Software Karkhana, a governed AI software factory, in four days for the AI Builder Cup: the problem, every decision, the walls we hit and what we learned.">
-<meta property="og:title" content="Four days, one factory: building Software Karkhana">
+<title>Many hands, one factory · Software Karkhana</title>
+<meta name="description" content="How Team Bhoomi built Software Karkhana, a governed AI software factory, for the AI Builder Cup: the problem, every decision, the walls we hit, the late-night calls and what we learned.">
+<meta property="og:title" content="Many hands, one factory: building Software Karkhana">
 <meta property="og:description" content="The build diary of a governed AI software factory: 147 commits, 15 gated stages, a tamper-evident ledger and 27,700+ benchmark checks.">
 <meta property="og:image" content="https://software-karkhana.web.app/blog/img/landing.jpg">
 <meta property="og:type" content="article">
@@ -109,6 +109,42 @@ a { color: inherit; }
 .days-table td:last-child { text-align: right; color: var(--muted); white-space: nowrap; padding-left: 16px; }
 .days-table tr.group td { padding-top: 44px; }
 .days-table a { text-decoration: none; }
+.days-table tr.mark-row td { color: var(--ink); border-top: 1px solid #2a2e42; }
+.days-table tr.mark-row b { font-weight: 600; }
+.days-table tr.mark-row td:last-child { color: var(--accent); font-weight: 600; }
+
+/* ---------- night shift: the people behind the gates ---------- */
+.night { padding: var(--section) var(--margin); background: linear-gradient(180deg, #090a10 0%, var(--bg) 100%); }
+.night-intro { display: grid; grid-template-columns: calc(var(--axis) - var(--margin)) minmax(0, 1fr); }
+.night-intro aside { padding-right: 40px; font-size: var(--step-small); color: var(--muted); display: grid; gap: 6px; align-content: start; }
+.night-intro aside .when { color: var(--ink); font-size: 1.0625rem; font-weight: 500; }
+.night .kicker { color: var(--accent); font-size: var(--step-small); font-weight: 500; letter-spacing: 0.02em; margin-bottom: 18px; }
+.night h2 { font-family: var(--font-display); font-weight: 400; font-size: var(--step-display); line-height: 0.95; letter-spacing: -0.02em; }
+.night-body { max-width: 60ch; margin-top: 36px; }
+.night-body p + p { margin-top: 1.1em; color: var(--muted); }
+.night figure img { width: 100%; border-radius: 14px; }
+.night figcaption { font-size: var(--step-small); color: var(--muted); margin-top: 12px; max-width: 64ch; }
+.night-lead { margin-top: 96px; }
+.night-lead img { box-shadow: 0 40px 120px -40px rgba(7, 91, 255, 0.55); }
+.night-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 48px 24px; margin-top: 72px; align-items: start; }
+.night-grid figure { grid-column: span 6; }
+.night-grid figure img { transition: transform 900ms var(--ease-out); }
+.night-grid figure:hover img { transform: translateY(-4px); }
+.night-grid-b figure.wide { grid-column: span 8; }
+.night-grid-b figure.mascot { grid-column: span 4; }
+.night-grid-b figure.mascot img { aspect-ratio: 1; object-fit: cover; transform: rotate(-2.5deg); }
+.night-grid-b figure.mascot:hover img { transform: rotate(1.5deg) scale(1.03); }
+.night-grid-c { align-items: end; }
+.night-grid-c figure.wide { grid-column: span 8; }
+.night-note { grid-column: span 4; font-size: clamp(1.125rem, 1rem + 0.4vw, 1.3125rem); line-height: 1.45; color: var(--muted); }
+.night-note b { color: var(--ink); font-weight: 500; }
+
+/* ---------- farewell photo ---------- */
+.farewell figure { position: relative; background: #0b0c12; }
+.farewell img { width: 100%; height: auto; display: block; background: none; }
+.farewell figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 28px var(--margin) 40px; }
+.farewell figcaption span { font-size: var(--step-small); color: var(--muted); }
+.farewell figcaption strong { font-size: clamp(1.25rem, 1rem + 0.8vw, 1.75rem); font-weight: 500; line-height: 1.15; letter-spacing: -0.01em; }
 
 /* ---------- chapters: text pages hung from the axis ---------- */
 .chapter { display: grid; grid-template-columns: calc(var(--axis) - var(--margin)) minmax(0, 1fr); padding: 0 var(--margin) var(--section); }
@@ -286,6 +322,15 @@ footer a { color: #fff; }
   .band { display: block; padding: 40px 20px 150px; }
   .band p.close { font-size: 1.375rem; }
   .band .mark { width: 96px; right: 20px; bottom: 20px; }
+  .night { padding: 96px 20px; }
+  .night-intro { display: block; }
+  .night-intro aside { padding: 0 0 24px; }
+  .night h2 { font-size: 15vw; }
+  .night-lead { margin-top: 48px; }
+  .night-grid { display: block; margin-top: 0; }
+  .night-grid figure, .night-note { margin-top: 40px; }
+  .night-grid-b figure.mascot { width: 70%; margin-left: auto; margin-right: auto; }
+  .farewell figcaption { padding: 20px 20px 28px; flex-direction: column-reverse; gap: 6px; }
   footer { padding: 28px 20px 24px; }
   footer .top { flex-direction: column; }
   footer .big { font-size: 11vw; }
@@ -301,7 +346,8 @@ footer a { color: #fff; }
   <div class="topbar">
     <a class="wordmark" href="/"><img src="/blog/img/logo.png" alt="" width="28" height="28">Software Karkhana</a>
     <nav class="toplinks" aria-label="Sections">
-      <a href="#days">The four days</a>
+      <a href="#days">The build</a>
+      <a href="#night">The night shift</a>
       <a href="#learnings">What we learned</a>
     </nav>
     <a class="textlink" href="https://github.com/dhruvinsights/Software-Karkhana">GitHub</a>
@@ -310,10 +356,10 @@ footer a { color: #fff; }
   <div class="hero-foot">
     <div class="hero-side hero-fade">
       <p>The build diary of Software Karkhana, a governed AI software factory, written by Team Bhoomi for the AI Builder Cup.</p>
-      <p>19 October 2026 · 12 minute read</p>
+      <p>19 October 2026 · 14 minute read</p>
     </div>
     <div>
-      <h1><span class="line"><span>Four days.</span></span><span class="line"><span>One factory.</span></span></h1>
+      <h1><span class="line"><span>Many hands.</span></span><span class="line"><span>One factory.</span></span></h1>
       <div class="hero-actions hero-fade">
         <a class="btn" href="/">Open the live factory</a>
         <a class="textlink" href="#story">Read the story</a>
@@ -338,17 +384,17 @@ footer a { color: #fff; }
 <section class="about" aria-label="Who built it">
   <div class="facts reveal">
     <div><strong>Team Bhoomi</strong>AI Builder Cup 2026</div>
-    <div><strong>15 to 19 October</strong>Four days, 147 commits</div>
+    <div><strong>147 commits</strong>15 gated stages, one ledger</div>
     <div><strong>Open source</strong><a href="https://github.com/dhruvinsights/Software-Karkhana">GitHub repository</a></div>
   </div>
   <div class="about-body reveal">
-    <p><span class="dropcap"><img src="/blog/img/logo.png" alt="Software Karkhana logo" width="512" height="512"></span><b>Karkhana</b> is the Hindi and Urdu word for a workshop where many hands make one thing. Ours is built by <b>Dhruv Chaturvedi</b>, <b>Eshita</b> and <b>Nimesh Krishnani</b>.</p>
+    <p><span class="dropcap"><img src="/blog/img/logo.png" alt="Software Karkhana logo" width="512" height="512"></span><b>Karkhana</b> is the Hindi and Urdu word for a workshop where many hands make one thing. Ours is built by <b>Dhruv Chaturvedi</b>, <b>Eshita Khakharia</b> and <b>Nimesh Krishnani</b>.</p>
     <p>Claude Code and IBM Bob worked beside us as pair programmers, and every commit is in the open. One rule held all week: agents are autonomous at the level of one task, people are accountable at every gate, and nothing counts as done until a test exit code says so.</p>
   </div>
 </section>
 
 <section class="days" id="days" aria-labelledby="days-title">
-  <h2 id="days-title" class="reveal">Four days, as the commit log tells it</h2>
+  <h2 id="days-title" class="reveal">From first whistle to final submit, as the commit log tells it</h2>
   <div class="days-grid">
     <figure class="days-photo reveal">
       <img src="/blog/img/director-review.jpg" alt="Director review queue with an idea card showing problem, value and an approve button" width="1800" height="857" loading="lazy">
@@ -357,7 +403,8 @@ footer a { color: #fff; }
     <p class="days-name reveal">Commits</p>
     <table class="days-table reveal">
       <tbody>
-        <tr><td>15 Oct</td><td>First commit, deploy pipeline, landing page in WebGL, every lifecycle view wired</td><td>18</td></tr>
+        <tr class="mark-row"><td>15 Oct</td><td><b>12:01 AM IST · Hacking begins</b></td><td></td></tr>
+        <tr><td></td><td>First commit, deploy pipeline, landing page in WebGL, every lifecycle view wired</td><td>18</td></tr>
         <tr><td></td><td>React Bits interface and the dark factory look</td><td></td></tr>
         <tr class="group"><td>16 Oct</td><td>Workspaces, invites, role-aware access, PR triage</td><td>32</td></tr>
         <tr><td></td><td>Per-tenant hash chains, row-level security, token encryption</td><td></td></tr>
@@ -367,7 +414,8 @@ footer a { color: #fff; }
         <tr><td></td><td>FalkorDB knowledge graph</td><td></td></tr>
         <tr class="group"><td>18 Oct</td><td>OSV security gate, developer-raised PRs, credit caps</td><td>62</td></tr>
         <tr><td></td><td>CI/CD, deployments, releases, the no-login demo</td><td></td></tr>
-        <tr class="group"><td>19 Oct</td><td>Benchmark suite, gate hardening, Firebase Hosting</td><td>live</td></tr>
+        <tr><td></td><td>Benchmark suite, gate hardening, Firebase Hosting</td><td></td></tr>
+        <tr class="group mark-row"><td>18 Oct</td><td><b>11:59 PM IST · Submissions close</b></td><td>live</td></tr>
       </tbody>
     </table>
   </div>
@@ -394,7 +442,7 @@ footer a { color: #fff; }
 
 <section class="bleed" aria-label="The landing page and the architecture studio">
   <figure class="wide reveal"><img src="/blog/img/landing.jpg" alt="Software Karkhana landing page with the headline about autonomous and accountable work" width="1800" height="1012" loading="lazy"></figure>
-  <p class="colour reveal">Day one: a WebGL landing page and fifteen stations, each owned by a person.</p>
+  <p class="colour reveal">Opening night: a WebGL landing page and fifteen stations, each owned by a person.</p>
   <figure class="reveal"><img src="/blog/img/architecture.jpg" alt="Architecture Studio with an ADR registry showing proposed and accepted decisions" width="1800" height="857" loading="lazy"></figure>
   <p class="quote reveal">Fifteen stages, eight roles, one owner and one exit gate for each.</p>
   <figure class="reveal"><video src="/blog/img/governance-loop.mp4" poster="/blog/img/governance-poster.jpg" muted loop playsinline autoplay preload="none" width="1280" height="720" aria-label="Screen recording of the governance ledger verifying its hash chain"></video></figure>
@@ -499,7 +547,7 @@ footer a { color: #fff; }
 </article>
 
 <article class="chapter" data-entry="6">
-  <aside class="reveal"><span class="when">19 October</span><span>Benchmarks and launch</span><span class="hash">Entry hash <b>computing</b></span></aside>
+  <aside class="reveal"><span class="when">The final stretch</span><span>Benchmarks and launch</span><span class="hash">Entry hash <b>computing</b></span></aside>
   <div>
     <h2 class="reveal">Measuring our own claims</h2>
     <div class="body reveal" data-text>
@@ -507,7 +555,7 @@ footer a { color: #fff; }
       <p>We attacked the ledger as an owner-level insider with eleven kinds of tampering, tried every illegal stage move for every role, forged session tokens and worker callbacks, fed the hallucination guard 1,629 fabricated quotes and planted defects behind a coder that always reports "All tests pass!".</p>
       <p class="pull">Challenge: our own benchmark found that an agent could make pytest exit 0 without proving anything, by skipping every test or exiting early.</p>
       <p>So we hardened the gate the same hour. Exit 0 now counts only when at least one test actually passed, and deleting a test that already existed fails the run. That is the factory working as intended: the benchmark found the gap, and the gate closed it.</p>
-      <p>The same day the frontend went live on Firebase Hosting.</p>
+      <p>Then the frontend went live on Firebase Hosting, and the factory had a public front door.</p>
     </div>
   </div>
 </article>
@@ -527,6 +575,42 @@ footer a { color: #fff; }
   <p class="source">Source: tests/bench and reports/bench/results.json in the repository</p>
 </section>
 
+<section class="night" id="night" aria-labelledby="night-title">
+  <div class="night-intro">
+    <aside class="reveal"><span class="when">19 October</span><span>2:07 AM IST</span><span>One Google Meet, cameras on</span></aside>
+    <div>
+      <p class="kicker reveal">Every gate has an owner. These are the owners.</p>
+      <h2 id="night-title" class="reveal">The night shift</h2>
+      <div class="night-body reveal">
+        <p>Numbers tell you what a factory can do. They do not tell you who stayed up to build it. At two in the morning on 19 October we were all still on one call, tired, laughing and not quite ready to hang up.</p>
+        <p>We pressed play on our own demo video and watched it together, station by station: the idea becoming a design becoming code, the reviewer approving with a reason, the release gate refusing to ship. Then we kept going, because nobody wanted to be the first to leave.</p>
+      </div>
+    </div>
+  </div>
+
+  <figure class="night-lead reveal">
+    <img src="/blog/img/team-laughing.jpg" alt="Eshita Khakharia, Dhruv Chaturvedi and Yagnik Sharma laughing on a video call, with Sameeksha in a small tile" width="1800" height="630" loading="lazy">
+    <figcaption>2:07 AM. Eshita, Dhruv, Yagnik and Sameeksha, somewhere between "one last fix" and "okay, really one last fix".</figcaption>
+  </figure>
+
+  <div class="night-grid">
+    <figure class="reveal"><img src="/blog/img/call-demo-video.jpg" alt="Team on a call watching the Software Karkhana demo video showing Idea, Design and Code cards" width="1800" height="860" loading="lazy"><figcaption>Watching the demo together: Idea, Design, Code.</figcaption></figure>
+    <figure class="reveal"><img src="/blog/img/call-reviewer.jpg" alt="Demo video on the Reviewer Space: a named person approves, with a reason" width="1800" height="860" loading="lazy"><figcaption>Reviewer Space: a named person approves, with a reason.</figcaption></figure>
+    <figure class="reveal"><img src="/blog/img/call-releases.jpg" alt="Demo video on the Releases screen: one gate before shipping" width="1800" height="860" loading="lazy"><figcaption>Releases: one gate before shipping.</figcaption></figure>
+    <figure class="reveal"><img src="/blog/img/call-teamchat.jpg" alt="Demo video on Team Chat and the AI Companion" width="1800" height="860" loading="lazy"><figcaption>Team Chat and the AI Companion: talk where the work happens.</figcaption></figure>
+  </div>
+
+  <div class="night-grid night-grid-b">
+    <figure class="wide reveal"><img src="/blog/img/call-productflow.jpg" alt="Yagnik presenting ProductFlow, a 19-stage enterprise lifecycle wireframe in Google AI Studio" width="1800" height="890" loading="lazy"><figcaption>Yagnik walking us through ProductFlow, a 19-stage enterprise lifecycle wireframe prototyped in Google AI Studio, role by role.</figcaption></figure>
+    <figure class="mascot reveal"><img src="/blog/img/mascot-lime.jpg" alt="A green lime with a cute face drawn on it, held in front of a laptop keyboard" width="900" height="896" loading="lazy"><figcaption>Every karkhana needs a mascot. Ours is a lime.</figcaption></figure>
+  </div>
+
+  <div class="night-grid night-grid-c">
+    <figure class="wide reveal"><img src="/blog/img/call-code.jpg" alt="Dhruv sharing config.py in the editor on a call, showing knowledge graph and Headroom settings" width="1800" height="690" loading="lazy"></figure>
+    <p class="night-note reveal">Dhruv sharing <b>config.py</b> on screen: the knowledge graph, Headroom compression, and a comment on every setting saying why it exists. Even at 2 AM, the factory explains itself.</p>
+  </div>
+</section>
+
 <section class="learn" id="learnings" aria-labelledby="learn-title">
   <h2 id="learn-title" class="reveal">What we learned</h2>
   <ol>
@@ -536,13 +620,14 @@ footer a { color: #fff; }
     <li class="reveal"><strong>Use the factory to build the factory.</strong><p>Running a real backend project through our own stations surfaced more gaps in one evening than a day of reviewing code: too-small ideas, empty repositories, access errors, failing unit tests behind an open PR.</p></li>
     <li class="reveal"><strong>Small work units survive limits.</strong><p>Rate limits, merge conflicts and tired humans all hurt less when work is cut into pieces with written status, so anyone, person or agent, can continue it.</p></li>
     <li class="reveal"><strong>Benchmark your own claims before someone else does.</strong><p>The suite confirmed what held and found the one thing that did not. Fixing it took an hour; finding it in production would have cost the whole story.</p></li>
+    <li class="reveal"><strong>Build with people you would stay on a 2 AM call with.</strong><p>Gates, ledgers and benchmarks keep agents honest. What kept us going was a call nobody wanted to leave, a lime with a face, and teammates who said "show me" instead of "looks fine".</p></li>
   </ol>
 </section>
 
 <section class="names" aria-labelledby="names-title">
   <h2 id="names-title" class="reveal">What we built on</h2>
   <div class="cols reveal">
-    <ul><li>Google</li><li>Gemini 3 Flash and 3.1 Pro</li><li>Agent Development Kit</li><li>Cloud Run and Jobs</li><li>Cloud SQL</li><li>Firebase Auth and Hosting</li><li>Cloud Storage</li><li>Secret Manager</li><li>Google Stitch</li><li>OSV-Scanner</li><li>Google AX</li></ul>
+    <ul><li>Google</li><li>Gemini 3 Flash and 3.1 Pro</li><li>Agent Development Kit</li><li>Cloud Run and Jobs</li><li>Cloud SQL</li><li>Firebase Auth and Hosting</li><li>Cloud Storage</li><li>Secret Manager</li><li>Google Stitch</li><li>Google AI Studio</li><li>OSV-Scanner</li><li>Google AX</li></ul>
     <ul><li>Data</li><li>Postgres 16</li><li>pgvector</li><li>FalkorDB</li><li>Redis and Kafka</li></ul>
     <ul><li>Agents</li><li>IBM Bob</li><li>Claude Code</li><li>PR-Agent</li><li>repomix</li><li>Headroom</li></ul>
     <ul><li>Interface</li><li>React 18</li><li>Vite</li><li>Tailwind</li><li>React Bits</li><li>GSAP</li><li>Mermaid</li></ul>
@@ -560,6 +645,13 @@ footer a { color: #fff; }
     <p class="small reveal">Source code, docs and the benchmark suite: <a href="https://github.com/dhruvinsights/Software-Karkhana">github.com/dhruvinsights/Software-Karkhana</a><br>Built for the AI Builder Cup by Team Bhoomi.</p>
     <div class="mark"><img src="/blog/img/logo.png" alt="" width="512" height="512" loading="lazy"></div>
   </div>
+</section>
+
+<section class="farewell" aria-label="Team Bhoomi">
+  <figure>
+    <img src="/blog/img/team-thumbs.jpg" alt="Dhruv Chaturvedi, Sameeksha, Eshita Khakharia and Yagnik Sharma giving thumbs up on a video call" width="1800" height="600" loading="lazy">
+    <figcaption class="reveal"><span>2:25 AM, 19 October</span><strong>Thumbs up from the karkhana floor.</strong></figcaption>
+  </figure>
 </section>
 
 </main>
