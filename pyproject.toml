@@ -39,6 +39,8 @@ dependencies = [
     "broadcaster[kafka]>=0.3.1",
     "playwright>=1.55,<2",
     "jinja2>=3.1,<4",
+    # Knowledge graph projection (app/knowledge_graph); optional at runtime.
+    "falkordb>=1.2,<2",
 ]
 
 [dependency-groups]
@@ -50,6 +52,7 @@ dev = [
     "ty>=0.0.1a0",
     "codespell>=2.2.0,<3.0.0",
     "import-linter>=2.1,<3.0",
+    "falkordblite>=0.10,<1; python_version >= '3.12'",  # Embedded FalkorDB for tests.
 ]
 
 [project.optional-dependencies]
@@ -157,6 +160,7 @@ modules = [
     "app.routers.rag",
     "app.routers.reviews",
     "app.routers.runs",
+    "app.routers.stitch",
 ]
 
 [[tool.importlinter.contracts]]

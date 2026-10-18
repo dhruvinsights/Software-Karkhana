@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import access, ledger, publisher, security_rules
+from app import access, agent_memory, knowledge_graph, ledger, publisher, security_rules
 from app.auth import CurrentUser
 from app.config import get_settings
 from app.db import get_session
@@ -51,20 +51,8 @@ from app.routers.common import (
     lock_project,
 )
 from app.runner.base import get_backend, verify_run_token
-from app.schemas import (
-    RunOut,
-    RunProgress,
-    RunResult,
-    RunSpec,
-    SuiteReport,
-)
-from app.services import (
-    osv_scan,
-    plan,
-    repos,
-    run_context,
-    test_suites,
-)
+from app.schemas import ContextNote, RunOut, RunProgress, RunResult, RunSpec, SuiteReport
+from app.services import context_notes, osv_scan, plan, repos, run_context, test_suites
 from app.services.realtime import notify_workspace
 
 logger = logging.getLogger(__name__)
@@ -332,9 +320,22 @@ async def run_spec(
     project = await get_or_404(session, Project, run.project_id)  # Read-only.
     s = get_settings()
     # Everything the agent could be told, then only what the developer chose to give it.
-    criteria, notes = run_context.chosen(
+    criteria, base_notes = run_context.chosen(
         run.brief, list(task.acceptance_criteria or []), await run_context.gather_notes(session, project, task)
     )
+    notes = list(base_notes)
+    notes += [
+        ContextNote(kind="memory", title="Project memory", body=m, author="mem0")
+        for m in await agent_memory.recall(
+            run.project_id, f"{task.title}\n{task.description}", role="developer"
+        )
+    ]
+    notes += [
+        ContextNote(kind="graph", title=t, body=b, author="knowledge-graph")
+        for t, b in await knowledge_graph.task_context_notes(
+            project.workspace_id, task.id, f"{task.title}\n{task.description}"
+        )
+    ]
     target = await repos.for_project(session, project.id)
     return RunSpec(
         rework=await _rework_for(session, run),

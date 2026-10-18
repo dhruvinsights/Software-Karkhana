@@ -80,12 +80,16 @@ def database():
 
     async def setup():
         conn = await asyncpg.connect(OWNER_DSN)
+        # A fresh server (CI) has no app role; `make db-local` creates it locally.
+        if not await conn.fetchval("SELECT 1 FROM pg_roles WHERE rolname = 'karkhana_app'"):
+            await conn.execute("CREATE ROLE karkhana_app LOGIN PASSWORD 'karkhana_app'")
         await conn.execute(f"DROP DATABASE IF EXISTS {TEST_DB} WITH (FORCE)")
         await conn.execute(f"CREATE DATABASE {TEST_DB}")
         await conn.close()
 
     asyncio.run(setup())
-    owner_url = OWNER_DSN.replace("/postgres", f"/{TEST_DB}").replace(
+    # Swap only the database name: the user in the DSN may also be "postgres" (CI).
+    owner_url = (OWNER_DSN.rsplit("/", 1)[0] + f"/{TEST_DB}").replace(
         "postgresql://", "postgresql+asyncpg://"
     )
     from app.config import get_settings

@@ -29,12 +29,13 @@ import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app import db
 from app.config import get_settings
 from app.models import (
     ActivityEvent,
+    Epic,
     Issue,
     LedgerEntry,
     Project,
@@ -357,10 +358,20 @@ async def test_scan_of_a_pull_request_branch_and_its_own_gate(client, fakes, sca
     """A PR is judged on its own scan, not on the project's backlog."""
     pid, _ = await _story(client)
     async with db.sessionmaker()() as s:
-        task = await s.scalar(select(Task).where(Task.project_id == uuid.UUID(pid)).limit(1))
+        epic = Epic(
+            id=uuid.uuid4(), project_id=uuid.UUID(pid), title="Discounts", description="d",
+            source_quote="q", position=1,
+        )
+        s.add(epic)
+        await s.flush()
+        task = Task(
+            id=uuid.uuid4(), project_id=uuid.UUID(pid), epic_id=epic.id, key="T-1", title="Apply discount",
+        )
+        s.add(task)
+        await s.flush()
         run = Run(
             id=uuid.uuid4(), task_id=task.id, project_id=task.project_id, backend="test",
-            requested_by=task.assignee_id or (await s.scalar(select(User.id).limit(1))),
+            requested_by=await s.scalar(select(User.id).limit(1)),
         )
         s.add(run)
         await s.flush()

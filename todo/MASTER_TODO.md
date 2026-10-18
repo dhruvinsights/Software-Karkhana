@@ -28,7 +28,7 @@
 - [ ] 1.1 Role resolver. How: one endpoint `GET /api/projects/{id}/home` returns `projectRole` (lead, product, design, architect, developer, qa, security, devops, release, reviewer) from the member's stations and role. Check: unit test per role.
 - [ ] 1.2 Project frame. How: header with name, stage, avatars and Invite; left rail lists only that role's pages. Check: Playwright screenshot per role.
 - [ ] 1.3 Product (PM) workspace: idea, PRD, ARD, epics dashboard, plan approval. Check: PM sees epics grouped by status.
-- [ ] 1.4 Designer workspace: own dashboard, design brief from approved stories, Google Stitch and Figma handoff links, design agents. Decision needed first: which Stitch/Figma API access exists.
+- [~] 1.4 Designer workspace (Google Stitch done, see docs/integrations/GOOGLE_STITCH.md): own dashboard, design brief from approved stories, Google Stitch and Figma handoff links, design agents. Decision needed first: which Stitch/Figma API access exists.
 - [ ] 1.5 Developer workspace: my tasks, plan, build, PRs, reviewers, and the Agent Swarm panel. Move "Launch Agent Swarm" off the project overview into this workspace.
 - [ ] 1.6 QA workspace: wire the existing QA queue screen into the project frame.
 - [ ] 1.7 Security, CI/CD and Release workspaces: findings, pipelines, release checklist and sign-offs.

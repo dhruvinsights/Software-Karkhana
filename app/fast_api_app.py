@@ -36,6 +36,8 @@ from sqlalchemy import text
 from app import db
 from app.app_utils.telemetry import setup_telemetry
 from app.config import get_settings
+from app.knowledge_graph import client as kg_client
+from app.knowledge_graph import projector as kg_projector
 from app.routers import (
     agent_devices,
     auth,
@@ -66,6 +68,7 @@ from app.routers import (
     runs,
     security,
     stations,
+    stitch,
     workspace,
     workspaces,
 )
@@ -94,10 +97,16 @@ async def lifespan(_: FastAPI):
     setup_telemetry()
     await realtime.manager.start_broker()
     purge = asyncio.create_task(chat_retention.run_forever())
+    kg = None
+    if kg_client.enabled():
+        kg = asyncio.create_task(kg_projector.run_forever())
     scans = asyncio.create_task(osv_scan.run_forever())
     yield
     purge.cancel()
     scans.cancel()
+    if kg:
+        kg.cancel()
+        await kg_client.close()
     await realtime.manager.stop_broker()
     await db.dispose()
 
@@ -150,6 +159,7 @@ def create_app() -> FastAPI:
         context.router,
         security.router,
         stations.router,
+        stitch.router,
     ):
         app.include_router(r)
 

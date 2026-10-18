@@ -30,6 +30,8 @@ const IncidentsPanel = lazy(() => import('./components/views/WorkspaceScreens').
 const ProjectDesignPanel = lazy(() => import('./components/views/ProjectDesignPanel').then((m) => ({ default: m.ProjectDesignPanel })));
 const DevWorkspace = lazy(() => import('./components/stations/DevWorkspace').then((m) => ({ default: m.DevWorkspace })));
 const QAWorkspace = lazy(() => import('./components/stations/QAWorkspace').then((m) => ({ default: m.QAWorkspace })));
+const DesignerDashboardView = lazy(() => import('./components/views/DesignerDashboardView').then((m) => ({ default: m.DesignerDashboardView })));
+const ProjectBuildPanel = lazy(() => import('./components/views/ProjectBuildPanel').then((m) => ({ default: m.ProjectBuildPanel })));
 const ProjectPipelinePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectPipelinePanel })));
 const ProjectReleasePanel = lazy(() => import('./components/views/ProjectDeliveryPanels').then((m) => ({ default: m.ProjectReleasePanel })));
 const PRReviewPanel = lazy(() => import('./components/views/PRReviewPanel'));
@@ -236,7 +238,7 @@ export default function App() {
       case 'flow_map':
       case 'design_review':
       case 'design_tokens':
-        return <ProjectScoped state={state} title="Design" render={(id) => <ProjectDesignPanel projectId={id} canDesign />} />;
+        return <ProjectScoped state={state} title="Design" render={(id) => <DesignerDashboardView projectId={id} />} />;
 
       case 'architecture_dashboard':
       case 'system_design':
