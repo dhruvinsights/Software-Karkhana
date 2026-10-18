@@ -6,6 +6,7 @@ import { SpecularButton } from '../reactbits/SpecularButton';
 import { LiquidEther } from '../reactbits/LiquidEther';
 import { HeroDashboard } from './HeroDashboard';
 import { WorkspaceDemo } from './WorkspaceDemo';
+import { ExplainerOverview } from './ExplainerOverview';
 import { AccountabilityDemo } from './AccountabilityDemo';
 import { QAIntelligenceDemo } from './QAIntelligenceDemo';
 import { IdeaQDemo } from './IdeaQDemo';
@@ -147,6 +148,9 @@ export const MarketingLandingPage: React.FC<MarketingLandingPageProps> = ({
           ))}
         </div>
       </section>
+
+      {/* Explainer video + overview */}
+      <ExplainerOverview container={CONTAINER} />
 
       {/* 2. THE PROBLEM */}
       <section id="problem-section" className={`${CONTAINER} pb-24 space-y-10 relative z-20`}>

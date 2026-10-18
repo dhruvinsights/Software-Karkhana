@@ -82,9 +82,6 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
             >
               Ledger proof
             </button>
-            <a href="/blog/" className="text-[#a7acb8] hover:text-[#f7f8fc] transition-colors">
-              Blog
-            </a>
           </nav>
 
           {/* Right Action CTAs */}
@@ -154,9 +151,6 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({
             >
               Ledger proof
             </button>
-            <a href="/blog/" className="block w-full text-left text-[#f7f8fc] py-1">
-              Blog
-            </a>
             <div className="pt-2 border-t border-white/10 flex flex-col gap-2">
               <button
                 onClick={onSignIn}
