@@ -57,6 +57,12 @@ dev = [
 
 [project.optional-dependencies]
 eval = ["google-adk[eval]>=1.31.0,<2.0.0"]
+graph = [
+    # FalkorDB client — SSPL v1, fine for hackathon / internal use.
+    # For production SaaS swap factory.py import → kuzu>=0.7.0 (Apache 2.0).
+    # See docs/FALKORDB.md → "Swapping the backend".
+    "falkordb>=1.8.0",
+]
 
 [tool.uv]
 # headroom-ai needs litellm>=1.96.2; the optional google-adk[eval] extra
