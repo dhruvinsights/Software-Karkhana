@@ -404,7 +404,11 @@ async def providers_health(_: CurrentUser) -> dict[str, Any]:
         "embed_model": s.ollama_embed_model
         if s.embed_provider == "ollama"
         else s.embedding_model,
-        "gemini": {"configured": gemini.configured()},
+        "gemini": {
+            "configured": gemini.configured(),
+            "backend": gemini.backend(),
+            "project": s.google_cloud_project,
+        },
         "ollama": {"base_url": s.ollama_base_url, **ollama_info},
         "review": {
             "engine": s.review_engine,

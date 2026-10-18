@@ -74,7 +74,7 @@ async def create_pairing(session: Session, user: CurrentUser) -> dict[str, Any]:
         "code": code,
         "expiresAt": device.pairing_expires_at.isoformat() if device.pairing_expires_at else None,
         "command": f"karkhana-agent login --server {server} --code {code}",
-        "install": "npm install -g <software-karkhana checkout>/packages/karkhana-agent",
+        "install": "npm install -g karkhana-agent",
     }
 
 

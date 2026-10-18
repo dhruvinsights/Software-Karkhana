@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     # `make check-models` in Phase 0 to confirm what this project can call.
     gemini_model: str = Field(default="gemini-3-flash-preview")
     gemini_coder_model: str = Field(default="gemini-3-flash-preview")
+    # Offered next to gemini_model in the chat picker, for harder questions.
+    gemini_pro_model: str = Field(default="gemini-3.1-pro-preview")
     embedding_model: str = Field(default="gemini-embedding-001")
     embedding_location: str = Field(default="us-central1")
     embedding_dim: int = Field(default=768)

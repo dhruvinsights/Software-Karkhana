@@ -62,6 +62,14 @@ def configured() -> bool:
     return bool(s.gemini_api_key) or s.google_cloud_project != "local-dev"
 
 
+def backend() -> str:
+    """Where Gemini calls go: ``"ai-studio"`` with a key, else ``"vertex"``."""
+    return "ai-studio" if get_settings().gemini_api_key else "vertex"
+
+
+NOT_CONFIGURED = "Set GEMINI_API_KEY, or GOOGLE_CLOUD_PROJECT for Vertex AI"
+
+
 async def generate_structured(
     *,
     prompt: str,

@@ -38,7 +38,7 @@ export interface PrRow {
 }
 export interface ProviderHealth {
   llm_provider: string; embed_provider: string; chat_model: string; embed_model: string;
-  gemini: { configured: boolean };
+  gemini: { configured: boolean; backend: 'vertex' | 'ai-studio'; project: string };
   ollama: { base_url: string; ok: boolean; models: string[]; error?: string };
   review: { engine: string; pr_agent_ready: boolean };
 }

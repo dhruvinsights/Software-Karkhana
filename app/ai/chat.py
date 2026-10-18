@@ -90,6 +90,8 @@ async def list_providers() -> list[ProviderInfo]:
         if s.ollama_chat_model in ollama_models
         else (ollama_models[0] if ollama_models else "")
     )
+    vertex = gemini_provider.backend() == "vertex"
+    gemini_via = f"Vertex AI, {s.google_cloud_project}" if vertex else "AI Studio key"
     return [
         ProviderInfo(
             "ollama",
@@ -103,10 +105,16 @@ async def list_providers() -> list[ProviderInfo]:
         ),
         ProviderInfo(
             "gemini",
-            "Gemini",
+            "Gemini (Vertex AI)" if vertex else "Gemini",
             gemini_provider.configured(),
-            "Ready" if gemini_provider.configured() else "Set GEMINI_API_KEY in .env",
-            [s.gemini_model],
+            f"Ready ({gemini_via})"
+            if gemini_provider.configured()
+            else gemini_provider.NOT_CONFIGURED,
+            list(
+                dict.fromkeys(
+                    [s.gemini_model, s.gemini_pro_model, s.gemini_coder_model]
+                )
+            ),
             s.gemini_model,
         ),
         ProviderInfo(
@@ -232,7 +240,7 @@ async def _stream_gemini(
     from app.ai.providers import gemini as gemini_provider
 
     if not gemini_provider.configured():
-        raise ModelError("Gemini is not configured: set GEMINI_API_KEY in .env")
+        raise ModelError(f"Gemini is not configured: {gemini_provider.NOT_CONFIGURED}")
     model = model or get_settings().gemini_model
     contents = [
         types.Content(

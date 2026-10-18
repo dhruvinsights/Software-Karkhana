@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Connects a developer machine to Software Karkhana: builds assigned stories locally with your coding agent and reports back.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhruvinsights/Software-Karkhana.git",
+    "directory": "packages/karkhana-agent"
+  },
+  "homepage": "https://github.com/dhruvinsights/Software-Karkhana/tree/main/packages/karkhana-agent#readme",
+  "bugs": "https://github.com/dhruvinsights/Software-Karkhana/issues",
+  "keywords": ["software-karkhana", "coding-agent", "cli", "bob", "claude-code"],
   "type": "module",
   "bin": { "karkhana-agent": "bin/karkhana-agent.js" },
   "files": ["bin", "src", "README.md"],
