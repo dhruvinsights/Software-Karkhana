@@ -23,7 +23,7 @@ import datetime as dt
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Gemini structured outputs
@@ -132,6 +132,12 @@ class UserOut(ORM):
     avatar_url: str | None = None
     is_active: bool = True
     onboarded_at: dt.datetime | None = None
+    is_guest: bool = False
+
+    @field_validator("is_guest", mode="before")
+    @classmethod
+    def _guest_default(cls, v: object) -> bool:
+        return bool(v)  # unsaved User objects have None until flushed
 
 
 class UserSignUp(BaseModel):
@@ -180,6 +186,7 @@ class WorkspaceOut(ORM):
     domain: str | None = None
     plan: str
     security_posture: str
+    is_sandbox: bool = False
     created_at: dt.datetime
 
 

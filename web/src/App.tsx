@@ -63,6 +63,27 @@ export default function App() {
   const [showDreamTransition, setShowDreamTransition] = useState(false);
   const [pendingWorkspaceName, setPendingWorkspaceName] = useState('Nexus Engineering');
   const [showTutorial, setShowTutorial] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
+
+  const launchDemo = async () => {
+    setDemoLoading(true);
+    setDemoError(null);
+    try {
+      await factoryStore.startDemo();
+      factoryStore.setScreen('workspace_home');
+    } catch (e) {
+      setDemoError(e instanceof Error ? e.message : 'Could not start the demo. Please try again.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  // Demo visitor chooses to keep their work: leave the sandbox (its token is kept for the claim) and sign up.
+  const signUpFromDemo = () => {
+    factoryStore.signOut();
+    factoryStore.setScreen('signin');
+  };
 
   useEffect(() => {
     const unsubscribe = factoryStore.subscribe((newState) => {
@@ -120,8 +141,10 @@ export default function App() {
     return (
       <Suspense fallback={<ScreenFallback />}>
         <MarketingLandingPage
-          onGetStarted={() => factoryStore.setScreen('signin')}
+          onGetStarted={() => void launchDemo()}
           onSignIn={() => factoryStore.setScreen('signin')}
+          getStartedBusy={demoLoading}
+          getStartedError={demoError}
         />
       </Suspense>
     );
@@ -335,6 +358,14 @@ export default function App() {
 
   return (
     <Suspense fallback={<ScreenFallback />}>
+      {state.currentUser?.is_guest && (
+        <div className="fixed top-0 inset-x-0 z-[60] flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-3 py-1.5 bg-emerald-500/15 border-b border-emerald-400/30 text-xs text-emerald-200 backdrop-blur">
+          <span>You are in a demo workspace with sample data. Nothing here is saved to an account.</span>
+          <button onClick={signUpFromDemo} className="font-semibold text-white underline underline-offset-2 cursor-pointer">
+            Sign up free to create your workspace
+          </button>
+        </div>
+      )}
       <AppShell state={state}>
         <Suspense fallback={<ViewFallback />}>{renderCurrentView()}</Suspense>
       </AppShell>

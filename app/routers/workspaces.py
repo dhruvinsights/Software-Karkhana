@@ -33,6 +33,7 @@ from app.schemas import (
     WorkspaceOnboard,
     WorkspaceOut,
 )
+from app.services import demo_sandbox
 from app.services.realtime import notify_activity, notify_workspace
 from app.workspace_access import workspace_access
 
@@ -41,6 +42,9 @@ _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 router = APIRouter(tags=["auth"])
 
 router = APIRouter(tags=["workspaces"])
+
+# Self-serve workspaces start on the Free plan (nothing is billed or metered yet).
+FREE_PLAN = "free"
 
 
 def _slugify(text: str) -> str:
@@ -55,6 +59,7 @@ async def onboard_workspace(
     session: Annotated[AsyncSession, Depends(db.get_session)],
 ) -> WorkspaceOut:
     """Completes progressive onboarding by creating organization workspace and initial product."""
+    demo_sandbox.refuse_guest(user, "Creating a workspace")
     ws_name = payload.workspace_name.strip()
     base_slug = payload.workspace_slug or _slugify(ws_name)
     slug = base_slug
@@ -70,7 +75,7 @@ async def onboard_workspace(
         name=ws_name,
         slug=slug,
         domain=payload.domain,
-        plan="enterprise",
+        plan=FREE_PLAN,
         security_posture=payload.security_posture,
         created_by=user.id,
     )
@@ -190,7 +195,8 @@ async def create_workspace(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(db.get_session)],
 ) -> WorkspaceOut:
-    """Creates a new workspace from the 3-step workspace modal."""
+    """Creates a new workspace from the workspace wizard (name, use case, team, configuration)."""
+    demo_sandbox.refuse_guest(user, "Creating a workspace")
     ws_name = (payload.get("name") or "New Workspace").strip()
     base_slug = payload.get("slug") or _slugify(ws_name)
     slug = base_slug
@@ -200,18 +206,29 @@ async def create_workspace(
         slug = f"{base_slug}-{counter}"
         counter += 1
 
+    posture = str(payload.get("security_posture") or "STANDARD").upper()
+    if posture not in ("STANDARD", "HARDENED"):
+        posture = "STANDARD"
+    setup = {
+        k: payload[k]
+        for k in ("useCase", "industry", "teamSize", "intent")
+        if isinstance(payload.get(k), str) and payload[k].strip()
+    }
+
     workspace = Workspace(
         id=uuid.uuid4(),
         name=ws_name,
         slug=slug,
         domain=f"{slug}.internal",
-        plan="enterprise",
-        security_posture="STANDARD",
+        plan=FREE_PLAN,
+        security_posture=posture,
         created_by=user.id,
     )
     session.add(workspace)
     await session.flush()
 
+    if setup:
+        await demo_sandbox.save_profile(session, user=user, profile=setup)
     if payload.get("user_name"):
         user.display_name = payload["user_name"].strip()
     user.onboarded_at = dt.datetime.now(dt.UTC)
@@ -248,7 +265,7 @@ async def create_workspace(
         action="workspace.created",
         subject_type="workspace",
         subject_id=workspace.id,
-        payload={"workspace_name": workspace.name, "slug": workspace.slug},
+        payload={"workspace_name": workspace.name, "slug": workspace.slug, "plan": workspace.plan, **setup},
     )
 
     return WorkspaceOut.model_validate(workspace)

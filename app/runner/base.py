@@ -95,6 +95,10 @@ def get_backend(name: str | None = None) -> RunnerBackend:
         from app.runner.device import DeviceBackend
 
         return DeviceBackend()
+    if backend == "sandbox":
+        from app.runner.sandbox import SandboxBackend
+
+        return SandboxBackend()
     if backend == "cloudrun_job":
         from app.runner.cloudrun_job import CloudRunJobBackend
 

@@ -27,7 +27,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,6 +44,7 @@ from app.routers import (
     chat,
     context,
     delivery,
+    demo,
     dev_qa,
     gemini,
     github_oauth,
@@ -72,7 +73,8 @@ from app.routers import (
     workspace,
     workspaces,
 )
-from app.services import chat_retention, osv_scan, realtime
+from app.runner import sandbox as sandbox_runner
+from app.services import chat_retention, demo_sandbox, osv_scan, realtime
 
 
 def _setup_logging() -> None:
@@ -119,6 +121,7 @@ def create_app() -> FastAPI:
         description="One record for every team, from idea to merged code.",
         version=os.environ.get("AGENT_VERSION", "0.1.0"),
         lifespan=lifespan,
+        dependencies=[Depends(demo_sandbox.guest_gate)],
     )
     if settings.allow_origins:
         app.add_middleware(
@@ -132,6 +135,7 @@ def create_app() -> FastAPI:
         auth.router,
         chat.router,
         delivery.router,
+        demo.router,
         dev_qa.router,
         gemini.router,
         github_oauth.router,
@@ -163,6 +167,9 @@ def create_app() -> FastAPI:
     ):
         app.include_router(r)
 
+    # Demo workspaces build through the real worker callbacks, delivered in-process.
+    sandbox_runner.bind_app(app)
+
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
         async with db.sessionmaker()() as s:
@@ -192,10 +199,19 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-        if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
-            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin"
+        )
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        if (
+            request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto") == "https"
+        ):
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
         return response
 
     @app.exception_handler(Exception)

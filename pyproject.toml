@@ -148,6 +148,7 @@ modules = [
     "app.routers.workspace",
     "app.routers.chat",
     "app.routers.context",
+    "app.routers.demo",
     "app.routers.gemini",
     "app.routers.github_oauth",
     "app.routers.idea_approvals",

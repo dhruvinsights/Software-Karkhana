@@ -257,6 +257,9 @@ async def current_user(
             status.HTTP_403_FORBIDDEN,
             "This account is not registered. Please sign up or contact an administrator.",
         )
+    if not getattr(user, "is_active", True):
+        # Expired demo guests and deactivated accounts must stop working at once.
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This session has ended")
     # Second line of tenant isolation: Postgres RLS sees only this user's
     # workspaces for the rest of the request.
     await bind_rls_user(session, user.id)

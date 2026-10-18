@@ -24,6 +24,9 @@ import { LiquidEther } from '../reactbits/LiquidEther';
 interface MarketingLandingPageProps {
   onGetStarted: () => void;
   onSignIn: () => void;
+  /** True while "Launch Software Factory" is preparing the demo workspace. */
+  getStartedBusy?: boolean;
+  getStartedError?: string | null;
 }
 
 type DemoScreen = 'overview' | 'engineering' | 'architecture' | 'qa' | 'security';
@@ -182,6 +185,8 @@ const SectionHeading: React.FC<{ lead: string; accent: string; sub?: string }> =
 export const MarketingLandingPage: React.FC<MarketingLandingPageProps> = ({
   onGetStarted,
   onSignIn,
+  getStartedBusy,
+  getStartedError,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [activeRoleTab, setActiveRoleTab] = useState<RoleTab>('dev');
@@ -227,7 +232,7 @@ export const MarketingLandingPage: React.FC<MarketingLandingPageProps> = ({
         intro={false}
         lightMode={false}
       />
-      <MarketingNavbar onGetStarted={onGetStarted} onSignIn={onSignIn} />
+      <MarketingNavbar onGetStarted={onSignIn} onSignIn={onSignIn} />
 
       {/* =================================================================== */}
       {/* 1. HERO: LaserFlow is the only background effect                     */}
@@ -265,10 +270,10 @@ export const MarketingLandingPage: React.FC<MarketingLandingPageProps> = ({
                 glow={1.2}
                 followMouse
                 proximity={250}
-                onClick={onGetStarted}
+                onClick={getStartedBusy ? undefined : onGetStarted}
                 className="font-semibold"
               >
-                <span>Launch Software Factory</span>
+                <span>{getStartedBusy ? 'Preparing your workspace…' : 'Launch Software Factory'}</span>
                 <ArrowRight className="w-4 h-4 ml-1 inline-block" />
               </SpecularButton>
 
@@ -289,6 +294,14 @@ export const MarketingLandingPage: React.FC<MarketingLandingPageProps> = ({
                 <span>Sign In</span>
               </SpecularButton>
             </div>
+            {getStartedError && (
+              <p role="alert" className="text-sm text-rose-300">
+                {getStartedError}{' '}
+                <button type="button" onClick={onSignIn} className="underline cursor-pointer">
+                  Sign in instead
+                </button>
+              </p>
+            )}
           </div>
         </div>
 
