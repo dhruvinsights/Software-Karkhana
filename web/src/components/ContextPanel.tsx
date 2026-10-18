@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGet, usePost, type ContextEntry } from '../api';
 import { Empty, ErrorBox } from './common';
+import { apiUrl } from '../lib/apiBase';
 
 const KINDS = ['note', 'decision', 'handoff'] as const;
 
@@ -19,7 +20,7 @@ export function ContextPanel({ projectId }: { projectId: string }) {
         <input className="in" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <textarea className="in" style={{ minHeight: 90 }} placeholder="What should the next person or agent know?" value={body} onChange={(e) => setBody(e.target.value)} />
         <div className="row between">
-          <a className="btn sm" href={`/api/projects/${projectId}/context/export.md`} target="_blank" rel="noreferrer">Export Markdown</a>
+          <a className="btn sm" href={apiUrl(`/api/projects/${projectId}/context/export.md`)} target="_blank" rel="noreferrer">Export Markdown</a>
           <button className="btn pri" disabled={add.isPending || title.trim().length < 3 || body.trim().length < 3}
             onClick={() => add.mutate(undefined, { onSuccess: () => { setTitle(''); setBody(''); } })}>{add.isPending ? 'Saving…' : 'Add to context'}</button>
         </div>

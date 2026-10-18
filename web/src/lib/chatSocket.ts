@@ -9,6 +9,8 @@
  * - Exposes send() that queues frames when the socket is not yet open
  */
 
+import { apiWsUrl } from './apiBase';
+
 export type ChatFrame =
   | { type: 'message'; id: string; channelId: string; senderId: string; senderName: string; senderAvatar?: string; body: string; mentions: string[]; createdAt: string; editedAt?: string; attachments?: ChatAttachment[] }
   | { type: 'typing'; channelId: string; userId: string; displayName: string }
@@ -111,9 +113,8 @@ class ChatSocketManager {
 
   private _open(): void {
     if (!this.token) return;
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsParam = this.workspaceId ? `&workspace_id=${encodeURIComponent(this.workspaceId)}` : '';
-    const url = `${protocol}://${window.location.host}/api/chat/ws?token=${encodeURIComponent(this.token)}${wsParam}`;
+    const url = apiWsUrl(`/api/chat/ws?token=${encodeURIComponent(this.token)}${wsParam}`);
 
     this.ws = new WebSocket(url);
 
