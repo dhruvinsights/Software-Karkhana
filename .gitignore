@@ -49,3 +49,13 @@ third_party/
 .ledger-anchors.jsonl
 .venv-mem0/
 .mem0/
+
+# --- AI agent session files ---
+.claude/
+HEAD/
+
+# Firebase CLI cache
+.firebase/
+
+# Local design-tool output
+.taste-skill/

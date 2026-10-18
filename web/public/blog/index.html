@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Four days, one factory · Software Karkhana</title>
+<meta name="description" content="How Team Bhoomi built Software Karkhana, a governed AI software factory, in four days for the AI Builder Cup: the problem, every decision, the walls we hit and what we learned.">
+<meta property="og:title" content="Four days, one factory: building Software Karkhana">
+<meta property="og:description" content="The build diary of a governed AI software factory: 147 commits, 15 gated stages, a tamper-evident ledger and 27,700+ benchmark checks.">
+<meta property="og:image" content="https://software-karkhana.web.app/blog/img/landing.jpg">
+<meta property="og:type" content="article">
+<link rel="icon" href="/blog/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0e14;
+  --surface: #161824;
+  --surface-2: #1d2030;
+  --ink: #f4f5fa;
+  --muted: #a3a8bd;
+  --accent: #075bff;
+  --accent-ink: #ffffff;
+  --paper: #f4f5fa;
+  --paper-ink: #0d0e14;
+
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-text: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --step-small: 0.9375rem;
+  --step-body: clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem);
+  --step-lead: clamp(1.375rem, 1.1rem + 0.9vw, 2rem);
+  --step-head: clamp(2.25rem, 1.2rem + 3.6vw, 4.5rem);
+  --step-display: clamp(3.25rem, 1rem + 6.6vw, 6.75rem);
+
+  --margin: clamp(1.25rem, 3.3vw, 3rem);
+  --axis: 42vw;
+  --section: clamp(6rem, 12vw, 12rem);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-text); font-size: var(--step-body); line-height: 1.55; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums lining-nums; }
+h1, h2, h3, p, figure, blockquote, ul, ol { margin: 0; }
+img { display: block; max-width: 100%; height: auto; background: var(--surface); }
+a { color: inherit; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.skip { position: absolute; left: -999px; top: 0; }
+.skip:focus { left: var(--margin); top: 12px; background: var(--accent); color: #fff; padding: 10px 14px; z-index: 10; }
+
+/* ---------- hero: void, then statement on the axis ---------- */
+.hero { min-height: 100svh; display: grid; grid-template-rows: auto 1fr auto; padding: 44px var(--margin) 72px; }
+.topbar { display: grid; grid-template-columns: calc(var(--axis) - var(--margin)) 1fr auto; align-items: center; }
+.wordmark { display: flex; align-items: center; gap: 10px; font-weight: 600; text-decoration: none; font-size: 1.0625rem; }
+.wordmark img { width: 28px; height: 28px; background: none; }
+.toplinks { display: flex; gap: 28px; font-size: var(--step-small); }
+.toplinks a, .textlink { text-decoration: none; color: var(--muted); transition: color 180ms; }
+.toplinks a:hover, .textlink:hover { color: var(--ink); }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 22px; background: var(--accent); color: var(--accent-ink); font-weight: 500; font-size: var(--step-small); text-decoration: none; border-radius: 999px; transition: transform 140ms var(--ease-out), background 180ms; border: 0; cursor: pointer; font-family: inherit; }
+.btn:hover { background: #2a74ff; }
+.btn:active { transform: scale(0.97); }
+.hero-foot { display: grid; grid-template-columns: calc(var(--axis) - var(--margin)) 1fr; align-items: end; }
+.hero-side { max-width: 32ch; color: var(--muted); font-size: 1.125rem; padding-right: 32px; }
+.hero-side p + p { margin-top: 12px; }
+.hero h1 { font-family: var(--font-display); font-weight: 400; font-size: var(--step-display); line-height: 0.95; letter-spacing: -0.02em; }
+.line { display: block; overflow: hidden; padding-bottom: 0.08em; }
+.line > span { display: inline-block; }
+.hero-actions { display: flex; gap: 24px; align-items: center; margin-top: 32px; }
+
+/* ---------- intro: statement tiles ---------- */
+.tiles { display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: 38svh 38svh; gap: 8px; padding: 8px; }
+.tile { position: relative; overflow: hidden; display: flex; align-items: flex-end; padding: 20px; }
+.tile-a { grid-column: 1 / 9; grid-row: 1 / 3; background: var(--accent); }
+.tile-a h2 { font-family: var(--font-text); font-weight: 600; font-size: clamp(3.5rem, 8.4vw, 8.25rem); line-height: 0.86; letter-spacing: -0.045em; text-transform: uppercase; }
+.tile-b { grid-column: 9 / 13; grid-row: 1; background: var(--paper); color: var(--paper-ink); flex-direction: column; align-items: flex-start; justify-content: flex-end; }
+.tile-b strong { font-weight: 600; font-size: clamp(3.5rem, 8.4vw, 8.25rem); line-height: 0.86; letter-spacing: -0.045em; }
+.tile-b span { font-size: var(--step-small); margin-top: 12px; }
+.tile-c { grid-column: 9 / 13; grid-row: 2; padding: 0; }
+.tile-c img { width: 100%; height: 100%; object-fit: cover; object-position: left top; }
+.tile-text { grid-column: 1 / 13; display: grid; grid-template-columns: repeat(12, 1fr); padding: 72px 40px 40px; }
+.tile-text p { grid-column: 7 / 13; font-size: clamp(1.25rem, 1rem + 0.7vw, 1.5rem); line-height: 1.4; }
+.tile-text p + p { margin-top: 1em; color: var(--muted); }
+.tile-text .src { grid-column: 7 / 13; font-size: var(--step-small); color: var(--muted); margin-top: 24px; }
+
+/* ---------- about: portrait as drop cap ---------- */
+.about { display: grid; grid-template-columns: repeat(12, 1fr); gap: 0 24px; padding: 140px var(--margin); }
+.facts { grid-column: 1 / 3; font-size: var(--step-small); color: var(--muted); display: grid; gap: 14px; align-content: start; padding-top: 6px; }
+.facts strong { display: block; color: var(--ink); font-weight: 500; }
+.about-body { grid-column: 3 / 13; font-size: clamp(1.5rem, 1rem + 1.2vw, 2.25rem); line-height: 1.2; letter-spacing: -0.01em; }
+.about-body p { color: var(--muted); }
+.about-body p + p { margin-top: 1.4em; font-size: clamp(1.25rem, 1rem + 0.6vw, 1.5rem); line-height: 1.4; max-width: 52ch; }
+.about-body b { color: var(--ink); font-weight: 500; }
+.dropcap { float: left; width: 3.6em; height: 3.6em; margin: 0.18em 0.5em 0 0; background: var(--paper); padding: 0.45em; }
+.dropcap img { width: 100%; height: 100%; object-fit: contain; background: none; }
+
+/* ---------- day-by-day: statement, table pushed right ---------- */
+.days { padding: 40px var(--margin) var(--section); }
+.days h2 { font-size: var(--step-head); font-weight: 500; line-height: 0.98; letter-spacing: -0.035em; text-indent: 3vw; max-width: 18ch; }
+.days-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 0 24px; margin-top: 96px; align-items: end; }
+.days-photo { grid-column: 1 / 5; align-self: end; }
+.days-photo img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; object-position: left top; }
+.days-photo figcaption { font-size: var(--step-small); color: var(--muted); margin-top: 10px; }
+.days-name { grid-column: 7 / 8; align-self: start; font-size: var(--step-small); color: var(--muted); }
+.days-table { grid-column: 8 / 13; border-collapse: collapse; font-size: 1rem; width: 100%; align-self: start; }
+.days-table td { padding: 13px 0; vertical-align: top; }
+.days-table td:first-child { color: var(--muted); width: 26%; white-space: nowrap; padding-right: 16px; }
+.days-table td:last-child { text-align: right; color: var(--muted); white-space: nowrap; padding-left: 16px; }
+.days-table tr.group td { padding-top: 44px; }
+.days-table a { text-decoration: none; }
+
+/* ---------- chapters: text pages hung from the axis ---------- */
+.chapter { display: grid; grid-template-columns: calc(var(--axis) - var(--margin)) minmax(0, 1fr); padding: 0 var(--margin) var(--section); }
+.chapter aside { padding-right: 40px; font-size: var(--step-small); color: var(--muted); display: grid; gap: 6px; align-content: start; position: sticky; top: 32px; height: max-content; }
+.chapter aside .when { color: var(--ink); font-size: 1.0625rem; font-weight: 500; }
+.chapter aside .hash { word-break: break-all; }
+.chapter aside .hash b { font-weight: 500; color: var(--ink); }
+.chapter aside .hash.broken b { color: #ff6b6b; }
+.chapter h2 { font-family: var(--font-display); font-weight: 400; font-size: clamp(2.25rem, 1.4rem + 2.8vw, 4rem); line-height: 1; letter-spacing: -0.015em; max-width: 16ch; }
+.chapter .body { max-width: 64ch; margin-top: 36px; }
+.chapter .body p + p { margin-top: 1.1em; }
+.chapter .body h3 { font-size: 1.1875rem; font-weight: 600; margin-top: 2em; margin-bottom: 0.4em; }
+.chapter .body ul { padding-left: 1.1em; margin-top: 0.8em; }
+.chapter .body li + li { margin-top: 0.5em; }
+.chapter .body strong { font-weight: 600; }
+.chapter figure { margin-top: 48px; }
+.chapter figure img { width: 100%; }
+.chapter figcaption { font-size: var(--step-small); color: var(--muted); margin-top: 10px; max-width: 60ch; }
+.pull { background: var(--surface); padding: 24px 28px; margin: 2em 0 1.4em; font-size: clamp(1.125rem, 1rem + 0.4vw, 1.3125rem); line-height: 1.4; }
+.chapter .body p.pull + p { margin-top: 0; }
+
+/* ---------- full-bleed colour page ---------- */
+.bleed { background: var(--paper); color: var(--paper-ink); display: grid; grid-template-columns: repeat(6, 1fr); }
+.bleed figure { grid-column: span 2; position: relative; overflow: hidden; aspect-ratio: 4 / 3; }
+.bleed figure.wide { grid-column: span 4; aspect-ratio: auto; }
+.bleed figure img, .bleed figure video { width: 100%; height: 100%; object-fit: cover; object-position: left top; transition: transform 1.2s var(--ease-out); display: block; }
+.bleed figure:hover img { transform: scale(1.04); }
+.bleed .colour { position: relative; z-index: 1; grid-column: span 2; background: var(--accent); color: #fff; padding: 32px; display: flex; align-items: flex-end; font-size: var(--step-lead); line-height: 1.25; letter-spacing: -0.01em; }
+.bleed .quote { position: relative; z-index: 1; grid-column: span 2; padding: 32px; display: flex; align-items: flex-end; font-size: var(--step-lead); line-height: 1.25; }
+
+/* ---------- showcase: one row, three states ---------- */
+.showcase { display: grid; grid-template-columns: repeat(12, 1fr); gap: 0 24px; padding: var(--section) var(--margin); background: var(--surface); }
+.showcase h2 { grid-column: 4 / 12; font-size: clamp(1.75rem, 1.4rem + 1vw, 2rem); font-weight: 500; letter-spacing: -0.02em; }
+.showcase .intro { grid-column: 4 / 11; color: var(--muted); margin-top: 16px; max-width: 58ch; }
+.states { grid-column: 1 / 13; display: grid; grid-template-columns: repeat(12, 1fr); gap: 56px 24px; margin-top: 72px; }
+.state-word { grid-column: 1 / 4; text-align: right; font-size: 1.375rem; color: var(--muted); padding-top: 22px; }
+.entry { grid-column: 4 / 10; max-width: 640px; width: 100%; background: var(--bg); border: 1px solid #2a2e42; border-radius: 10px; padding: 18px 20px; font-size: 0.9375rem; transition: border-color 240ms; }
+.entry .row1 { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); }
+.entry .row1 b { color: var(--ink); font-weight: 500; }
+.entry .text { margin-top: 10px; font-size: 1rem; }
+.entry textarea { width: 100%; margin-top: 10px; background: var(--surface); color: var(--ink); border: 1px solid #2f3450; border-radius: 6px; padding: 10px 12px; font: inherit; font-size: 1rem; line-height: 1.45; resize: vertical; min-height: 84px; }
+.entry textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.entry .hashes { margin-top: 12px; display: grid; gap: 4px; color: var(--muted); font-size: 0.875rem; word-break: break-all; }
+.entry .hashes b { color: var(--ink); font-weight: 500; }
+.entry .verdict { margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.875rem; font-weight: 500; background: #10291b; color: #5ee08f; }
+.pill.bad { background: #331418; color: #ff8a8a; }
+.pill.new { background: #11203f; color: #8fb3ff; }
+.entry.broken { border-color: #6b2a31; }
+.entry button { font: inherit; font-size: 0.875rem; color: var(--ink); background: var(--surface-2); border: 1px solid #343a58; border-radius: 6px; padding: 6px 12px; cursor: pointer; transition: background 180ms, transform 140ms; }
+.entry button:hover { background: #262a3e; }
+.entry button:active { transform: scale(0.97); }
+
+/* ---------- stats: one figure owns the screen ---------- */
+.stat { min-height: 92svh; background: var(--accent); color: #fff; padding: 64px var(--margin); display: grid; grid-template-rows: auto 1fr auto; }
+.stat h2 { font-size: clamp(2rem, 1.5rem + 1.4vw, 2.75rem); font-weight: 500; letter-spacing: -0.02em; margin-left: calc(var(--axis) - var(--margin)); }
+.stat .figure-wrap { align-self: end; margin-left: calc(var(--axis) - var(--margin)); }
+.stat .figure { font-size: clamp(11rem, 23vw, 23.75rem); line-height: 0.8; letter-spacing: -0.05em; font-weight: 500; display: flex; align-items: flex-start; }
+.stat .figure sup { font-size: 0.33em; line-height: 1; margin-left: 0.04em; margin-top: 0.06em; }
+.stat .caption { max-width: 34ch; margin-top: 28px; font-size: 1.0625rem; line-height: 1.5; }
+.stat .source { justify-self: end; font-size: var(--step-small); margin-top: 32px; opacity: 0.9; }
+.stat .breakdown { margin-left: calc(var(--axis) - var(--margin)); margin-top: 40px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; max-width: 900px; }
+.stat .breakdown strong { display: block; font-size: clamp(1.75rem, 1.2rem + 1.4vw, 2.5rem); font-weight: 500; letter-spacing: -0.02em; }
+.stat .breakdown span { font-size: var(--step-small); }
+
+/* ---------- learnings ---------- */
+.learn { display: grid; grid-template-columns: calc(var(--axis) - var(--margin)) minmax(0, 1fr); padding: var(--section) var(--margin); }
+.learn h2 { font-family: var(--font-display); font-weight: 400; font-size: var(--step-head); line-height: 1; letter-spacing: -0.015em; padding-right: 40px; }
+.learn ol { padding-left: 1.3em; display: grid; gap: 34px; max-width: 64ch; }
+.learn li::marker { color: var(--accent); font-weight: 600; }
+.learn li strong { display: block; font-size: var(--step-lead); font-weight: 500; letter-spacing: -0.01em; line-height: 1.25; margin-bottom: 8px; }
+.learn li p { color: var(--muted); }
+
+/* ---------- proof: plain names in columns ---------- */
+.names { display: grid; grid-template-columns: repeat(12, 1fr); gap: 0 24px; padding: 120px var(--margin); background: var(--surface); }
+.names h2 { grid-column: 1 / 4; font-size: clamp(1.75rem, 1.4rem + 1vw, 2rem); font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; }
+.names .cols { grid-column: 5 / 13; columns: 4; column-gap: 32px; font-size: clamp(1.125rem, 1rem + 0.3vw, 1.375rem); line-height: 1.5; }
+.names .cols ul { list-style: none; padding: 0; break-inside: avoid-column; margin-bottom: 1.5em; }
+.names .cols li:first-child { color: var(--muted); }
+
+/* ---------- cta: three photographs, then a field ---------- */
+.strip { display: grid; grid-template-columns: repeat(3, 1fr); }
+.strip img { width: 100%; height: 40svh; object-fit: cover; object-position: left top; }
+.band { background: var(--paper); color: var(--paper-ink); min-height: 44svh; display: grid; grid-template-columns: repeat(12, 1fr); padding: 56px var(--margin) 40px; position: relative; }
+.band p.close { grid-column: 1 / 8; font-size: clamp(1.5rem, 1.2rem + 0.8vw, 1.875rem); line-height: 1.25; letter-spacing: -0.01em; }
+.band a.go { text-decoration: underline; text-decoration-thickness: 4px; text-underline-offset: 6px; text-decoration-color: var(--accent); transition: color 180ms; }
+.band a.go:hover { color: var(--accent); }
+.band .small { grid-column: 1 / 8; margin-top: 32px; font-size: 1rem; color: #3b3f52; }
+.band .small a { color: inherit; }
+.band .mark { position: absolute; right: 40px; bottom: 40px; width: 150px; aspect-ratio: 4 / 5; background: var(--bg); display: grid; place-items: center; }
+.band .mark img { width: 70%; background: none; }
+
+/* ---------- footer: contact as the headline ---------- */
+footer { background: var(--accent); color: #fff; min-height: 90svh; padding: 40px var(--margin) 28px; display: grid; grid-template-rows: auto 1fr auto auto; }
+footer .top { display: flex; justify-content: space-between; gap: 24px; font-size: var(--step-small); }
+footer .notes { display: grid; gap: 4px; max-width: 46ch; }
+footer .big { align-self: end; font-size: clamp(2.5rem, 8.2vw, 9rem); line-height: 0.95; letter-spacing: -0.045em; font-weight: 500; text-decoration: none; display: block; margin: 64px 0 40px; transition: opacity 180ms; }
+footer .big:hover { opacity: 0.85; }
+footer .meta { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; font-size: 0.875rem; }
+footer .meta div:nth-child(2) { text-align: center; }
+footer .meta div:last-child { text-align: right; }
+footer a { color: #fff; }
+
+/* ---------- motion ---------- */
+.js .reveal { opacity: 0; transform: translateY(24px); transition: opacity 800ms var(--ease-out), transform 800ms var(--ease-out); }
+.js .reveal.in { opacity: 1; transform: none; }
+.js .line > span { transform: translateY(105%); transition: transform 900ms var(--ease-out); }
+.js .loaded .line > span { transform: none; }
+.js .loaded .line:nth-child(2) > span { transition-delay: 110ms; }
+.js .hero-fade { opacity: 0; transition: opacity 700ms var(--ease-out) 450ms; }
+.js .loaded .hero-fade { opacity: 1; }
+.drift { animation: drift 18s ease-in-out infinite alternate; }
+@keyframes drift { from { transform: scale(1.02) translateY(0); } to { transform: scale(1.1) translateY(-3%); } }
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal, .js .line > span, .js .hero-fade { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .drift { animation: none; }
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 820px) {
+  :root { --axis: 0px; }
+  .hero { padding: 24px 20px 28px; }
+  .topbar { grid-template-columns: 1fr auto; }
+  .hero-foot, .chapter, .learn { grid-template-columns: 1fr; }
+  .toplinks { display: none; }
+  .hero-foot { grid-template-columns: 1fr; }
+  .hero-side { order: 2; margin-top: 20px; font-size: 1.0625rem; padding: 0; }
+  .hero h1 { font-size: 12.5vw; }
+  .tiles { grid-template-columns: 1fr 1fr; grid-template-rows: 46svh auto; gap: 6px; padding: 6px; }
+  .tile-a { grid-column: 1 / 3; grid-row: 1; }
+  .tile-a h2 { font-size: 15vw; }
+  .tile-b, .tile-c { grid-column: auto; grid-row: 2; min-height: 44vw; }
+  .tile-b span { font-size: 0.8125rem; }
+  .tile-b strong { font-size: 13vw; }
+  .tile-text { grid-column: 1 / 3; padding: 32px 14px 20px; display: block; }
+  .tile-text p { font-size: 1.125rem; }
+  .about { display: block; padding: 96px 20px; }
+  .about-body, .about-body p + p { font-size: 1.1875rem; line-height: 1.5; }
+  .dropcap { width: 110px; height: 110px; }
+  .facts { grid-template-columns: repeat(3, 1fr); margin-top: 32px; font-size: 0.8125rem; }
+  .days { padding: 0 20px 96px; }
+  .days h2 { font-size: 9.5vw; text-indent: 0; }
+  .days-grid { display: block; margin-top: 48px; }
+  .days-name { display: none; }
+  .days-table td:first-child { width: auto; }
+  .days-photo { width: 60%; margin: 40px 0 0 auto; }
+  .chapter, .learn { display: block; padding: 0 20px 96px; margin: 0; }
+  .chapter, .chapter > div { display: flex; flex-direction: column; }
+  .chapter aside { position: static; padding: 24px 0 0; order: 2; }
+  .chapter h2 { font-size: 2.25rem; }
+  .learn { padding-top: 96px; }
+  .learn h2 { margin-bottom: 40px; font-size: 2.5rem; }
+  .bleed { grid-template-columns: 1fr 1fr; }
+  .bleed figure, .bleed figure.wide, .bleed .colour, .bleed .quote { grid-column: 1 / -1; }
+  .bleed .colour, .bleed .quote { min-height: 0; padding: 28px 20px; font-size: 1.375rem; }
+  .bleed figure.wide { aspect-ratio: 4 / 3; }
+  .showcase { display: block; padding: 96px 16px; }
+  .showcase h2 { font-size: 1.625rem; }
+  .states { display: block; margin-top: 40px; }
+  .state-word { text-align: left; font-size: 1.0625rem; padding: 10px 0 48px; }
+  .entry { max-width: none; }
+  .states .entry + .state-word { padding-top: 10px; }
+  .stat { padding: 40px 20px; min-height: 80svh; }
+  .stat h2, .stat .figure-wrap, .stat .breakdown { margin-left: 0; }
+  .stat h2 { font-size: 1.75rem; }
+  .stat .figure { font-size: 40vw; }
+  .stat .breakdown { grid-template-columns: 1fr 1fr; }
+  .stat .source { justify-self: start; }
+  .names { display: block; padding: 96px 20px; }
+  .names h2 { font-size: 1.625rem; margin-bottom: 32px; }
+  .names .cols { columns: 2; column-gap: 20px; font-size: 1.0625rem; }
+  .strip { grid-template-columns: 1fr 1fr; }
+  .strip img:first-child { grid-column: 1 / 3; height: auto; aspect-ratio: 4 / 3; }
+  .strip img { height: auto; aspect-ratio: 1; }
+  .band { display: block; padding: 40px 20px 150px; }
+  .band p.close { font-size: 1.375rem; }
+  .band .mark { width: 96px; right: 20px; bottom: 20px; }
+  footer { padding: 28px 20px 24px; }
+  footer .top { flex-direction: column; }
+  footer .big { font-size: 11vw; }
+  footer .meta { grid-template-columns: 1fr; font-size: 0.8125rem; }
+  footer .meta div:nth-child(2), footer .meta div:last-child { text-align: left; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#story">Skip to the story</a>
+
+<header class="hero" id="top">
+  <div class="topbar">
+    <a class="wordmark" href="/"><img src="/blog/img/logo.png" alt="" width="28" height="28">Software Karkhana</a>
+    <nav class="toplinks" aria-label="Sections">
+      <a href="#days">The four days</a>
+      <a href="#learnings">What we learned</a>
+    </nav>
+    <a class="textlink" href="https://github.com/dhruvinsights/Software-Karkhana">GitHub</a>
+  </div>
+  <div></div>
+  <div class="hero-foot">
+    <div class="hero-side hero-fade">
+      <p>The build diary of Software Karkhana, a governed AI software factory, written by Team Bhoomi for the AI Builder Cup.</p>
+      <p>19 October 2026 · 12 minute read</p>
+    </div>
+    <div>
+      <h1><span class="line"><span>Four days.</span></span><span class="line"><span>One factory.</span></span></h1>
+      <div class="hero-actions hero-fade">
+        <a class="btn" href="/">Open the live factory</a>
+        <a class="textlink" href="#story">Read the story</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="story">
+
+<section class="tiles" aria-labelledby="problem-title">
+  <div class="tile tile-a reveal"><h2 id="problem-title">Proof, not<br>promises</h2></div>
+  <div class="tile tile-b reveal"><strong>95%</strong><span>of enterprise generative AI pilots show no measurable profit and loss impact.</span></div>
+  <div class="tile tile-c reveal"><img class="drift" src="/blog/img/overview.jpg" alt="Software Karkhana factory overview screen with products, projects, pull requests and feature ideas" width="1800" height="857"></div>
+  <div class="tile-text">
+    <p class="reveal">AI can already write code. What it cannot do is earn trust. Teams copy context between Jira, Figma, Confluence and GitHub, an agent says "done" with nothing to back it up, approvals get lost in chat threads and the lessons from last quarter's incident are gone by the next sprint.</p>
+    <p class="reveal">We set out to build the opposite: one workspace where every product, project and AI agent moves from idea to production through gates a person owns, and where every claim an agent makes arrives with evidence anyone can check.</p>
+    <p class="src reveal">Sources: MIT NANDA report, August 2025. Gartner expects over 40% of agentic AI projects to be cancelled by the end of 2027; 46% of developers in the Stack Overflow 2025 survey do not trust the accuracy of AI output.</p>
+  </div>
+</section>
+
+<section class="about" aria-label="Who built it">
+  <div class="facts reveal">
+    <div><strong>Team Bhoomi</strong>AI Builder Cup 2026</div>
+    <div><strong>15 to 19 October</strong>Four days, 147 commits</div>
+    <div><strong>Open source</strong><a href="https://github.com/dhruvinsights/Software-Karkhana">GitHub repository</a></div>
+  </div>
+  <div class="about-body reveal">
+    <p><span class="dropcap"><img src="/blog/img/logo.png" alt="Software Karkhana logo" width="512" height="512"></span><b>Karkhana</b> is the Hindi and Urdu word for a workshop where many hands make one thing. Ours is built by <b>Dhruv Chaturvedi</b>, <b>Eshita</b> and <b>Nimesh Krishnani</b>.</p>
+    <p>Claude Code and IBM Bob worked beside us as pair programmers, and every commit is in the open. One rule held all week: agents are autonomous at the level of one task, people are accountable at every gate, and nothing counts as done until a test exit code says so.</p>
+  </div>
+</section>
+
+<section class="days" id="days" aria-labelledby="days-title">
+  <h2 id="days-title" class="reveal">Four days, as the commit log tells it</h2>
+  <div class="days-grid">
+    <figure class="days-photo reveal">
+      <img src="/blog/img/director-review.jpg" alt="Director review queue with an idea card showing problem, value and an approve button" width="1800" height="857" loading="lazy">
+      <figcaption>The director's review queue: approve or reject with a reason, logged to the ledger.</figcaption>
+    </figure>
+    <p class="days-name reveal">Commits</p>
+    <table class="days-table reveal">
+      <tbody>
+        <tr><td>15 Oct</td><td>First commit, deploy pipeline, landing page in WebGL, every lifecycle view wired</td><td>18</td></tr>
+        <tr><td></td><td>React Bits interface and the dark factory look</td><td></td></tr>
+        <tr class="group"><td>16 Oct</td><td>Workspaces, invites, role-aware access, PR triage</td><td>32</td></tr>
+        <tr><td></td><td>Per-tenant hash chains, row-level security, token encryption</td><td></td></tr>
+        <tr><td></td><td>Headroom compression and pgvector memory</td><td></td></tr>
+        <tr class="group"><td>17 Oct</td><td>Idea Lab on real code with repomix and Bob</td><td>35</td></tr>
+        <tr><td></td><td>karkhana-agent, QA gate, DevOps, releases, Google Stitch</td><td></td></tr>
+        <tr><td></td><td>FalkorDB knowledge graph</td><td></td></tr>
+        <tr class="group"><td>18 Oct</td><td>OSV security gate, developer-raised PRs, credit caps</td><td>62</td></tr>
+        <tr><td></td><td>CI/CD, deployments, releases, the no-login demo</td><td></td></tr>
+        <tr class="group"><td>19 Oct</td><td>Benchmark suite, gate hardening, Firebase Hosting</td><td>live</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<article class="chapter" data-entry="1">
+  <aside class="reveal"><span class="when">Day zero</span><span>Before the first commit</span><span class="hash">Entry hash <b>computing</b></span></aside>
+  <div>
+    <h2 class="reveal">Choosing what not to build</h2>
+    <div class="body reveal" data-text>
+      <p>The first evening went on decisions, not code. We read the feature list as a contract and wrote tests against its exact "done when" checks. We asked four questions that shape a repository: how big is the team, what Google Cloud state do we start from, which Google template do we build on, which stack. The answers were five or more people, no project yet, the Agent Starter Pack, and Python with React.</p>
+      <p>Then we checked which Gemini models actually exist this week. Gemini 2.5 was set to retire on 16 October, in the middle of the hackathon, so we chose <strong>Gemini 3 Flash</strong> for the coding loop and Pro for planning and review, and added a <strong>make check-models</strong> command so nobody ships a retired model ID.</p>
+      <h3>The stack, and why each piece earned its place</h3>
+      <ul>
+        <li><strong>FastAPI on Cloud Run</strong> as one modular monolith: layers import downward only, and it scales to zero.</li>
+        <li><strong>Cloud SQL Postgres with pgvector</strong>: tenants, the ledger and vector search in one database, one fewer service to run.</li>
+        <li><strong>Firebase Auth</strong> for sign-in, but the role always comes from our database, never from the token, so nobody can promote themselves.</li>
+        <li><strong>Google ADK</strong> for the Coder: exactly five tools, list, read, edit, write and test. No shell, no network, no git.</li>
+        <li><strong>A hash-chained ledger</strong>: every approval, run and merge links to the one before it, so any edit is detectable.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<section class="bleed" aria-label="The landing page and the architecture studio">
+  <figure class="wide reveal"><img src="/blog/img/landing.jpg" alt="Software Karkhana landing page with the headline about autonomous and accountable work" width="1800" height="1012" loading="lazy"></figure>
+  <p class="colour reveal">Day one: a WebGL landing page and fifteen stations, each owned by a person.</p>
+  <figure class="reveal"><img src="/blog/img/architecture.jpg" alt="Architecture Studio with an ADR registry showing proposed and accepted decisions" width="1800" height="857" loading="lazy"></figure>
+  <p class="quote reveal">Fifteen stages, eight roles, one owner and one exit gate for each.</p>
+  <figure class="reveal"><video src="/blog/img/governance-loop.mp4" poster="/blog/img/governance-poster.jpg" muted loop playsinline autoplay preload="none" width="1280" height="720" aria-label="Screen recording of the governance ledger verifying its hash chain"></video></figure>
+</section>
+
+<article class="chapter" data-entry="2" style="padding-top: var(--section)">
+  <aside class="reveal"><span class="when">15 October</span><span>18 commits</span><span class="hash">Entry hash <b>computing</b></span></aside>
+  <div>
+    <h2 class="reveal">A face before a factory</h2>
+    <div class="body reveal" data-text>
+      <p>Eshita's first commit landed at two in the morning together with the deploy pipeline: dedicated build service account, Cloud SQL deletion protection, and the build timeout raised so migrations and two deploys fit in one run. By the afternoon the repository held the whole lifecycle as screens, and by night every one of them was wired into a single shell.</p>
+      <p>We spent real time on the look, because a control plane that people avoid opening governs nothing. The landing page got a WebGL laser flow, specular buttons and a live tracker; the app got a calm dark theme with React Bits backgrounds.</p>
+      <p class="pull">Challenge: a refactor to make the dashboard "workable" wiped the theme people already liked, cursor effect and sizing included.</p>
+      <p>We restored it and wrote down a rule we followed for the rest of the week: make it work without throwing away what already works. From then on every interface change kept the existing components and was judged on screen, not in the diff.</p>
+    </div>
+  </div>
+</article>
+
+<article class="chapter" data-entry="3">
+  <aside class="reveal"><span class="when">16 October</span><span>32 commits</span><span class="hash">Entry hash <b>computing</b></span></aside>
+  <div>
+    <h2 class="reveal">The enterprise day</h2>
+    <div class="body reveal" data-text>
+      <p>A factory for many teams needs walls between them. Nimesh brought idea approvals, invitations, access control, issues and PR review. We split hardening into parallel branches for auth, GitHub, stations and AI, then merged them back one at a time.</p>
+      <ul>
+        <li>GitHub OAuth tokens are encrypted at rest and never returned by the API.</li>
+        <li>Session tokens and per-run worker tokens use separate secrets, so one can never stand in for the other.</li>
+        <li>The ledger became one hash chain per tenant, anchored to a retention-locked Cloud Storage bucket outside the database.</li>
+        <li>Postgres row-level security became a second line of tenant isolation behind the application checks.</li>
+        <li>Headroom compression went in front of every model call, and workspace memory moved onto pgvector.</li>
+        <li>The linter backlog went from 164 findings to zero.</li>
+      </ul>
+      <p class="pull">Challenge: five people pushing at once. One pull request showed seventy changed files and a wall of merge conflicts.</p>
+      <p>The fix was boring and it worked: rebase on main, resolve file by file, push the rebased branch, check the merge state before asking anyone to review. We also learned to keep AI-authored commits under our own names, because the contributor list is part of the story judges read.</p>
+    </div>
+  </div>
+</article>
+
+<article class="chapter" data-entry="4">
+  <aside class="reveal"><span class="when">17 October</span><span>35 commits</span><span class="hash">Entry hash <b>computing</b></span></aside>
+  <div>
+    <h2 class="reveal">Deleting every fake screen</h2>
+    <div class="body reveal" data-text>
+      <p>This was the day the factory became real. We removed the fake PRD and ADR generators and replaced "coming soon" with working stations. Idea Lab now snapshots the actual repository with repomix, sends four specialist agents over it in parallel, and rejects any idea whose cited files do not exist. The approved idea drafts a PRD, an ERD and a backlog, and the PM approves the plan before any work starts.</p>
+      <p>Then came <strong>karkhana-agent</strong>, our own npm package. A developer pairs a laptop, the agent dials out and claims a job, creates a git worktree per story, runs a coding harness inside it and reports back through the same signed callback the cloud worker uses. IBM Bob and Claude Code are the first two harnesses; adding another is one registry entry.</p>
+      <p>The same day brought the QA gate with bug filing, DevOps pipelines on GitHub Actions, release records with evidence, Google Stitch in the designer's station, and a FalkorDB knowledge graph that projects the ledger into ADRs, components, tasks and lessons.</p>
+      <p class="pull">Challenge: using the factory on a real backend project showed three gaps in one evening.</p>
+      <ul>
+        <li><strong>Ideas were too small.</strong> The scan returned tweaks as "projects". We added product sizing and grouping, so related features bundle into one real project.</li>
+        <li><strong>Empty repositories broke the flow.</strong> Not everyone has a product yet, so greenfield products now start from the product setup alone.</li>
+        <li><strong>Unit tests failed and the PR still opened.</strong> The developer now steers the build: it pauses at each step, shows what the agent is given, and the developer raises the pull request.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<section class="showcase" aria-labelledby="try-title">
+  <h2 id="try-title" class="reveal">Try to rewrite our history</h2>
+  <p class="intro reveal">Every chapter on this page is a ledger entry, hashed in your browser exactly the way Software Karkhana hashes its evidence: SHA-256 of the previous hash plus the entry. Edit the entry below and watch the chain.</p>
+  <div class="states">
+    <p class="state-word reveal">Appended</p>
+    <div class="entry reveal" data-ui>
+      <div class="row1"><span><b>Entry 5</b> · stage.approve</span><span>Director · 18 Oct 06:12</span></div>
+      <p class="text">Merge pull request 10: OSV-Scanner dependency scans, findings, remediation and the merge gate.</p>
+      <div class="hashes"><span>prev <b data-h="prev5">computing</b></span><span>hash <b data-h="hash5">computing</b></span></div>
+      <div class="verdict"><span class="pill new">Appended under the advisory lock</span></div>
+    </div>
+    <p class="state-word reveal">Tampered</p>
+    <div class="entry reveal" id="live-entry" data-ui>
+      <div class="row1"><span><b>Entry 4</b> · chapter "Deleting every fake screen"</span><span>Your edit</span></div>
+      <label for="tamper" class="text" style="display:block">Change any word of this entry:</label>
+      <textarea id="tamper" spellcheck="false">Unit tests failed and the PR still opened. The developer now steers the build and raises the pull request.</textarea>
+      <div class="hashes"><span>stored hash <b id="stored4">computing</b></span><span>recomputed <b id="now4">computing</b></span></div>
+      <div class="verdict"><span class="pill" id="verdict4">Chain verified</span><button type="button" id="restore">Restore original</button></div>
+    </div>
+    <p class="state-word reveal">Verified</p>
+    <div class="entry reveal" data-ui>
+      <div class="row1"><span><b>Chain head</b> · 6 entries</span><span>Anchor gs://…-ledger-anchors</span></div>
+      <p class="text" id="head-text">Recomputed from genesis: every link intact, head matches the external anchor.</p>
+      <div class="hashes"><span>head <b id="head-hash">computing</b></span></div>
+      <div class="verdict"><span class="pill" id="head-verdict">Verified · anchors match</span></div>
+    </div>
+  </div>
+</section>
+
+<article class="chapter" data-entry="5" style="padding-top: var(--section)">
+  <aside class="reveal"><span class="when">18 October</span><span>62 commits</span><span class="hash">Entry hash <b>computing</b></span></aside>
+  <div>
+    <h2 class="reveal">Accountability, then delivery</h2>
+    <div class="body reveal" data-text>
+      <p>Our busiest day. OSV-Scanner now runs on every pull request, and a critical finding closes the gate until it is fixed or a signed, expiring waiver is recorded. The developer station learned Stop, Continue, folder choice, readable logs and a diff view that scales. Agent runs got hard credit caps, and a rule we like a lot: tests that cannot run are the environment's fault, not a reason to pay the agent for another attempt.</p>
+      <p>The afternoon went to delivery: deployments, environments, CI runs, health checks, recovery and failure diagnosis, a reuse-first pipeline setup with a Terraform plan guard, and product releases built from real records instead of mock state.</p>
+      <p>Finally the front door. A judge should not have to create an account to understand the product, so <strong>Launch Software Factory</strong> opens a no-login demo workspace, the fictional health plan "Arcwell Health", with a guided tour that spotlights each station and remembers where you stopped.</p>
+      <p class="pull">Challenge: parallel AI agents hit their session limit halfway through the CI/CD and infrastructure work.</p>
+      <p>We split the remaining work into smaller pieces with written status after each one, so any agent or teammate could pick up where the last one stopped. The same habit turned CI from red to green twice that day.</p>
+    </div>
+    <figure class="reveal">
+      <img src="/blog/img/incidents.jpg" alt="Feedback and incidents screen turning an incident into a bug and a lesson" width="1800" height="857" loading="lazy">
+      <figcaption>The learning loop: incident, bug, lesson, then into the next agent run's context.</figcaption>
+    </figure>
+  </div>
+</article>
+
+<article class="chapter" data-entry="6">
+  <aside class="reveal"><span class="when">19 October</span><span>Benchmarks and launch</span><span class="hash">Entry hash <b>computing</b></span></aside>
+  <div>
+    <h2 class="reveal">Measuring our own claims</h2>
+    <div class="body reveal" data-text>
+      <p>A platform that sells evidence needs evidence for itself. We wrote a benchmark suite that runs in CI as <strong>pytest -m bench</strong>, against real Postgres, the real worker, the real API and a live FalkorDB server. Every check has a known right answer, so the result is a count, not an opinion.</p>
+      <p>We attacked the ledger as an owner-level insider with eleven kinds of tampering, tried every illegal stage move for every role, forged session tokens and worker callbacks, fed the hallucination guard 1,629 fabricated quotes and planted defects behind a coder that always reports "All tests pass!".</p>
+      <p class="pull">Challenge: our own benchmark found that an agent could make pytest exit 0 without proving anything, by skipping every test or exiting early.</p>
+      <p>So we hardened the gate the same hour. Exit 0 now counts only when at least one test actually passed, and deleting a test that already existed fails the run. That is the factory working as intended: the benchmark found the gap, and the gate closed it.</p>
+      <p>The same day the frontend went live on Firebase Hosting.</p>
+    </div>
+  </div>
+</article>
+
+<section class="stat" aria-labelledby="stat-title">
+  <h2 id="stat-title" class="reveal">Attacks stopped</h2>
+  <div class="figure-wrap reveal">
+    <p class="figure">100<sup>%</sup></p>
+    <p class="caption">Of 27,700+ attacks, forgeries and fabricated outputs in our benchmark run of 18 October 2026, every one was caught or refused.</p>
+  </div>
+  <div class="breakdown reveal">
+    <div><strong>550/550</strong><span>ledger tampers detected</span></div>
+    <div><strong>25,222</strong><span>illegal gate moves refused</span></div>
+    <div><strong>1,629</strong><span>fabricated quotes caught</span></div>
+    <div><strong>0%</strong><span>false-done rate</span></div>
+  </div>
+  <p class="source">Source: tests/bench and reports/bench/results.json in the repository</p>
+</section>
+
+<section class="learn" id="learnings" aria-labelledby="learn-title">
+  <h2 id="learn-title" class="reveal">What we learned</h2>
+  <ol>
+    <li class="reveal"><strong>Put the trust in the plumbing, not the prompt.</strong><p>Every guarantee we are proud of is enforced by code the model never touches: the transition table, the signed callback, the verbatim quote check, the real test exit code. Prompts ask nicely; gates do not have to.</p></li>
+    <li class="reveal"><strong>Autonomy works at the size of one task.</strong><p>Agents were reliable on a single story with a clear brief and five confined tools. Everything bigger, a plan, a merge, a release, went better with a named person at the gate.</p></li>
+    <li class="reveal"><strong>Fake screens cost more than empty ones.</strong><p>Deleting mock generators felt like going backwards. It was the moment the product started telling the truth, and every honest empty state made the working ones more convincing.</p></li>
+    <li class="reveal"><strong>Use the factory to build the factory.</strong><p>Running a real backend project through our own stations surfaced more gaps in one evening than a day of reviewing code: too-small ideas, empty repositories, access errors, failing unit tests behind an open PR.</p></li>
+    <li class="reveal"><strong>Small work units survive limits.</strong><p>Rate limits, merge conflicts and tired humans all hurt less when work is cut into pieces with written status, so anyone, person or agent, can continue it.</p></li>
+    <li class="reveal"><strong>Benchmark your own claims before someone else does.</strong><p>The suite confirmed what held and found the one thing that did not. Fixing it took an hour; finding it in production would have cost the whole story.</p></li>
+  </ol>
+</section>
+
+<section class="names" aria-labelledby="names-title">
+  <h2 id="names-title" class="reveal">What we built on</h2>
+  <div class="cols reveal">
+    <ul><li>Google</li><li>Gemini 3 Flash and 3.1 Pro</li><li>Agent Development Kit</li><li>Cloud Run and Jobs</li><li>Cloud SQL</li><li>Firebase Auth and Hosting</li><li>Cloud Storage</li><li>Secret Manager</li><li>Google Stitch</li><li>OSV-Scanner</li><li>Google AX</li></ul>
+    <ul><li>Data</li><li>Postgres 16</li><li>pgvector</li><li>FalkorDB</li><li>Redis and Kafka</li></ul>
+    <ul><li>Agents</li><li>IBM Bob</li><li>Claude Code</li><li>PR-Agent</li><li>repomix</li><li>Headroom</li></ul>
+    <ul><li>Interface</li><li>React 18</li><li>Vite</li><li>Tailwind</li><li>React Bits</li><li>GSAP</li><li>Mermaid</li></ul>
+  </div>
+</section>
+
+<section aria-label="Open the factory">
+  <div class="strip">
+    <img src="/blog/img/governance.jpg" alt="Governance and audit screen listing chained ledger entries with hashes" width="1800" height="857" loading="lazy">
+    <img src="/blog/img/developer-pr.jpg" alt="Developer workspace with stories, pull requests and build controls" width="1800" height="857" loading="lazy">
+    <img src="/blog/img/security.jpg" alt="Security gate closed by a critical dependency finding" width="1800" height="857" loading="lazy">
+  </div>
+  <div class="band">
+    <p class="close reveal">The factory is open. Launch the demo workspace without an account and <a class="go" href="/">walk an idea all the way to release</a>, gate by gate.</p>
+    <p class="small reveal">Source code, docs and the benchmark suite: <a href="https://github.com/dhruvinsights/Software-Karkhana">github.com/dhruvinsights/Software-Karkhana</a><br>Built for the AI Builder Cup by Team Bhoomi.</p>
+    <div class="mark"><img src="/blog/img/logo.png" alt="" width="512" height="512" loading="lazy"></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="top">
+    <div class="notes"><span>Software Karkhana</span><span>Autonomous at the task level, accountable at the gate level.</span></div>
+    <a href="#top">Back to top</a>
+  </div>
+  <div></div>
+  <a class="big" href="/">software-karkhana.web.app</a>
+  <div class="meta">
+    <div><a href="https://github.com/dhruvinsights/Software-Karkhana">GitHub</a> · <a href="/">Live demo</a></div>
+    <div>Written by Team Bhoomi · screenshots from the built-in demo workspace</div>
+    <div>India, October 2026</div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  root.classList.add('js');
+  requestAnimationFrame(function () { document.querySelector('.hero').classList.add('loaded'); });
+
+  // Entrances: each part rises once as its section enters, staggered within the section.
+  var els = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var sibs = Array.prototype.filter.call(e.target.parentElement.children, function (c) { return c.classList.contains('reveal'); });
+        e.target.style.transitionDelay = Math.min(sibs.indexOf(e.target), 5) * 75 + 'ms';
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      });
+    }, { rootMargin: '0px 0px -8% 0px' });
+    els.forEach(function (el) { io.observe(el); });
+  } else {
+    els.forEach(function (el) { el.classList.add('in'); });
+  }
+
+  // The ledger: SHA-256(prev_hash + entry text), exactly as the platform links its evidence.
+  if (!window.crypto || !crypto.subtle) return;
+  var GENESIS = '0'.repeat(64);
+  var enc = new TextEncoder();
+  function sha(s) {
+    return crypto.subtle.digest('SHA-256', enc.encode(s)).then(function (b) {
+      return Array.prototype.map.call(new Uint8Array(b), function (x) { return x.toString(16).padStart(2, '0'); }).join('');
+    });
+  }
+  function short(h) { return h.slice(0, 8) + ' ' + h.slice(8, 16) + ' … ' + h.slice(-8); }
+  var chapters = Array.prototype.slice.call(document.querySelectorAll('[data-entry]'));
+  var texts = chapters.map(function (c) { return c.querySelector('[data-text]').textContent.replace(/\s+/g, ' ').trim(); });
+  var tamper = document.getElementById('tamper');
+  var original = tamper.value;
+  var stored = [];
+
+  function chain(list) {
+    var hashes = [];
+    return list.reduce(function (p, t) {
+      return p.then(function (prev) { return sha(prev + t).then(function (h) { hashes.push(h); return h; }); });
+    }, Promise.resolve(GENESIS)).then(function () { return hashes; });
+  }
+  function withEdit() { var l = texts.slice(); l[3] = texts[3] + '\n' + tamper.value; return l; }
+
+  function render(now) {
+    var firstBad = -1;
+    chapters.forEach(function (c, i) {
+      var el = c.querySelector('.hash');
+      var bad = now[i] !== stored[i];
+      if (bad && firstBad < 0) firstBad = i;
+      el.classList.toggle('broken', bad);
+      el.querySelector('b').textContent = bad ? 'broken, was ' + short(stored[i]) : short(stored[i]);
+    });
+    document.getElementById('stored4').textContent = short(stored[3]);
+    document.getElementById('now4').textContent = short(now[3]);
+    var ok = firstBad < 0;
+    var v = document.getElementById('verdict4');
+    v.textContent = ok ? 'Chain verified' : 'Content was altered at entry ' + (firstBad + 1);
+    v.classList.toggle('bad', !ok);
+    document.getElementById('live-entry').classList.toggle('broken', !ok);
+    var head = document.getElementById('head-verdict');
+    head.textContent = ok ? 'Verified · anchors match' : 'Head differs from the external anchor';
+    head.classList.toggle('bad', !ok);
+    document.getElementById('head-hash').textContent = short(now[now.length - 1]);
+    document.getElementById('head-text').textContent = ok
+      ? 'Recomputed from genesis: every link intact, head matches the external anchor.'
+      : 'Recomputed from genesis: entries ' + (firstBad + 1) + ' to ' + now.length + ' no longer link, and the head no longer matches its anchor.';
+  }
+
+  chain(withEdit()).then(function (h) {
+    stored = h;
+    document.querySelector('[data-h="prev5"]').textContent = short(h[3]);
+    document.querySelector('[data-h="hash5"]').textContent = short(h[4]);
+    render(h);
+  });
+  var pending;
+  tamper.addEventListener('input', function () {
+    clearTimeout(pending);
+    pending = setTimeout(function () { chain(withEdit()).then(render); }, 60);
+  });
+  document.getElementById('restore').addEventListener('click', function () {
+    tamper.value = original;
+    chain(withEdit()).then(render);
+  });
+})();
+</script>
+</body>
+</html>
