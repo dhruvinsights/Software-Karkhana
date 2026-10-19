@@ -19,7 +19,7 @@ A governed AI software factory. AI agents do the work one task at a time; produc
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688?logo=fastapi&logoColor=white)](app/)
 [![React](https://img.shields.io/badge/React%2018-Vite%20%C2%B7%20Tailwind%20v4-61DAFB?logo=react&logoColor=black)](web/)
 [![Postgres](https://img.shields.io/badge/Postgres%2016-pgvector-336791?logo=postgresql&logoColor=white)](db/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](#-license)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
 **[🌐 Live site](https://software-karkhana.web.app)** &nbsp;·&nbsp;
 **[🎬 Demo video](#-see-it-in-three-minutes)** &nbsp;·&nbsp;
@@ -395,6 +395,6 @@ docs/               architecture, FalkorDB, ledger, runbooks and guides
 
 ## 📄 License
 
-Copyright © 2026 Software Karkhana authors. Licensed under the Apache License, Version 2.0. Third-party notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). FalkorDB is used under its own license; see [`docs/FALKORDB.md`](docs/FALKORDB.md#license-note) for alternatives.
+Copyright © 2026 Software Karkhana authors. Licensed under the [Apache License, Version 2.0](LICENSE). Third-party notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). FalkorDB is used under its own license; see [`docs/FALKORDB.md`](docs/FALKORDB.md#license-note) for alternatives.
 
 <div align="center"><sub>Autonomous where it's safe. Accountable where it matters.</sub></div>
