@@ -1,6 +1,6 @@
 # Engineering Intelligence Graph — FalkorDB Integration
 
-> **Audience**: contributors, hackathon judges, future engineers swapping the backend.
+> **Audience**: contributors, reviewers and engineers swapping the backend.
 > **Not in main README** by design — this is implementation detail.
 
 ---
@@ -206,7 +206,7 @@ graph = [
 ## License note
 
 FalkorDB core is **SSPL v1** — not OSI-certified open source.  This is fine
-for hackathon, internal tooling, and non-SaaS deployments.  If Software
+for internal tooling and non-SaaS deployments.  If Software
 Karkhana becomes a hosted SaaS offering, replace with:
 
 - **Kuzu** (`kuzu>=0.7.0`, Apache 2.0, embedded, no Redis/server needed)

@@ -1,337 +1,400 @@
-# Software Karkhana
-
 <div align="center">
 
-<h3>Creating an Enterprise Platform that Connects Teams from Idea to Product</h3>
+<img src="docs/assets/karkhana-logo-512.png" alt="Software Karkhana logo" width="110" />
 
-<p align="center">
-  <b>Bringing ideas to solution with the current systems enterprises follow, powered by a customized, evidence-backed AI control plane.</b>
-</p>
+# Software Karkhana
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![FastAPI](https://img.shields.io/badge/Control%20Plane-FastAPI%20%7C%20Python%203.11-009688.svg)](https://fastapi.tiangolo.com)
-[![React 18 + Vite](https://img.shields.io/badge/Web%20Client-React%2018%20%7C%20Vite%20%7C%20Tailwind%20v4-61DAFB.svg)](web/)
-[![PostgreSQL 16 + pgvector](https://img.shields.io/badge/Storage-Postgres%2016%20%2B%20pgvector-336791.svg)](db/)
-[![Ledger Verification](https://img.shields.io/badge/Ledger-SHA--256%20Hash%20Chained-success.svg)](app/ledger.py)
-[![Architecture: Google Cloud Run](https://img.shields.io/badge/Cloud-Google%20Cloud%20Run%20%7C%20Jobs-4285F4.svg)](cloudbuild.yaml)
+### Autonomous where it's safe. *Accountable where it matters.*
+
+A governed AI software factory. AI agents do the work one task at a time; product, design, architecture, engineering, QA and security share one workspace; and a named person signs every decision on a ledger anyone can verify.
 
 <br/>
 
-[**🚀 Launch Workspace**](http://localhost:5173) &nbsp;&bull;&nbsp;
-[**📖 Architecture Blueprint**](docs/Software_Karkhana_Complete_Project_Blueprint.md) &nbsp;&bull;&nbsp;
-[**🛠️ Local Quickstart**](#-quick-start--local-development) &nbsp;&bull;&nbsp;
-[**🏛️ Role Matrix**](#-role-based-matrix--governance) &nbsp;&bull;&nbsp;
-[**📜 Build Decisions**](docs/BUILD_LOG.md)
+[![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Cloud%20Run%20%C2%B7%20Cloud%20SQL%20%C2%B7%20Firebase-4285F4?logo=googlecloud&logoColor=white)](#-built-on-google-cloud)
+[![Gemini](https://img.shields.io/badge/Gemini%203-Vertex%20AI%20%C2%B7%20ADK-8E75B2?logo=googlegemini&logoColor=white)](#-built-on-google-cloud)
+[![FalkorDB](https://img.shields.io/badge/FalkorDB-knowledge%20graph-FF4438?logo=redis&logoColor=white)](#-falkordb-the-engineering-intelligence-graph)
+[![Ledger](https://img.shields.io/badge/Ledger-SHA--256%20hash%20chain-2EA44F)](#-the-evidence-ledger)
+[![npm](https://img.shields.io/npm/v/karkhana-agent?label=karkhana-agent&logo=npm&color=CB3837)](https://www.npmjs.com/package/karkhana-agent)
+<br/>
+[![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688?logo=fastapi&logoColor=white)](app/)
+[![React](https://img.shields.io/badge/React%2018-Vite%20%C2%B7%20Tailwind%20v4-61DAFB?logo=react&logoColor=black)](web/)
+[![Postgres](https://img.shields.io/badge/Postgres%2016-pgvector-336791?logo=postgresql&logoColor=white)](db/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](#-license)
+
+**[🌐 Live site](https://software-karkhana.web.app)** &nbsp;·&nbsp;
+**[🎬 Demo video](#-see-it-in-three-minutes)** &nbsp;·&nbsp;
+**[🏛️ Architecture](#-system-architecture)** &nbsp;·&nbsp;
+**[🕸️ FalkorDB](#-falkordb-the-engineering-intelligence-graph)** &nbsp;·&nbsp;
+**[⚡ Quick start](#-quick-start)** &nbsp;·&nbsp;
+**[📚 Docs](#-documentation)**
 
 </div>
 
 ---
 
-## 🌟 Executive Overview
+## 🎬 See it in three minutes
 
-**Software Karkhana** is an enterprise-grade autonomous software delivery factory and control plane. It bridges the critical divide between business intent, system architecture, human expertise, and autonomous AI agents. 
+<div align="center">
 
-Rather than acting as a disjointed chat wrapper or a standalone coding bot, Software Karkhana coordinates the **complete engineering lifecycle**—from opportunity discovery and architectural review to deterministic code generation, invariant verification, automated QA, security signoff, and post-release learning loops.
+<a href="web/public/video/karkhana-explainer.mp4">
+  <img src="docs/assets/readme/demo-preview.gif" alt="Software Karkhana demo: Ideas Hub, Project Hub, pull requests, QA, releases and the connected flow" width="88%" />
+</a>
 
-Every stage of development produces tamper-evident, cryptographically chained records in an immutable **SHA-256 Evidence Ledger**, ensuring zero hallucination, full auditability, and absolute governance at enterprise scale.
+<sub>▶️ Click for the full three-minute explainer with narration (<a href="web/public/video/karkhana-explainer.mp4">MP4</a>), or watch it autoplay on the <a href="https://software-karkhana.web.app">landing page</a>.</sub>
 
----
-
-## 🛑 The Enterprise Problem vs. The Karkhana Solution
-
-| Dimension | The Disconnected Enterprise Silo (Today) | The Software Karkhana Factory Model |
-|:---|:---|:---|
-| **Context Fragmentation** | PMs in Jira, Designers in Figma, Architects in Confluence, Developers in IDEs, QA in TestRail, Security in SonarQube. Context is lost at every handoff. | **Single Unified Project Graph**: Shared workspace context, architectural rules, and acceptance criteria travel with every ticket, story, and agent task. |
-| **AI Verification** | Agents write code blindly and claim "done" with no deterministic proof or invariant checks. | **Evidence-Backed Verification**: Completion requires automated test executions, diff reviews, and cryptographic ledger proofs. |
-| **Governance & Gates** | High-impact approvals (architecture, security waivers, production deployments) happen in unstructured email/chat threads. | **Strict Phase-Gate Verification**: Role-enforced gates backed by cryptographic signatures. Directors, Architects, and AppSec leads hold explicit authority. |
-| **Knowledge Retention** | Post-mortems and architectural lessons fade into forgotten wikis; mistakes are repeated on subsequent projects. | **pgvector Knowledge Loops**: Verified learnings and architectural patterns are automatically retrieved and fed into agent prompts and design reviews. |
-| **Audit & Compliance** | Reconstructing who approved a feature or modified a sensitive dependency requires days of manual log aggregation. | **SHA-256 Hash-Chained Evidence Ledger**: Every transition, approval, tool execution, and diff is immutably recorded with advisory-locked integrity. |
+</div>
 
 ---
 
-## 🔄 End-to-End Enterprise Flow & Parallel Execution
+## ✨ Why Software Karkhana
 
-Software Karkhana orchestrates software delivery across parallel, interconnected studios, ensuring continuous alignment between business stakeholders, technical specialists, and automated workers:
+AI can already write code. What it cannot do yet is **earn trust**. Teams copy context between Jira, Figma, Confluence and GitHub, an agent says "done" with nothing to back it up, approvals get lost in chat threads, and last quarter's incident is forgotten by the next sprint.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                             1. IDEA DISCOVERY & ASSESSMENT                                   │
-│  Product Manager captures opportunity ──► Multi-agent JTBD & Viability Scoring ──► Evidence Citing Dossier   │
-└──────────────────────────────────────────────────────┬──────────────────────────────────────────────────────┘
-                                                       │
-                                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                             2. EXECUTIVE PHASE-GATE REVIEW                                  │
-│  Director/Executive reviews score & risks ──► Budget & ROI Validation ──► Cryptographic Gate Signoff         │
-└──────────────────────────────────────────────────────┬──────────────────────────────────────────────────────┘
-                                                       │
-                                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                             3. PLANNING & BACKLOG DECOMPOSITION                              │
-│  Epics, User Stories, and Milestones created ──► Invariant Rules Defined ──► Task Dependency Graph Set       │
-└───────────────────────┬──────────────────────────────────────────────────────────────┬──────────────────────┘
-                        │                                                              │
-                        ▼ (Parallel Track A)                                           ▼ (Parallel Track B)
-┌─────────────────────────────────────────────────┐           ┌───────────────────────────────────────────────┐
-│              4A. DESIGN STUDIO                  │           │           4B. ARCHITECTURE STUDIO             │
-│  • Visual Flow Mapping & Responsive Canvas      │           │  • Architecture Decision Records (ADRs)       │
-│  • Design Token Extraction & Component Specs    │           │  • API Contracts (OpenAPI/gRPC), Threat Model │
-└───────────────────────┬─────────────────────────┘           └───────────────────────┬───────────────────────┘
-                        │                                                             │
-                        └──────────────────────────────┬──────────────────────────────┘
-                                                       │
-                                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                             5. AUTONOMOUS DEVELOPER WORKSPACE                               │
-│  Confined Agent Workers (ADK Coder) ──► Tool Execution & Patch Generation ──► Real Pytest Verification       │
-│  HMAC Callback to Control Plane ──► Pull Request Opened with Diff Inspector & Automated Review Triage        │
-└──────────────────────────────────────────────────────┬──────────────────────────────────────────────────────┘
-                                                       │
-                        ┌──────────────────────────────┴──────────────────────────────┐
-                        ▼ (Parallel Track C)                                          ▼ (Parallel Track D)
-┌─────────────────────────────────────────────────┐           ┌───────────────────────────────────────────────┐
-│           6A. QA & DETERMINISTIC VERIFICATION   │           │           6B. APPSEC & SECURITY STUDIO        │
-│  • Automated Test Plan Generation               │           │  • SAST / DAST Vulnerability Scans            │
-│  • Scenario Matrix Execution (E2E, API, Unit)   │           │  • SBOM Compliance & Cosign Key Verification  │
-│  • Defect Triage & Deterministic Signoff        │           │  • Security Waivers & Threat Remediation      │
-└───────────────────────┬─────────────────────────┘           └───────────────────────┬───────────────────────┘
-                        │                                                             │
-                        └──────────────────────────────┬──────────────────────────────┘
-                                                       │
-                                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                             7. DEVOPS & MULTI-CLOUD RELEASE                                 │
-│  Staging Deployment ──► Production Gate Signoff ──► Blue/Green Rollout ──► Automated Rollback Plans         │
-└──────────────────────────────────────────────────────┬──────────────────────────────────────────────────────┘
-                                                       │
-                                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                             8. TELEMETRY, FEEDBACK & KNOWLEDGE LOOPS                        │
-│  Incident Capture & RCA ──► Verified Lessons Promoted ──► pgvector Semantic Memory for Future Projects      │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+*Karkhana* is the Hindi and Urdu word for a workshop where many hands make one thing. Software Karkhana is that workshop for software:
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 🤖 Autonomous at task level
+Agents plan, code, test, review and scan **one task at a time** inside a confined sandbox, with five tools and real test runs. Nothing runs unattended at project scale.
+
+</td>
+<td width="33%" valign="top">
+
+### 🧑‍⚖️ Accountable at gate level
+**15 stages, 8 roles, server-enforced gates.** No agent approves its own change. A named person signs each gate, and the server refuses anything out of order.
+
+</td>
+<td width="33%" valign="top">
+
+### 🔗 Proof, not promises
+"Done" means a **real test exit code and a diff**. Every transition, approval and run lands on a **SHA-256 hash-chained ledger** you can verify in one click.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 🕸️ Shared context graph
+A **FalkorDB** knowledge graph links products, epics, tasks, files, ADRs and lessons, so each agent gets only what it needs and two agents never overwrite one file.
+
+</td>
+<td valign="top">
+
+### ☁️ Google Cloud native
+**Gemini 3 on Vertex AI, Google ADK, Cloud Run + Jobs, Cloud SQL, Firebase, Stitch, AX, OSV-Scanner**: one service per job, scaled to zero when idle.
+
+</td>
+<td valign="top">
+
+### 💻 Build on your own machine
+The **`karkhana-agent`** npm package connects a developer laptop. Your coding agent (Bob or Claude Code) builds the story locally; the platform reviews it and opens the PR.
+
+</td>
+</tr>
+</table>
+
+| | The disconnected enterprise | With Software Karkhana |
+|:--|:--|:--|
+| **Context** | PM in Jira, design in Figma, architects in Confluence, devs in the IDE. Context dies at every handoff. | One project graph. Acceptance criteria, ADRs and rules travel with every story and agent task. |
+| **AI output** | An agent says "done" and nobody can tell what it checked. | Completion needs a test run, a diff and evidence. Then a named person signs. |
+| **Approvals** | Architecture, security waivers and releases are approved in email and chat. | Role-enforced gates. Director, Architect, AppSec and QA each hold explicit authority. |
+| **Learning** | Post-mortems fade into wikis; mistakes repeat. | Verified lessons are retrieved (pgvector + graph) and injected into the next agent run. |
+| **Audit** | Finding who approved a change takes days of log digging. | Every action is a block in a SHA-256 chain, anchored in Cloud Storage. |
 
 ---
 
-## 👥 Role-Based Matrix & Governance
+## 📸 Inside the product
 
-Software Karkhana provides personalized, role-aware workspaces with strict authorization boundaries (`app/auth.py`):
-
-```
-                                      ROLE-BASED GOVERNANCE MATRIX
-   ┌───────────────────┬──────────────────────────────────────────────────────┬──────────────────────────────┐
-   │ Enterprise Role   │ Primary Responsibilities                             │ Enforced Authority / Gates   │
-   ├───────────────────┼──────────────────────────────────────────────────────┼──────────────────────────────┤
-   │ 👔 Executive      │ Portfolio health, capital allocation, risk review    │ Phase-gate approval (Stage 3)│
-   │ 📋 Product Mgr    │ Opportunity sizing, PRDs, backlog prioritization     │ Stage transition requests    │
-   │ 🏛️ Sys Architect  │ ADR authoring, API contracts, boundary enforcement   │ Architecture Signoff         │
-   │ 🎨 Design Lead    │ Component tokens, user flow mapping, UX review       │ Design Ready Signoff         │
-   │ 💻 Staff/Sr Dev   │ Agent oversight, diff inspection, PR merge triage    │ Code Review & Merge Gate     │
-   │ 🧪 QA Lead        │ Test matrix generation, defect signoff, E2E suites   │ QA Signoff Gate              │
-   │ 🛡️ AppSec Eng     │ SBOM validation, CVE triage, Cosign verification     │ Security Waiver & Release    │
-   │ 🚀 DevOps / SRE   │ Pipeline orchestration, canary rollouts, rollbacks   │ Production Deployment Gate   │
-   └───────────────────┴──────────────────────────────────────────────────────┴──────────────────────────────┘
-```
+<table>
+<tr>
+<td width="50%"><img src="web/public/blog/img/overview.jpg" alt="Factory overview" /><br/><sub><b>Factory overview</b>: one home for every product, project, PR and idea, with live counts.</sub></td>
+<td width="50%"><img src="web/public/blog/img/director-review.jpg" alt="Director review of ideas" /><br/><sub><b>Director review</b>: problem, value and risk on one card; approve or reject with a reason.</sub></td>
+</tr>
+<tr>
+<td><img src="web/public/blog/img/developer-pr.jpg" alt="Developer workspace and PR triage" /><br/><sub><b>Developer workspace</b>: assign a story to an agent or your machine; AI findings must be triaged before merge.</sub></td>
+<td><img src="web/public/blog/img/architecture.jpg" alt="Architecture Studio" /><br/><sub><b>Architecture Studio</b>: ADR registry and service contracts every task is built against.</sub></td>
+</tr>
+<tr>
+<td><img src="web/public/blog/img/security.jpg" alt="Security and assurance" /><br/><sub><b>Security gate</b>: OSV-Scanner on every PR; a CRITICAL finding closes the gate until fixed or waived.</sub></td>
+<td><img src="web/public/blog/img/governance.jpg" alt="Governance and audit ledger" /><br/><sub><b>Governance and audit</b>: every approval, run and merge is a chained row; verify recomputes every hash.</sub></td>
+</tr>
+</table>
 
 ---
 
-## 🧩 Complete Feature Catalog (15 Core Studios)
+## 🔄 How work moves
 
-### 1. Public Marketing & Discovery Experience
-- Minimalist text-only **Software Karkhana** identity following the Google DeepMind dark aesthetic.
-- Luminous React Bits Pro visual suite (Shader Cards, Bento Grids, Aurora Bloom, Contact Sheets).
-- Progressive, Slack-style onboarding wizard with zero-mock-noise defaults.
+Many products and projects share **one workspace, one context and one ledger**, moving through **15 gated stages in five phases** (Plan → Build → Verify → Ship → Learn). Each stage has an owner role and an exit gate; design runs in parallel with architecture, and QA in parallel with security.
 
-### 2. Idea & Opportunity Validation Studio (`IdeaValidationView.tsx`)
-- Structured opportunity scoring across **Value**, **Usability**, **Feasibility**, and **Viability** dimensions.
-- Grounded citations and verbatim quote verification from customer transcripts and market data.
-- Comparison matrix against existing product capabilities.
+<p align="center"><img src="docs/assets/readme/platform-flow.jpg" alt="Platform flow: one workspace, 15 stages in five phases, autonomy modes" width="100%" /></p>
 
-### 3. Executive Portfolio & Governance Center (`ExecutivePortfolioView.tsx`)
-- Enterprise portfolio health dashboard with real-time risk indicators and budget burn rates.
-- Multi-project phase-gate approval queues with audit-trail inspection.
-- Policy enforcement engine ensuring non-bypassable compliance criteria.
+**An end-to-end example**: a health plan ships a FHIR Prior Authorization API, from idea to release, with six human gates and every step on the ledger.
 
-### 4. Product Workspace & Project Hub (`ProjectHubView.tsx`)
-- Long-lived product context store with automated versioning.
-- Cross-functional team provisioning and RBAC permission assignment.
-- Repository and tool adapter management (GitHub, Google Cloud, Issue Trackers).
+<p align="center"><img src="docs/assets/readme/use-case-flow.jpg" alt="End-to-end use case across product, director, design, developer, QA and release" width="100%" /></p>
 
-### 5. Planning, Roadmap & Backlog Studio (`PlanningRoadmapView.tsx`)
-- Hierarchical breakdown: Epics → User Stories → Tasks → Agent Runs.
-- Milestone tracking, dependency graph visualization, and critical-path alerts.
-- Immutable decision logs linked directly to project execution graphs.
+<details>
+<summary><b>The 15 stages and who owns them</b></summary>
 
-### 6. Design & Prototyping Studio (`DesignStudioView.tsx`)
-- Interactive responsive canvas for user journey and flow mapping.
-- Design token extraction and shared CSS token contracts.
-- UX review gates preventing developer handoff before visual alignment.
+| # | Phase | Stage | Owner | Exit gate |
+|:-:|:--|:--|:--|:--|
+| 1 | Plan | Initiate and evaluate | Product manager | Director approval |
+| 2 | Plan | Onboard the team | Product manager | Required roles filled |
+| 3 | Plan | Design and prototype | Designer | PM and designer approval |
+| 4 | Plan | Architecture and plan | Architect | Architect sign-off |
+| 5 | Plan | Plan the work | Tech lead, PM | Definition of ready |
+| 6 | Build | Prepare dev environment | Platform | Config pack approved |
+| 7 | Build | Implement | Developers and agents | Ready for validation |
+| 8 | Build | Validate | Platform | Validation report attached |
+| 9 | Build | Branch and pull request | Developer | PR opened |
+| 10 | Build | Review and merge | Developer, reviewers | All AI comments triaged |
+| 11 | Verify | QA and QC | QA engineers | QA checklist complete |
+| 12 | Verify | Security and pen-testing | Security team | Security sign-off |
+| 13 | Ship | CI/CD and deploy prep | DevOps | Deployment readiness |
+| 14 | Ship | Release and production | Release team | Release approval |
+| 15 | Learn | Feedback and learning | Everyone | Continuous |
 
-### 7. Architecture & System Design Studio (`ArchitectureStudioView.tsx`)
-- Formal Architecture Decision Record (ADR) registry with versioned signoffs.
-- OpenAPI & gRPC contract registry with breaking-change validation.
-- Architectural threat maps and cross-service boundary definitions.
+Autonomy is configurable per organization, workspace, project, team and task (*Manual → AI-assisted → Approval-required → Automated → Disabled*). A lower level may tighten policy but never silently loosen it.
 
-### 8. Developer Workspace & Agent Control Plane (`DeveloperWorkspaceView.tsx`)
-- Workspace-confined autonomous agent workers executing tool chains in isolated sandboxes.
-- Side-by-side patch inspector with syntax highlighting and real test suite logs.
-- Pull request publisher with HMAC authentication and commit status reporting.
-
-### 9. QA & Deterministic Verification Studio (`QAVerificationView.tsx`)
-- AI-assisted test plan generator creating comprehensive positive, negative, and edge-case suites.
-- Automated test execution engine reporting exact exit codes and stack traces.
-- Defect tracker with automatic repro step synthesis and QA signoff locks.
-
-### 10. Security & AppSec Studio (`SecurityAppSecView.tsx`)
-- Real-time Dependency vulnerability audit and CVE severity triage.
-- Software Bill of Materials (SBOM) verification and Cosign cryptographic signature checks.
-- Formally signed security waivers with expiry deadlines and named accountability.
-
-### 11. DevOps & CI/CD Pipelines (`DevOpsPipelinesView.tsx`)
-- Visual multi-stage deployment pipeline monitoring.
-- Environment drift detection between Staging, Pre-Prod, and Multi-Cloud Production.
-- Health telemetry and canary release validation.
-
-### 12. Release Management Studio (`ReleaseManagementView.tsx`)
-- Release candidate bundling with automated changelog and artifact provenance.
-- One-click rollback automation with predefined safety procedures.
-- Production readiness gate checklists ensuring 100% prerequisite closure.
-
-### 13. Feedback & Incident Command (`FeedbackIncidentsView.tsx`)
-- Production incident triage, root-cause analysis (RCA), and timeline reconstruction.
-- Customer sentiment and telemetry trend aggregation.
-- Direct conversion of incident learnings into prevention tasks.
-
-### 14. Knowledge & Learning Engine (`KnowledgeLearningView.tsx`)
-- `pgvector`-powered semantic memory storing verified engineering lessons.
-- Automated citation enrichment from the production database.
-- Proactive warning prompts injected into agent runs when similar historical pitfalls are detected.
-
-### 15. Workflow Administration & Invariant Rules (`WorkflowAdminView.tsx`)
-- Configurable stage transition graphs with custom prerequisites.
-- Audit event explorer with cryptographic chain verification tools.
-- Team capacity, worker lease monitoring, and quota management.
+</details>
 
 ---
 
-## 🏛️ Technical Architecture
+## 🏛️ System architecture
 
-```
-Browser Client (React 18, Vite, Tailwind v4, Zustand Store)
-   │  HTTPS / Firebase Auth Token
-   ▼
-Cloud Run: Karkhana Control Plane (FastAPI / Python 3.11)
-   ├─ app/auth.py        IAM Token Verification → Role Mapping (Cloud SQL Postgres)
-   ├─ app/process.py     15 Stages + Strict Transition State Machine
-   ├─ app/ledger.py      SHA-256 Hash Chain & Advisory-Locked Appends
-   ├─ app/ai/evaluator   Gemini / Ollama Structured Schema & Verbatim Quote Checks
-   ├─ app/memory.py      pgvector Semantic Search over Verified Learnings
-   └─ app/runner/        ADR-001 Runner Contract: Local Subprocess / Cloud Run Jobs
-           │ start(run) with RUN_ID + Per-Run HMAC Token
-           ▼
-Cloud Run Job: Karkhana Worker Sandbox
-   ├─ Read-only Git Clone
-   ├─ ADK Coder Agent (5 Workspace-Confined Tools: list, read, edit, write, test)
-   ├─ Real Test Execution (pytest / npm test in isolated container)
-   ├─ ADK Reviewer (Typed Output & Review Findings)
-   └─ HMAC Callback to Control Plane with Patch & Verified Exit Code
-           ▼
-Control Plane Actions: Git Branch Creation, Pull Request, Commit Status, Ledger Commit
+A **modular-monolith control plane on Cloud Run**, a **sandboxed execution plane**, **Gemini on Vertex AI**, and evidence in **Cloud SQL**. Layers import downward only, and the boundaries are enforced in CI with import-linter.
+
+<p align="center"><img src="docs/assets/readme/system-architecture.jpg" alt="System architecture: clients, edge and identity, Cloud Run control plane, execution plane, AI layer, data and delivery" width="100%" /></p>
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    SPA[React 18 SPA<br/>Firebase Hosting]
+    CLI[karkhana-agent<br/>developer laptop]
+    GH[GitHub]
+  end
+  subgraph CP[Control plane · Cloud Run · FastAPI]
+    API[35 routers] --> SVC[Services] --> FEAT[ADK agents · PR review · RAG] --> K[Kernel<br/>15-stage machine · ledger · auth]
+  end
+  subgraph EX[Execution plane]
+    JOB[Cloud Run Job<br/>ADK Coder + Reviewer]
+    AX[Google AX on GKE]
+    DEV[Device runner]
+  end
+  subgraph Data
+    SQL[(Cloud SQL Postgres<br/>pgvector · ledger)]
+    FDB[(FalkorDB graph)]
+    GCS[(Cloud Storage<br/>ledger anchors)]
+  end
+  GEM{{Gemini 3 · Vertex AI}}
+  SPA -->|Firebase ID token| API
+  CLI -->|claim jobs| API
+  GH -->|webhooks| API
+  K -->|start run + HMAC token| JOB & AX & DEV
+  JOB & DEV -->|HMAC callback| API
+  JOB --> GEM
+  FEAT --> GEM
+  K --> SQL & FDB & GCS
 ```
 
+<details>
+<summary><b>What each layer does</b></summary>
+
+| Layer | Responsibility |
+|:--|:--|
+| **API** | 35 routers in 7 domains: identity, tenancy, product and ideas, delivery, code review, knowledge, chat. |
+| **Services** | Parallel planner, QA agent, design handoff, OSV scan, repo context, releases, realtime. |
+| **Features** | ADK agents, PR review engine, runner contract, RAG memory, Headroom context compression. |
+| **Kernel** | 15-stage state machine, access and roles, hash-chained ledger, auth, config. |
+| **Execution plane** | Runner contract (ADR-001): Cloud Run Job, Google AX task, device runner or local subprocess. Read-only clone, five confined tools, real tests, HMAC-signed callback. |
+| **AI layer** | Gemini 3 Flash for the coding loop, Gemini 3.1 Pro for planning and review, Gemini embeddings; Ollama, Claude and IBM Bob as provider adapters. |
+
+</details>
+
 ---
 
-## 🔒 The Cryptographic Evidence Ledger
+## 🕸️ FalkorDB: the engineering intelligence graph
 
-At the heart of Software Karkhana is the **Immutable Evidence Ledger** (`app/ledger.py`). Every significant lifecycle action produces a cryptographically signed block containing:
+Agents are only as good as the context they work with. Software Karkhana keeps a **FalkorDB property graph** per workspace (`kg_<workspace>`) that connects **Product → Project → Epic → Task → Run/PR**, and links tasks to the **Components** they touch, the **ADRs** that govern them and the **Learnings** about them.
 
-- **Sequence ID**: Monotonically increasing entry counter.
-- **Timestamp & Actor**: ISO 8601 UTC timestamp and authenticated user/agent ID.
-- **Event Type & Payload**: Structured event metadata and task outputs.
-- **Previous Hash**: SHA-256 digest of the preceding ledger block.
-- **Current Hash**: `SHA256(seq_id + timestamp + actor + payload + prev_hash)`.
+<p align="center"><img src="docs/assets/readme/multi-agent-falkordb.jpg" alt="Agent roster with authority limits, the FalkorDB graph and its five uses, and the karkhana-agent ecosystem" width="100%" /></p>
 
-This guarantees tamper-evidence: any modification to past records invalidates the entire subsequent hash chain. Database role permissions explicitly prohibit `UPDATE` and `DELETE` operations on ledger tables.
+| | Use | What the graph does | Measured |
+|:-:|:--|:--|:--|
+| 1 | **Context scoping** | Only the touched files, their callers, tests and requirements go into the prompt. | **~274 chars vs 1.78M**, 100% recall |
+| 2 | **Conflict detection** | Two tasks touching one file are serialised, never overwritten. | **Precision 1.0 · Recall 1.0** on 500 task pairs |
+| 3 | **Blast radius** | Shows the components, tasks and findings a change affects. | p50 **35 ms** |
+| 4 | **Traceability and RCA** | Requirement → task → file; incident → ADRs and lessons. | |
+| 5 | **Agent revisit memory** | Previous attempts on a file are shown to the next agent, so it does not repeat a failed approach. | |
+
+Postgres stays the system of record: the graph is a **rebuildable projection** fed from the ledger, and the platform falls back to a no-op backend if FalkorDB is not running. Code: [`app/graph/`](app/graph/) · Guide: [`docs/FALKORDB.md`](docs/FALKORDB.md) · Schema: [`docs/KNOWLEDGE_GRAPH.md`](docs/KNOWLEDGE_GRAPH.md)
 
 ---
 
-## 💻 Quick Start & Local Development
+## ☁️ Built on Google Cloud
 
-### Prerequisites
-- Node.js 18+ and npm
-- Python 3.11+
-- PostgreSQL 16 with `pgvector` extension
+| Google product | How Software Karkhana uses it |
+|:--|:--|
+| **Gemini 3 Flash · 3.1 Pro (Vertex AI)** | Flash runs the coding loop, IdeaQ and chat; Pro plans and reviews. With no API key set, every call goes through **Vertex AI** with the service account. |
+| **Google ADK + google-genai** | The ADK Coder and Reviewer: five workspace-confined tools (list, read, edit, write, test) and typed outputs. |
+| **Cloud Run (service)** | The control plane. Scales to zero, session JWTs, per-run HMAC tokens. |
+| **Cloud Run Jobs** | Every agent run is its own Job (2 vCPU, 2 GiB), so one run can never touch another. |
+| **Google AX on GKE** | Optional Agent Substrate sandbox for heavier agent tasks, behind the same runner contract. |
+| **Cloud SQL for PostgreSQL + pgvector** | Tenants, the advisory-locked ledger, and vector search over verified lessons. |
+| **Firebase Auth + Hosting** | Sign in with Google, GitHub or an email code; CDN for the app, landing page and docs. |
+| **Cloud Storage** | Run artifacts and **ledger anchors** in a retention-policy bucket outside the database. |
+| **Secret Manager** | Model keys and tokens at rest (Cloud KMS planned). |
+| **Google Stitch (MCP)** | Design screens generated over MCP, held at a handoff gate until PM and designer approve. |
+| **OSV-Scanner** | Google's open-source vulnerability scanner runs on every PR; a CRITICAL finding closes the security gate. |
+| **Cloud Build, Artifact Registry, Scheduler, Logging, Trace** | Build, migrate and deploy in one pipeline; a scheduled ledger-anchor job; OpenTelemetry correlation IDs from click to agent run. |
 
-### 1. Web Client (Frontend)
+<p align="center"><img src="docs/assets/readme/tech-stack.jpg" alt="Technology stack: 16 building blocks and why each is there" width="100%" /></p>
+
+---
+
+## 🤖 The agents, and what they are not allowed to do
+
+| Agent | Does | Cannot |
+|:--|:--|:--|
+| **IdeaQ specialists ×4** | Scan the repo in parallel (repomix pack, Headroom-compressed) and return typed ideas | Approve ideas; ideas citing files that do not exist are dropped |
+| **Evaluator** | Scores Value, Usability, Feasibility, Viability; every quote must match the source verbatim | Its score is advisory |
+| **Drafters** | PRD, ERD, epics, team plan | The plan needs PM approval |
+| **Parallel planner** | Schedules tasks and checks file conflicts in the graph | The graph can block a task |
+| **ADK Coder** | Five confined tools in a sandbox, real tests | Merge or deploy |
+| **ADK Reviewer, PR-Agent** | Review comments and typed findings | Findings stay "AI, unverified" until a person triages them |
+| **QA agent** | Scenarios and pytest scripts against real endpoints | Sign-off is human |
+| **Security fixer** | Proposes dependency fixes | Waivers are human |
+
+> **No agent approves its own change. Every consequential action is a human gate.**
+
+---
+
+## 🔒 The evidence ledger
+
+Every significant action appends a block to an append-only, **SHA-256 hash-chained ledger** ([`app/ledger.py`](app/ledger.py)): sequence number, timestamp, actor (person or agent), event, payload, previous hash and its own hash. Changing any past entry breaks every hash after it, and the database role cannot `UPDATE` or `DELETE` ledger rows. Chain heads are anchored in Cloud Storage on a schedule. Details: [`docs/LEDGER.md`](docs/LEDGER.md).
+
+---
+
+## 📊 Benchmarks
+
+**27,700+ attacks, forgeries and fabricated outputs** run against the real platform (real worker, pytest, Postgres, ledger, API and FalkorDB; only model calls are deterministic fakes, so every run repeats exactly). Every one was stopped.
+
+<p align="center"><img src="docs/assets/readme/benchmarks.jpg" alt="Benchmark results across agent verification, governance and the FalkorDB graph" width="100%" /></p>
+
+| Layer | Benchmark | Result |
+|:--|:--|:--|
+| Agent verification | False-done rate (agent claims "all tests pass" over planted defects) | **0% false done**, 9/9 defects caught |
+| | Hallucination guard (fabricated quotes, 59 sources, 7 types) | **1,629 / 1,629 caught**, 0 false rejects |
+| | IdeaQ evidence check | **103 / 103** fake citations dropped, 106 / 106 real kept |
+| Governance | Ledger tamper detection (edit, delete, reorder, back-date, re-hash) | **550 / 550 detected** |
+| | Gate bypass (15 stages × 14 roles × 10 events + forged JWTs) | **25,222 / 25,222 refused** |
+| | Signed worker callbacks (forged, cross-run, replayed HMAC) | **60 / 60 blocked** |
+| Shared context (FalkorDB) | Parallel-safety conflicts, 500 task pairs | **Precision 1.0 · Recall 1.0** |
+| | Context scoping | **~274 chars vs 1.78M**, 100% recall |
+| | Query speed p50 (scope · conflict · blast radius) | **18 ms · 4 ms · 35 ms** |
+
+Reproduce with one command: `make bench` (results in [`reports/bench/results.json`](reports/bench/results.json), code in [`tests/bench/`](tests/bench/)).
+
+---
+
+## 💻 `karkhana-agent`: build on your own machine
 
 ```bash
-# Navigate to web directory
-cd web
-
-# Install dependencies
-npm install
-
-# Start Vite development server
-npm run dev
-
-# Build for production
-npm run build
+# In the app: Developer → My machines → Connect a machine, then copy the command it shows.
+npm install -g karkhana-agent
+karkhana-agent login --server https://<your-server> --code XXXX-XXXX --harness bob   # or claude
+karkhana-agent work
 ```
 
-The frontend will be available at **`http://localhost:5173`**.
+The agent dials out (no inbound port), claims a job, creates a git worktree per story, runs your coding agent there, runs the tests in a Docker sandbox, commits locally and reports back through the same HMAC callback. The control plane reviews the change and opens the PR. Model keys and source code stay on your machine. [Package README](packages/karkhana-agent/README.md) · [npm](https://www.npmjs.com/package/karkhana-agent)
 
-### 2. Control Plane (Backend API)
+---
+
+## 📈 What changes for each team
+
+<p align="center"><img src="docs/assets/readme/impact.jpg" alt="Impact by role: executive, product, architect, developer, QA and AppSec, release and audit" width="100%" /></p>
+
+---
+
+## ⚡ Quick start
+
+**Needs:** Python 3.11+ with [uv](https://docs.astral.sh/uv/), Node 20+, PostgreSQL 16 with `pgvector`. Optional: FalkorDB (`docker run -p 6379:6379 falkordb/falkordb`), Ollama for local models, Docker for sandboxed tests.
 
 ```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install package dependencies
-pip install -e .
-
-# Run database migrations
-python -m app.scripts.migrate
-
-# Seed demo enterprise workspace
-python -m app.scripts.seed
-
-# Start FastAPI server
-uvicorn app.fast_api_app:app --reload --port 8080
+git clone https://github.com/dhruvinsights/Software-Karkhana.git && cd Software-Karkhana
+make install        # uv sync + web dependencies
+make db-local       # Postgres roles and database (pgvector)
+make migrate        # schema + demo users
+make dev            # API on http://localhost:8080 (OpenAPI at /docs)
+make web            # app on http://localhost:5173, proxies /api to :8080
 ```
 
-The API will be available at **`http://localhost:8080`** with OpenAPI docs at **`http://localhost:8080/docs`**.
-
-### 3. Running Automated Tests
+**Models.** Copy [`.env.example`](.env.example) to `.env`. To run everything on **Gemini through Vertex AI**, leave `GEMINI_API_KEY` unset and set:
 
 ```bash
-# Run backend test suite
-pytest -v
+GOOGLE_CLOUD_PROJECT=<your-project>   # billing and the aiplatform API enabled
+LLM_PROVIDER=gemini
+EMBED_PROVIDER=gemini
+CHAT_DEFAULT_PROVIDER=gemini
+```
 
-# Run frontend build checks
-cd web && npx tsc -b
+then `gcloud auth application-default login` and `make check-models`. For fully local runs, use `LLM_PROVIDER=ollama` and `EMBED_PROVIDER=ollama`.
+
+**Graph.** Set `FALKORDB_URL=redis://localhost:6379` to turn the knowledge graph on; without it the platform runs exactly the same, minus graph context.
+
+**Tests.** `make test` (365+ tests), `make lint`, `make arch` (module boundaries), `make bench` (benchmarks). Windows: [`docs/LOCAL_WINDOWS.md`](docs/LOCAL_WINDOWS.md). Deploying to Google Cloud: `make deploy` and [`docs/GO_LIVE.md`](docs/GO_LIVE.md).
+
+---
+
+## 🗂️ Repository layout
+
+```
+app/                FastAPI control plane
+  routers/          35 API routers (identity, tenancy, ideas, delivery, review, knowledge, chat)
+  services/         planner, QA agent, design handoff, OSV scan, releases, realtime
+  agents/           ADK Coder and Reviewer
+  ai/               Gemini / Vertex AI, Ollama, Claude and Bob providers; chat; compression
+  graph/            FalkorDB engineering intelligence graph (+ no-op fallback)
+  runner/           runner contract: Cloud Run Job, Google AX, device, local
+  worker/           sandboxed agent worker
+  ledger.py         SHA-256 hash-chained evidence ledger
+web/                React 18 + Vite + Tailwind v4 app, landing page and docs site
+packages/karkhana-agent/   npm package that connects a developer machine
+db/                 migrations
+tests/              unit, integration, e2e and bench suites
+docs/               architecture, FalkorDB, ledger, runbooks and guides
 ```
 
 ---
 
-## 📚 Complete Documentation Suite
+## 📚 Documentation
 
-- [📄 Software Karkhana Complete Project Blueprint](docs/Software_Karkhana_Complete_Project_Blueprint.md)
-- [🏗️ Architectural Decisions & Build Log](docs/BUILD_LOG.md)
-- [🏭 Running the Whole PDLC: Idea to Release Runbook](docs/E2E_FACTORY.md)
-- [💻 Local Developer Agent (`karkhana-agent`)](packages/karkhana-agent/README.md)
-- [🤖 PR Review Bot](docs/PR_BOT.md)
-- [📋 Master TODO & Work Logs](todo/README.md)
-- [📚 Team Wiki](docs/wiki/README.md)
-- [🚢 Enterprise Deployment & Go-Live Guide](docs/GO_LIVE.md)
-- [🎓 Factory Engineering Principles & Learning Guide](docs/LEARNING_GUIDE.md)
-- [🪟 Windows & WSL2 Local Setup Guide](docs/LOCAL_WINDOWS.md)
-- [👥 Team Work Breakdown Plan](docs/TEAM_PLAN.md)
-- [🎬 Golden Path Demo Script](docs/DEMO_SCRIPT.md)
+| | |
+|:--|:--|
+| 🏛️ [Architecture](docs/ARCHITECTURE.md) | 🕸️ [FalkorDB integration](docs/FALKORDB.md) · [Knowledge graph](docs/KNOWLEDGE_GRAPH.md) |
+| 🔒 [Evidence ledger](docs/LEDGER.md) | 🏭 [Idea-to-release runbook](docs/E2E_FACTORY.md) |
+| 🚢 [Go-live guide](docs/GO_LIVE.md) · [Deployed mode](docs/DEPLOYED_MODE.md) | 🛡️ [OSV-Scanner](docs/OSV_SCANNER.md) · 🤖 [PR bot](docs/PR_BOT.md) |
+| 📜 [Build log and decisions](docs/BUILD_LOG.md) | 🎓 [Learning guide](docs/LEARNING_GUIDE.md) · 📚 [Wiki](docs/wiki/README.md) |
+| 💻 [karkhana-agent](packages/karkhana-agent/README.md) | 🪟 [Windows setup](docs/LOCAL_WINDOWS.md) |
 
 ---
 
-## 📄 License & Attribution
+## 👥 The team
 
-Copyright &copy; 2026 Software Karkhana Contributors. Licensed under the [Apache License, Version 2.0](LICENSE).  
-Third-party notices and open-source attributions are documented in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+<table>
+<tr>
+<td align="center"><img src="web/public/blog/img/team-dhruv.jpg" width="120" alt="Dhruv Chaturvedi" /><br/><b>Dhruv Chaturvedi</b></td>
+<td align="center"><img src="web/public/blog/img/team-eshita.jpg" width="120" alt="Eshita Khakharia" /><br/><b>Eshita Khakharia</b></td>
+<td align="center"><img src="web/public/blog/img/team-yagnik.jpg" width="120" alt="Yagnik Sharma" /><br/><b>Yagnik Sharma</b></td>
+<td align="center"><img src="web/public/blog/img/team-sameeksha.jpg" width="120" alt="Sameeksha Sahani" /><br/><b>Sameeksha Sahani</b></td>
+</tr>
+</table>
+
+---
+
+## 📄 License
+
+Copyright © 2026 Software Karkhana authors. Licensed under the Apache License, Version 2.0. Third-party notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). FalkorDB is used under its own license; see [`docs/FALKORDB.md`](docs/FALKORDB.md#license-note) for alternatives.
+
+<div align="center"><sub>Autonomous where it's safe. Accountable where it matters.</sub></div>
