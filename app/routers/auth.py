@@ -601,7 +601,9 @@ async def login(
         )
 
     # If password is set, verify it; if user has no password (e.g. seeded demo user), allow sign in
-    if user.hashed_password:
+    if not user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This account uses Google sign-in. Please continue with Google.")
+    if True:
         if not verify_password(payload.password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
